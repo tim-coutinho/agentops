@@ -2080,6 +2080,121 @@ func TestGetCitationsForSession_ReadOnlyFile(t *testing.T) {
 	}
 }
 
+func TestValidatePreMortem_LenientMissingSchemaVersion(t *testing.T) {
+	// Exercise the hasFrontmatterField("schema_version") warning path (line 243-246)
+	// in validatePreMortem. Must use lenient mode so checkSchemaVersion doesn't
+	// abort before reaching validateStep.
+	v, tmpDir := helperNewValidator(t)
+	artifact := filepath.Join(tmpDir, "premortem-v2.md")
+	content := "---\ntitle: pre-mortem analysis\n---\n## Finding\n| ID | Risk |\n| 1 | Problem |\nMitigation: fix it\n" + longText(100)
+	if err := os.WriteFile(artifact, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := &ValidateOptions{Lenient: true}
+	result, err := v.ValidateWithOptions(StepPreMortem, artifact, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "schema_version") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'schema_version' warning, got warnings: %v", result.Warnings)
+	}
+}
+
+func TestValidatePlan_LenientMissingSchemaVersion(t *testing.T) {
+	// Exercise the hasFrontmatterField("schema_version") warning path (line 293-296)
+	// in validatePlan. Must use lenient mode.
+	v, tmpDir := helperNewValidator(t)
+	artifact := filepath.Join(tmpDir, "plan.md")
+	content := "---\ntitle: implementation plan\n---\n## Scope\nBuild the feature\n## Tasks\n- Task 1\n## Dependencies\nNone\n## Risks\nLow\n## Estimate\n3 days\n" + longText(100)
+	if err := os.WriteFile(artifact, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := &ValidateOptions{Lenient: true}
+	result, err := v.ValidateWithOptions(StepPlan, artifact, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "schema_version") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'schema_version' warning, got warnings: %v", result.Warnings)
+	}
+}
+
+func TestValidatePostMortem_LenientMissingSchemaVersion(t *testing.T) {
+	// Exercise the hasFrontmatterField("schema_version") warning path (line 327-330)
+	// in validatePostMortem. Must use lenient mode.
+	v, tmpDir := helperNewValidator(t)
+	artifact := filepath.Join(tmpDir, "retro.md")
+	content := "---\ntitle: retrospective\n---\n## Summary\nCompleted feature.\n## Learnings\n- Lesson 1\n## Metrics\nScore: 100\n## Recommendations\nKeep going\n" + longText(100)
+	if err := os.WriteFile(artifact, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := &ValidateOptions{Lenient: true}
+	result, err := v.ValidateWithOptions(StepPostMortem, artifact, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "schema_version") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'schema_version' warning, got warnings: %v", result.Warnings)
+	}
+}
+
+func TestLoadCitations_ScannerError(t *testing.T) {
+	// Exercise the scanner.Err() path (line 894) by writing a line
+	// exceeding the 1MB scanner buffer.
+	baseDir := t.TempDir()
+	citationsDir := filepath.Join(baseDir, ".agents", "ao")
+	if err := os.MkdirAll(citationsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	citationsPath := filepath.Join(citationsDir, "citations.jsonl")
+
+	// Write a valid line, then a line exceeding 1MB
+	validLine := `{"artifact_path":"/a.md","session_id":"s1","citation_type":"ref"}` + "\n"
+	hugeLine := make([]byte, 1100*1024) // 1.1MB exceeds 1MB scanner buffer
+	for i := range hugeLine {
+		hugeLine[i] = 'x'
+	}
+	content := validLine + string(hugeLine) + "\n"
+	if err := os.WriteFile(citationsPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadCitations(baseDir)
+	if err == nil {
+		t.Error("expected scanner error for line exceeding buffer")
+	}
+	if !strings.Contains(err.Error(), "scan citations") {
+		t.Errorf("expected 'scan citations' error, got: %v", err)
+	}
+}
+
 func TestGetCitationsSince_EmptyFile(t *testing.T) {
 	tmp := t.TempDir()
 

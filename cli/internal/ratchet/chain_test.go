@@ -989,6 +989,41 @@ func TestLoadLegacyYAMLChain_InvalidYAML(t *testing.T) {
 	}
 }
 
+func TestMigrateChain_SaveError(t *testing.T) {
+	// Exercise the chain.Save() error path in MigrateChain (line 404-406).
+	// Create a valid legacy chain, but make the target directory read-only
+	// so Save() fails.
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, ".agents"), 0700); err != nil {
+		t.Fatalf("mkdir .agents: %v", err)
+	}
+
+	yaml := `id: migrate-err
+started: "2026-01-15T10:00:00Z"
+chain:
+  - step: research
+    timestamp: "2026-01-15T10:01:00Z"
+    output: research.md
+    locked: true
+`
+	writeLegacyChain(t, tmp, yaml)
+
+	// Create .agents/ao as a read-only directory so Save() can't create the file
+	aoDir := filepath.Join(tmp, ".agents", "ao")
+	if err := os.MkdirAll(aoDir, 0500); err != nil {
+		t.Fatalf("mkdir ao: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(aoDir, 0700) })
+
+	err := MigrateChain(tmp)
+	if err == nil {
+		t.Fatal("expected error when Save fails due to read-only directory")
+	}
+	if !strings.Contains(err.Error(), "save migrated chain") {
+		t.Errorf("expected 'save migrated chain' error, got: %v", err)
+	}
+}
+
 func TestLoadJSONLChain_CloseErrorExposed(t *testing.T) {
 	tmpDir := t.TempDir()
 	chainPath := filepath.Join(tmpDir, "chain.jsonl")
