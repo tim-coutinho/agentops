@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"strings"
 	"time"
@@ -38,7 +39,7 @@ func ParseStreamEvents(r io.Reader, onUpdate func(PhaseProgress)) (PhaseProgress
 	for {
 		line, readErr := reader.readLine()
 		if len(line) == 0 {
-			if readErr == io.EOF {
+			if errors.Is(readErr, io.EOF) {
 				break
 			}
 			if readErr != nil {
@@ -50,7 +51,7 @@ func ParseStreamEvents(r io.Reader, onUpdate func(PhaseProgress)) (PhaseProgress
 		ev, err := ParseStreamEvent(line)
 		if err != nil {
 			// Skip malformed lines.
-			if readErr == io.EOF {
+			if errors.Is(readErr, io.EOF) {
 				break
 			}
 			if readErr != nil {
@@ -97,7 +98,7 @@ func ParseStreamEvents(r io.Reader, onUpdate func(PhaseProgress)) (PhaseProgress
 			onUpdate(p)
 		}
 
-		if readErr == io.EOF {
+		if errors.Is(readErr, io.EOF) {
 			break
 		}
 		if readErr != nil {

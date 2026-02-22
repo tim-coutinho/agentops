@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -242,7 +243,8 @@ func executeGrepWithFallback(cmd *exec.Cmd, useRipgrep bool, query, dir string) 
 	}
 
 	// Both grep and rg return exit code 1 if no matches - this is normal
-	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 		return nil, nil
 	}
 
@@ -252,7 +254,8 @@ func executeGrepWithFallback(cmd *exec.Cmd, useRipgrep bool, query, dir string) 
 		fallbackCmd := exec.Command("rg", "-l", "-i", "--max-count", "1", query, dir)
 		output, err = fallbackCmd.Output()
 		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			var exitErr2 *exec.ExitError
+			if errors.As(err, &exitErr2) && exitErr2.ExitCode() == 1 {
 				return nil, nil
 			}
 			return nil, fmt.Errorf("search failed: %w", err)

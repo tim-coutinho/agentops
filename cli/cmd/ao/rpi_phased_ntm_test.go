@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 )
@@ -51,7 +52,7 @@ func TestSpawnClaudePhase_DirectErrorPropagates(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error to propagate")
 	}
-	if err != expected {
+	if !errors.Is(err, expected) {
 		t.Fatalf("error = %v, want %v", err, expected)
 	}
 }

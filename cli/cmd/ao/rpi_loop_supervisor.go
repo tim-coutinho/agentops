@@ -631,7 +631,7 @@ func runLoopCommandWithTimeout(cwd string, timeout time.Duration, name string, a
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
-	if err != nil && ctx.Err() == context.DeadlineExceeded {
+	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fmt.Errorf("%s %s timed out after %s", name, strings.Join(args, " "), timeout)
 	}
 	return err
@@ -645,7 +645,7 @@ func runLoopCommandOutputWithTimeout(cwd string, timeout time.Duration, name str
 	cmd := loopExecCommandContext(ctx, name, args...)
 	cmd.Dir = cwd
 	out, err := cmd.CombinedOutput()
-	if err != nil && ctx.Err() == context.DeadlineExceeded {
+	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return strings.TrimSpace(string(out)), fmt.Errorf("%s %s timed out after %s", name, strings.Join(args, " "), timeout)
 	}
 	return strings.TrimSpace(string(out)), err

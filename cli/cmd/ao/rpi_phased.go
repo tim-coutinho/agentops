@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -959,9 +960,10 @@ func handleGateRetry(cwd string, state *phasedState, phaseNum int, gateErr *gate
 
 	// Check gate again
 	if err := postPhaseProcessing(cwd, state, phaseNum, logPath); err != nil {
-		if _, ok := err.(*gateFailError); ok {
+		var gateErr *gateFailError
+		if errors.As(err, &gateErr) {
 			// Still failing — recurse
-			return handleGateRetry(cwd, state, phaseNum, err.(*gateFailError), logPath, spawnCwd, statusPath, allPhases, executor)
+			return handleGateRetry(cwd, state, phaseNum, gateErr, logPath, spawnCwd, statusPath, allPhases, executor)
 		}
 		return false, err
 	}
@@ -1211,13 +1213,14 @@ func spawnRuntimeDirectImpl(runtimeCommand, prompt, cwd string, phaseNum int, ph
 	cmd.Stdin = os.Stdin
 	cmd.Env = cleanEnvNoClaude()
 	err := cmd.Run()
-	if ctx.Err() == context.DeadlineExceeded {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fmt.Errorf("phase %d timed out after %s (set --phase-timeout to increase)", phaseNum, phaseTimeout)
 	}
 	if err == nil {
 		return nil
 	}
-	if exitErr, ok := err.(*exec.ExitError); ok {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
 		return fmt.Errorf("%s exited with code %d: %w", command, exitErr.ExitCode(), err)
 	}
 	return fmt.Errorf("%s execution failed: %w", command, err)
@@ -1358,7 +1361,7 @@ func spawnRuntimePhaseWithStream(runtimeCommand, prompt, cwd, runID string, phas
 	waitErr := cmd.Wait()
 
 	// Classify failure reason.
-	if ctx.Err() == context.DeadlineExceeded {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fmt.Errorf("phase %d (%s) timed out after %s (set --phase-timeout to increase)", phaseNum, failReasonTimeout, phaseTimeout)
 	}
 	if cause := context.Cause(stallCtx); cause != nil && stallCtx.Err() != nil && ctx.Err() == nil {
@@ -1368,7 +1371,8 @@ func spawnRuntimePhaseWithStream(runtimeCommand, prompt, cwd, runID string, phas
 
 	// Prefer wait error (exit code) over parse error.
 	if waitErr != nil {
-		if exitErr, ok := waitErr.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(waitErr, &exitErr) {
 			return fmt.Errorf("%s exited with code %d (%s): %w", command, exitErr.ExitCode(), failReasonExit, waitErr)
 		}
 		return fmt.Errorf("%s execution failed (%s): %w", command, failReasonUnknown, waitErr)

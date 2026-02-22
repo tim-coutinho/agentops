@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -86,7 +87,8 @@ func runSinglePhase(cwd, spawnCwd string, state *phasedState, startPhase int, p 
 	updateRunHeartbeat(spawnCwd, state.RunID)
 
 	if err := postPhaseProcessing(spawnCwd, state, p.Num, logPath); err != nil {
-		if retryErr, ok := err.(*gateFailError); ok {
+		var retryErr *gateFailError
+		if errors.As(err, &retryErr) {
 			retried, retryErr2 := handleGateRetry(spawnCwd, state, p.Num, retryErr, logPath, spawnCwd, statusPath, allPhases, executor)
 			if retryErr2 != nil {
 				return retryErr2

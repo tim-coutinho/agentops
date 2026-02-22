@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -18,18 +19,16 @@ func TestCycleFailureError_Unwrap(t *testing.T) {
 
 	var cfe *cycleFailureError
 	// Unwrap should expose the inner error
-	if cfe2, ok := wrapped.(*cycleFailureError); ok {
-		unwrapped := cfe2.Unwrap()
-		if unwrapped == nil {
-			t.Fatal("Unwrap should return non-nil")
-		}
-		if !strings.Contains(unwrapped.Error(), "inner error") {
-			t.Errorf("Unwrap = %v, want to contain 'inner error'", unwrapped)
-		}
-	} else {
+	if !errors.As(wrapped, &cfe) {
 		t.Fatalf("expected *cycleFailureError, got %T", wrapped)
 	}
-	_ = cfe
+	unwrapped := cfe.Unwrap()
+	if unwrapped == nil {
+		t.Fatal("Unwrap should return non-nil")
+	}
+	if !strings.Contains(unwrapped.Error(), "inner error") {
+		t.Errorf("Unwrap = %v, want to contain 'inner error'", unwrapped)
+	}
 }
 
 func TestWrapCycleFailure_NilError(t *testing.T) {
@@ -46,13 +45,11 @@ func TestWrapCycleFailure_AlreadyWrapped(t *testing.T) {
 
 	// Should preserve the first wrap, not create a double-wrap
 	var cfe *cycleFailureError
-	if cfe2, ok := rewrapped.(*cycleFailureError); ok {
-		cfe = cfe2
-		if cfe.kind != cycleFailureTask {
-			t.Errorf("kind = %q, want task (first wrap should be preserved)", cfe.kind)
-		}
-	} else {
+	if !errors.As(rewrapped, &cfe) {
 		t.Fatalf("expected *cycleFailureError, got %T", rewrapped)
+	}
+	if cfe.kind != cycleFailureTask {
+		t.Errorf("kind = %q, want task (first wrap should be preserved)", cfe.kind)
 	}
 }
 
