@@ -368,16 +368,13 @@ func (p *Pool) Stage(candidateID string, minTier types.Tier) error {
 	}
 
 	// Record chain event
-	if err := p.recordEvent(ChainEvent{
+	p.recordEventOrWarn(ChainEvent{
 		Timestamp:   time.Now(),
 		Operation:   "stage",
 		CandidateID: candidateID,
 		FromStatus:  types.PoolStatusPending,
 		ToStatus:    types.PoolStatusStaged,
-	}); err != nil {
-		// Non-fatal, continue
-		fmt.Fprintf(os.Stderr, "Warning: failed to record event: %v\n", err)
-	}
+	})
 
 	return nil
 }
@@ -407,16 +404,14 @@ func (p *Pool) Promote(candidateID string) (string, error) {
 		fmt.Fprintf(os.Stderr, "Warning: failed to remove pool entry: %v\n", err)
 	}
 
-	if err := p.recordEvent(ChainEvent{
+	p.recordEventOrWarn(ChainEvent{
 		Timestamp:    time.Now(),
 		Operation:    "promote",
 		CandidateID:  candidateID,
 		FromStatus:   entry.Status,
 		ToStatus:     types.PoolStatusArchived,
 		ArtifactPath: artifactPath,
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to record event: %v\n", err)
-	}
+	})
 
 	return artifactPath, nil
 }
@@ -541,15 +536,13 @@ func (p *Pool) Approve(candidateID, note, reviewer string) error {
 	}
 
 	// Record chain event
-	if err := p.recordEvent(ChainEvent{
+	p.recordEventOrWarn(ChainEvent{
 		Timestamp:   time.Now(),
 		Operation:   "approve",
 		CandidateID: candidateID,
 		Reason:      note,
 		Reviewer:    reviewer,
-	}); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to record event: %v\n", err)
-	}
+	})
 
 	return nil
 }
@@ -606,16 +599,9 @@ func (p *Pool) BulkApprove(olderThan time.Duration, reviewer string, dryRun bool
 	var approved []string
 	for _, entry := range entries {
 		if entry.Age >= olderThan {
-			if dryRun {
-				approved = append(approved, entry.Candidate.ID)
-				continue
+			if id, ok := p.bulkApproveEntry(entry, reviewer, dryRun); ok {
+				approved = append(approved, id)
 			}
-
-			if err := p.Approve(entry.Candidate.ID, "bulk-approve: auto-promoted after threshold", reviewer); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to approve %s: %v\n", entry.Candidate.ID, err)
-				continue
-			}
-			approved = append(approved, entry.Candidate.ID)
 		}
 	}
 
@@ -796,8 +782,14 @@ func (p *Pool) GetChain() (events []ChainEvent, err error) {
 			err = cerr
 		}
 	}()
+	events, err = scanChainEvents(f)
+	return
+}
 
+// scanChainEvents reads all chain events from f, skipping malformed lines.
+func scanChainEvents(f *os.File) ([]ChainEvent, error) {
 	scanner := bufio.NewScanner(f)
+	var events []ChainEvent
 	for scanner.Scan() {
 		var event ChainEvent
 		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
@@ -805,7 +797,6 @@ func (p *Pool) GetChain() (events []ChainEvent, err error) {
 		}
 		events = append(events, event)
 	}
-
 	return events, scanner.Err()
 }
 
@@ -910,4 +901,25 @@ func writeTempFile(tempPath string, data []byte) error {
 	}
 
 	return nil
+}
+
+// recordEventOrWarn records a chain event, printing a warning on failure.
+// Non-fatal: callers should not abort on recording failures.
+func (p *Pool) recordEventOrWarn(event ChainEvent) {
+	if err := p.recordEvent(event); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to record event: %v\n", err)
+	}
+}
+
+// bulkApproveEntry approves a single entry, or records it as dry-run.
+// Returns (candidateID, true) on success or dry-run, ("", false) on error.
+func (p *Pool) bulkApproveEntry(entry PoolEntry, reviewer string, dryRun bool) (string, bool) {
+	if dryRun {
+		return entry.Candidate.ID, true
+	}
+	if err := p.Approve(entry.Candidate.ID, "bulk-approve: auto-promoted after threshold", reviewer); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to approve %s: %v\n", entry.Candidate.ID, err)
+		return "", false
+	}
+	return entry.Candidate.ID, true
 }

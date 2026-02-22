@@ -9,7 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -447,73 +447,77 @@ func runSupervisorLanding(cwd string, cfg rpiLoopSupervisorConfig, cycle, attemp
 	case loopLandingPolicyOff:
 		return nil
 	case loopLandingPolicyCommit:
-		landingLock, err := acquireLandingLock(cwd, cfg)
-		if err != nil {
-			return fmt.Errorf("landing lock acquisition failed: %w", err)
-		}
-		if landingLock != nil {
-			defer func() {
-				if releaseErr := landingLock.Release(); releaseErr != nil {
-					VerbosePrintf("Warning: could not release landing lock: %v\n", releaseErr)
-				}
-			}()
-		}
-
-		_, err = commitIfDirty(cwd, renderLandingCommitMessage(cfg.LandingCommitMessage, cycle, attempt, goal), cfg.CommandTimeout, scope)
-		if err != nil {
-			return err
-		}
-		return nil
+		return runCommitLanding(cwd, cfg, cycle, attempt, goal, scope)
 	case loopLandingPolicySyncPush:
-		landingLock, err := acquireLandingLock(cwd, cfg)
-		if err != nil {
-			return fmt.Errorf("landing lock acquisition failed: %w", err)
-		}
-		if landingLock != nil {
-			defer func() {
-				if releaseErr := landingLock.Release(); releaseErr != nil {
-					VerbosePrintf("Warning: could not release landing lock: %v\n", releaseErr)
-				}
-			}()
-		}
-
-		committed, err := commitIfDirty(cwd, renderLandingCommitMessage(cfg.LandingCommitMessage, cycle, attempt, goal), cfg.CommandTimeout, scope)
-		if err != nil {
-			return err
-		}
-		if !committed {
-			fmt.Println("Landing: no commit performed.")
-			return nil
-		}
-		targetBranch, err := resolveLandingBranch(cwd, cfg.LandingBranch, cfg.CommandTimeout)
-		if err != nil {
-			return err
-		}
-		if err := loopCommandRunner(cwd, cfg.CommandTimeout, "git", "fetch", "origin", targetBranch); err != nil {
-			return wrapSyncPushLandingFailure(cwd, cfg.CommandTimeout, "fetch", err)
-		}
-		if err := loopCommandRunner(cwd, cfg.CommandTimeout, "git", "rebase", "origin/"+targetBranch); err != nil {
-			return wrapSyncPushLandingFailure(cwd, cfg.CommandTimeout, "rebase", err)
-		}
-
-		runSync, err := shouldRunBDSync(cwd, cfg.BDSyncPolicy, cfg.BDCommand)
-		if err != nil {
-			return err
-		}
-		if runSync {
-			if err := loopCommandRunner(cwd, cfg.CommandTimeout, cfg.BDCommand, "sync"); err != nil {
-				return fmt.Errorf("bd sync failed: %w", err)
-			}
-		}
-
-		if err := loopCommandRunner(cwd, cfg.CommandTimeout, "git", "push", "origin", "HEAD:"+targetBranch); err != nil {
-			return fmt.Errorf("landing push failed: %w", err)
-		}
-		_ = loopCommandRunner(cwd, cfg.CommandTimeout, "git", "status", "-sb")
-		return nil
+		return runSyncPushLanding(cwd, cfg, cycle, attempt, goal, scope)
 	default:
 		return fmt.Errorf("unsupported landing policy: %s", cfg.LandingPolicy)
 	}
+}
+
+func runCommitLanding(cwd string, cfg rpiLoopSupervisorConfig, cycle, attempt int, goal string, scope *landingScope) error {
+	landingLock, err := acquireLandingLock(cwd, cfg)
+	if err != nil {
+		return fmt.Errorf("landing lock acquisition failed: %w", err)
+	}
+	if landingLock != nil {
+		defer func() {
+			if releaseErr := landingLock.Release(); releaseErr != nil {
+				VerbosePrintf("Warning: could not release landing lock: %v\n", releaseErr)
+			}
+		}()
+	}
+	_, err = commitIfDirty(cwd, renderLandingCommitMessage(cfg.LandingCommitMessage, cycle, attempt, goal), cfg.CommandTimeout, scope)
+	return err
+}
+
+func runSyncPushLanding(cwd string, cfg rpiLoopSupervisorConfig, cycle, attempt int, goal string, scope *landingScope) error {
+	landingLock, err := acquireLandingLock(cwd, cfg)
+	if err != nil {
+		return fmt.Errorf("landing lock acquisition failed: %w", err)
+	}
+	if landingLock != nil {
+		defer func() {
+			if releaseErr := landingLock.Release(); releaseErr != nil {
+				VerbosePrintf("Warning: could not release landing lock: %v\n", releaseErr)
+			}
+		}()
+	}
+
+	committed, err := commitIfDirty(cwd, renderLandingCommitMessage(cfg.LandingCommitMessage, cycle, attempt, goal), cfg.CommandTimeout, scope)
+	if err != nil {
+		return err
+	}
+	if !committed {
+		fmt.Println("Landing: no commit performed.")
+		return nil
+	}
+	targetBranch, err := resolveLandingBranch(cwd, cfg.LandingBranch, cfg.CommandTimeout)
+	if err != nil {
+		return err
+	}
+	if err := loopCommandRunner(cwd, cfg.CommandTimeout, "git", "fetch", "origin", targetBranch); err != nil {
+		return wrapSyncPushLandingFailure(cwd, cfg.CommandTimeout, "fetch", err)
+	}
+	if err := loopCommandRunner(cwd, cfg.CommandTimeout, "git", "rebase", "origin/"+targetBranch); err != nil {
+		return wrapSyncPushLandingFailure(cwd, cfg.CommandTimeout, "rebase", err)
+	}
+
+	runSync, err := shouldRunBDSync(cwd, cfg.BDSyncPolicy, cfg.BDCommand)
+	if err != nil {
+		return err
+	}
+	if runSync {
+		if err := loopCommandRunner(cwd, cfg.CommandTimeout, cfg.BDCommand, "sync"); err != nil {
+			return fmt.Errorf("bd sync failed: %w", err)
+		}
+	}
+
+	if err := loopCommandRunner(cwd, cfg.CommandTimeout, "git", "push", "origin", "HEAD:"+targetBranch); err != nil {
+		return fmt.Errorf("landing push failed: %w", err)
+	}
+	_ = loopCommandRunner(cwd, cfg.CommandTimeout, "git", "status", "-sb")
+	return nil
 }
 
 func acquireLandingLock(cwd string, cfg rpiLoopSupervisorConfig) (*supervisorLease, error) {
@@ -704,7 +708,7 @@ func computeOwnedDirtyPaths(cwd string, timeout time.Duration, scope *landingSco
 		}
 		owned = append(owned, path)
 	}
-	sort.Strings(owned)
+	slices.Sort(owned)
 	return owned, nil
 }
 

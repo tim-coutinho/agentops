@@ -193,7 +193,7 @@ func BenchmarkPoolProcess(b *testing.B) {
 		items[i] = fmt.Sprintf("item-%d", i)
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		p := NewPool[string](4)
 		_ = p.Process(items, func(s string) (string, error) {
 			return s + "-done", nil

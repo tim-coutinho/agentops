@@ -1280,7 +1280,7 @@ func contains(s, substr string) bool {
 }
 
 func containsAt(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
+	for i := range len(s) - len(substr) + 1 {
 		if s[i:i+len(substr)] == substr {
 			return true
 		}
@@ -1318,7 +1318,7 @@ func BenchmarkWriteSession(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		s := benchSession(fmt.Sprintf("bench-%d", i))
 		_, _ = fs.WriteSession(s)
 	}
@@ -1332,7 +1332,7 @@ func BenchmarkListSessions(b *testing.B) {
 	}
 
 	// Seed 20 sessions
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		s := benchSession(fmt.Sprintf("bench-list-%d", i))
 		if _, err := fs.WriteSession(s); err != nil {
 			b.Fatalf("setup WriteSession: %v", err)
@@ -1340,7 +1340,7 @@ func BenchmarkListSessions(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, _ = fs.ListSessions()
 	}
 }
@@ -1348,7 +1348,7 @@ func BenchmarkListSessions(b *testing.B) {
 func BenchmarkGenerateSlug(b *testing.B) {
 	text := "This is a long summary about implementing the knowledge flywheel correctly"
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		generateSlug(text)
 	}
 }

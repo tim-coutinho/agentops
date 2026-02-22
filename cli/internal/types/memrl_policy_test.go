@@ -85,7 +85,7 @@ func TestMemRLReplay(t *testing.T) {
 	}
 
 	first := EvaluateDefaultMemRLPolicy(input)
-	for i := 0; i < 25; i++ {
+	for i := range 25 {
 		got := EvaluateDefaultMemRLPolicy(input)
 		if !reflect.DeepEqual(first, got) {
 			t.Fatalf("non-deterministic replay at iteration %d: first=%+v got=%+v", i, first, got)
@@ -582,7 +582,7 @@ func BenchmarkEvaluateMemRLPolicy(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		EvaluateMemRLPolicy(contract, input)
 	}
 }
@@ -590,14 +590,14 @@ func BenchmarkEvaluateMemRLPolicy(b *testing.B) {
 func BenchmarkValidateMemRLPolicyContract(b *testing.B) {
 	contract := DefaultMemRLPolicyContract()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = ValidateMemRLPolicyContract(contract)
 	}
 }
 
 func BenchmarkBucketMemRLAttempt(b *testing.B) {
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		BucketMemRLAttempt(i%10+1, 10)
 	}
 }

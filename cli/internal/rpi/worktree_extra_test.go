@@ -684,11 +684,10 @@ func TestCreateWorktree_GenericFailure(t *testing.T) {
 
 	// Create a file at the expected worktree path location so "already exists" triggers
 	repoBasename := filepath.Base(repo)
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		// Block all possible paths. GenerateRunID is random so we can't predict,
 		// but we can test the non-git-repo path instead.
 		_ = repoBasename
-		_ = i
 	}
 
 	// Test with a repo that has no commits (empty repo)

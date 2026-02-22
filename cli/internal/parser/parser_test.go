@@ -671,7 +671,7 @@ func TestParser_ParsedAt(t *testing.T) {
 func TestParser_OnProgress(t *testing.T) {
 	// Build 200+ lines to trigger OnProgress (fires every 100 lines)
 	var lines []string
-	for i := 0; i < 250; i++ {
+	for i := range 250 {
 		lines = append(lines, fmt.Sprintf(`{"type":"user","sessionId":"test","timestamp":"2026-01-24T10:00:00.000Z","uuid":"%d","message":{"role":"user","content":"msg %d"}}`, i, i))
 	}
 	jsonl := strings.Join(lines, "\n")
@@ -999,7 +999,7 @@ func TestExtractBest_HigherScoreLaterInSlice(t *testing.T) {
 
 	// Run many times to exercise both map iteration orders
 	sawHighScore := false
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		best := e.ExtractBest(msg)
 		if best == nil {
 			t.Fatal("Expected a result, got nil")
@@ -1053,7 +1053,7 @@ func TestParseChannel_ScannerError(t *testing.T) {
 
 func BenchmarkParse_100Lines(b *testing.B) {
 	var lines []string
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		lines = append(lines, fmt.Sprintf(
 			`{"type":"assistant","sessionId":"bench","timestamp":"2026-01-24T10:00:00.000Z","uuid":"%d","message":{"role":"assistant","content":"Response number %d with some content."}}`,
 			i, i))
@@ -1061,7 +1061,7 @@ func BenchmarkParse_100Lines(b *testing.B) {
 	input := strings.Join(lines, "\n") + "\n"
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		p := NewParser()
 		_, _ = p.Parse(strings.NewReader(input))
 	}
@@ -1069,7 +1069,7 @@ func BenchmarkParse_100Lines(b *testing.B) {
 
 func BenchmarkParse_1000Lines(b *testing.B) {
 	var lines []string
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		lines = append(lines, fmt.Sprintf(
 			`{"type":"user","sessionId":"bench","timestamp":"2026-01-24T10:00:00.000Z","uuid":"%d","message":{"role":"user","content":"Message %d"}}`,
 			i, i))
@@ -1077,7 +1077,7 @@ func BenchmarkParse_1000Lines(b *testing.B) {
 	input := strings.Join(lines, "\n") + "\n"
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		p := NewParser()
 		_, _ = p.Parse(strings.NewReader(input))
 	}
@@ -1088,7 +1088,7 @@ func BenchmarkExtract(b *testing.B) {
 	msg := createTestMessage("**Decision:** We decided to use context.WithCancel for graceful shutdown because it works best.")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		e.Extract(msg)
 	}
 }
@@ -1098,7 +1098,7 @@ func BenchmarkExtractBest(b *testing.B) {
 	msg := createTestMessage("**Decision:** Use X. **Learning:** This teaches us Y. See https://example.com for details.")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		e.ExtractBest(msg)
 	}
 }

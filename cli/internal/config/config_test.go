@@ -1456,7 +1456,7 @@ rpi:
 // --- Benchmarks ---
 
 func BenchmarkDefault(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		Default()
 	}
 }
@@ -1470,7 +1470,7 @@ func BenchmarkMerge(b *testing.B) {
 		Forge:   ForgeConfig{MaxContentLength: 5000},
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		dst := *base // copy
 		merge(&dst, overlay)
 	}

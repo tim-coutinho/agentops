@@ -726,7 +726,7 @@ func writeFile(t *testing.T, path, content string) {
 
 func benchPopulateDir(b *testing.B, dir string, numFiles int) {
 	b.Helper()
-	for i := 0; i < numFiles; i++ {
+	for i := range numFiles {
 		content := "Mutex pattern for concurrent access and Go routines with channels\n"
 		content += "OAuth authentication tokens for secure API access\n"
 		content += "Database migration strategy and schema versioning\n"
@@ -742,7 +742,7 @@ func BenchmarkBuildIndex(b *testing.B) {
 	benchPopulateDir(b, dir, 20)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, _ = BuildIndex(dir)
 	}
 }
@@ -757,7 +757,7 @@ func BenchmarkSearch(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = Search(idx, "mutex concurrent access", 10)
 	}
 }
@@ -774,7 +774,7 @@ func BenchmarkSaveAndLoadIndex(b *testing.B) {
 	indexPath := filepath.Join(dir, "index.jsonl")
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = SaveIndex(idx, indexPath)
 		_, _ = LoadIndex(indexPath)
 	}

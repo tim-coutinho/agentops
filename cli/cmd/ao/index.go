@@ -377,33 +377,8 @@ func checkIndex(dirPath, relDir string, entries []indexEntry) (bool, string) {
 		return true, fmt.Sprintf("STALE %s: INDEX.md missing", relDir)
 	}
 
-	// Extract filenames from existing INDEX.md table rows
-	existingFiles := make(map[string]bool)
-	scanner := bufio.NewScanner(strings.NewReader(string(content)))
-	headerPassed := false
-	for scanner.Scan() {
-		line := scanner.Text()
-		// Skip until we find the table separator
-		if strings.HasPrefix(line, "|------") || strings.HasPrefix(line, "|---") {
-			headerPassed = true
-			continue
-		}
-		if !headerPassed {
-			continue
-		}
-		if !strings.HasPrefix(line, "| ") {
-			continue
-		}
-		parts := strings.SplitN(line, "|", 6)
-		if len(parts) >= 3 {
-			fname := strings.TrimSpace(parts[1])
-			if fname != "" && fname != "File" {
-				existingFiles[fname] = true
-			}
-		}
-	}
+	existingFiles := parseIndexTableRows(content)
 
-	// Compare: check for missing and extra files
 	expectedFiles := make(map[string]bool)
 	for _, e := range entries {
 		expectedFiles[e.Filename] = true
@@ -424,7 +399,39 @@ func checkIndex(dirPath, relDir string, entries []indexEntry) (bool, string) {
 	if len(missing) == 0 && len(extra) == 0 && len(existingFiles) == len(expectedFiles) {
 		return false, ""
 	}
+	return true, buildIndexDiffMessage(relDir, missing, extra)
+}
 
+// parseIndexTableRows extracts filenames from an INDEX.md markdown table.
+func parseIndexTableRows(content []byte) map[string]bool {
+	existing := make(map[string]bool)
+	scanner := bufio.NewScanner(strings.NewReader(string(content)))
+	headerPassed := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "|------") || strings.HasPrefix(line, "|---") {
+			headerPassed = true
+			continue
+		}
+		if !headerPassed {
+			continue
+		}
+		if !strings.HasPrefix(line, "| ") {
+			continue
+		}
+		parts := strings.SplitN(line, "|", 6)
+		if len(parts) >= 3 {
+			fname := strings.TrimSpace(parts[1])
+			if fname != "" && fname != "File" {
+				existing[fname] = true
+			}
+		}
+	}
+	return existing
+}
+
+// buildIndexDiffMessage formats a STALE message listing missing and extra files.
+func buildIndexDiffMessage(relDir string, missing, extra []string) string {
 	var msg strings.Builder
 	msg.WriteString(fmt.Sprintf("STALE %s:", relDir))
 	if len(missing) > 0 {
@@ -435,5 +442,5 @@ func checkIndex(dirPath, relDir string, entries []indexEntry) (bool, string) {
 		sort.Strings(extra)
 		msg.WriteString(fmt.Sprintf(" extra=[%s]", strings.Join(extra, ", ")))
 	}
-	return true, msg.String()
+	return msg.String()
 }

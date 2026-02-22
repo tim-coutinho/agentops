@@ -90,40 +90,53 @@ func parsePatternFile(path string) (pattern, error) {
 	}
 
 	lines := strings.Split(string(content), "\n")
-	contentStart := 0
-	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
-		for i := 1; i < len(lines); i++ {
-			line := strings.TrimSpace(lines[i])
-			if line == "---" {
-				contentStart = i + 1
-				break
-			}
-			if strings.HasPrefix(line, "utility:") {
-				utilityStr := strings.TrimSpace(strings.TrimPrefix(line, "utility:"))
-				if utility, parseErr := strconv.ParseFloat(utilityStr, 64); parseErr == nil && utility > 0 {
-					p.Utility = utility
-				}
+	contentStart, utility := parseFrontmatterBlock(lines)
+	if utility > 0 {
+		p.Utility = utility
+	}
+	name, description := extractPatternNameAndDescription(lines, contentStart)
+	if name != "" {
+		p.Name = name
+	}
+	if description != "" {
+		p.Description = description
+	}
+
+	return p, nil
+}
+
+// parseFrontmatterBlock scans YAML frontmatter and returns content start index and utility value.
+func parseFrontmatterBlock(lines []string) (contentStart int, utility float64) {
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return 0, 0
+	}
+	for i := 1; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == "---" {
+			return i + 1, utility
+		}
+		if strings.HasPrefix(line, "utility:") {
+			utilityStr := strings.TrimSpace(strings.TrimPrefix(line, "utility:"))
+			if u, parseErr := strconv.ParseFloat(utilityStr, 64); parseErr == nil && u > 0 {
+				utility = u
 			}
 		}
 	}
+	return 0, utility
+}
 
+// extractPatternNameAndDescription scans content lines for title and description.
+func extractPatternNameAndDescription(lines []string, contentStart int) (name, description string) {
 	for i := contentStart; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
-
 		if line == "" {
 			continue
 		}
-
-		line = strings.TrimSpace(line)
-
-		// Extract name from title
 		if strings.HasPrefix(line, "# ") {
-			p.Name = strings.TrimPrefix(line, "# ")
+			name = strings.TrimPrefix(line, "# ")
 			continue
 		}
-
-		// First paragraph as description
-		if p.Description == "" && !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "---") && line != "" {
+		if description == "" && !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "---") {
 			desc := line
 			for j := i + 1; j < len(lines) && j < i+2; j++ {
 				nextLine := strings.TrimSpace(lines[j])
@@ -132,10 +145,9 @@ func parsePatternFile(path string) (pattern, error) {
 				}
 				desc += " " + nextLine
 			}
-			p.Description = truncateText(desc, 150)
+			description = truncateText(desc, 150)
 			break
 		}
 	}
-
-	return p, nil
+	return name, description
 }

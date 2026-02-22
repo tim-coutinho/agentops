@@ -326,11 +326,42 @@ jobs:
         run: |
           echo "=== Running Go tests ==="
           cd cli
-          go test -race -coverprofile=coverage.out -covermode=atomic ./... -v
+          set -o pipefail
+          go test -race -coverprofile=coverage.out -covermode=atomic ./... -v 2>&1 | tee /tmp/go-test-output.txt
           echo ""
           echo "=== Coverage Summary ==="
           go tool cover -func=coverage.out | tail -1
           echo "✅ Go tests passed"
+
+      - name: Warn about slow test packages
+        if: always()
+        run: |
+          echo "=== Test Package Duration Analysis ==="
+          THRESHOLD=45
+          FOUND_SLOW=0
+
+          if [[ ! -f /tmp/go-test-output.txt ]]; then
+            echo "No test output file found; skipping."
+            exit 0
+          fi
+
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^(ok|FAIL)[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9]+(\.[0-9]+)?)s ]]; then
+              pkg="${BASH_REMATCH[2]}"
+              elapsed="${BASH_REMATCH[3]}"
+              is_slow=$(awk -v e="$elapsed" -v t="$THRESHOLD" 'BEGIN { print (e > t) ? "1" : "0" }')
+              if [[ "$is_slow" == "1" ]]; then
+                echo "::warning::Slow test package ${pkg}: ${elapsed}s exceeds ${THRESHOLD}s threshold"
+                FOUND_SLOW=$((FOUND_SLOW + 1))
+              fi
+            fi
+          done < /tmp/go-test-output.txt
+
+          if [[ "$FOUND_SLOW" -gt 0 ]]; then
+            echo "⚠️ Found $FOUND_SLOW slow package(s) exceeding ${THRESHOLD}s threshold"
+          else
+            echo "✅ All test packages completed within ${THRESHOLD}s"
+          fi
 
       - name: Enforce Go complexity budget on changed files
         run: |

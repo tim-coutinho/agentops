@@ -274,7 +274,7 @@ func TestPoolBulkApprove(t *testing.T) {
 	p := NewPool(tmpDir)
 
 	// Add old silver candidates
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		candidate := types.Candidate{
 			ID:      string(rune('a'+i)) + "-silver",
 			Tier:    types.TierSilver,
@@ -1042,7 +1042,7 @@ func TestPoolListWithLimit(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := NewPool(tmpDir)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		id := strings.Repeat(string(rune('a'+i)), 3)
 		if err := p.Add(types.Candidate{ID: id, Tier: types.TierSilver, Content: "c"}, types.Scoring{}); err != nil {
 			t.Fatalf("Add failed: %v", err)
@@ -1364,7 +1364,7 @@ func TestPoolListPaginatedOffset(t *testing.T) {
 	p := NewPool(tmpDir)
 
 	// Add 5 candidates
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		id := fmt.Sprintf("page-%d", i)
 		if err := p.Add(types.Candidate{ID: id, Tier: types.TierSilver, Content: "c"}, types.Scoring{}); err != nil {
 			t.Fatalf("Add failed: %v", err)
@@ -2419,7 +2419,7 @@ func TestGetChain_CloseError(t *testing.T) {
 	}
 
 	// Record some events
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		event := ChainEvent{
 			Timestamp:   time.Now(),
 			Operation:   fmt.Sprintf("test-%d", i),
@@ -2685,7 +2685,7 @@ func BenchmarkPoolAdd(b *testing.B) {
 	p := NewPool(tmpDir)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		id := fmt.Sprintf("bench-%d", i)
 		c, s := benchCandidate(id)
 		_ = p.Add(c, s)
@@ -2702,7 +2702,7 @@ func BenchmarkPoolGet(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, _ = p.Get("bench-get")
 	}
 }
@@ -2712,7 +2712,7 @@ func BenchmarkPoolList(b *testing.B) {
 	p := NewPool(tmpDir)
 
 	// Seed pool with entries
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		c, s := benchCandidate(fmt.Sprintf("bench-list-%d", i))
 		if err := p.Add(c, s); err != nil {
 			b.Fatalf("setup Add: %v", err)
@@ -2720,7 +2720,7 @@ func BenchmarkPoolList(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, _ = p.List(ListOptions{})
 	}
 }
@@ -2730,7 +2730,7 @@ func BenchmarkPoolListPaginated(b *testing.B) {
 	p := NewPool(tmpDir)
 
 	// Seed pool with entries
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		c, s := benchCandidate(fmt.Sprintf("bench-page-%d", i))
 		if err := p.Add(c, s); err != nil {
 			b.Fatalf("setup Add: %v", err)
@@ -2739,7 +2739,7 @@ func BenchmarkPoolListPaginated(b *testing.B) {
 
 	opts := ListOptions{Limit: 10, Offset: 5}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, _ = p.ListPaginated(opts)
 	}
 }

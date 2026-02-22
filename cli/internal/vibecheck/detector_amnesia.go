@@ -1,7 +1,7 @@
 package vibecheck
 
 import (
-	"sort"
+	"slices"
 	"time"
 )
 
@@ -63,11 +63,11 @@ func detectAmnesiaInFile(file string, edits []fileEdit) (Finding, bool) {
 		return Finding{}, false
 	}
 
-	sort.Slice(edits, func(i, j int) bool {
-		return edits[i].ts.Before(edits[j].ts)
+	slices.SortFunc(edits, func(a, b fileEdit) int {
+		return a.ts.Compare(b.ts)
 	})
 
-	for i := 0; i <= len(edits)-amnesiaMinEdits; i++ {
+	for i := range len(edits) - amnesiaMinEdits + 1 {
 		windowEnd := edits[i].ts.Add(amnesiaWindow)
 		count := 0
 		for j := i; j < len(edits); j++ {

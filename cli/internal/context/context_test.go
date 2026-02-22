@@ -700,11 +700,11 @@ func BenchmarkEstimateTokens(b *testing.B) {
 	text := "This is a sample string that represents typical content for token estimation benchmarking. "
 	// Build ~1000 chars
 	long := ""
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		long += text
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		EstimateTokens(long)
 	}
 }
@@ -722,7 +722,7 @@ func BenchmarkSummarizeContext(b *testing.B) {
 		}
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		summarizer.SummarizeContext(items)
 	}
 }
@@ -731,7 +731,7 @@ func BenchmarkClassifyItem(b *testing.B) {
 	tracker := NewBudgetTracker("bench-session")
 	summarizer := NewSummarizer(tracker)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		summarizer.ClassifyItem("failing_test", "TestFoo failed")
 		summarizer.ClassifyItem("file_change", "modified foo.go")
 		summarizer.ClassifyItem("low_finding", "minor style issue")
@@ -751,7 +751,7 @@ func BenchmarkGenerateResumptionContext(b *testing.B) {
 		Notes:            "Need to check edge cases",
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		summarizer.GenerateResumptionContext(state)
 	}
 }

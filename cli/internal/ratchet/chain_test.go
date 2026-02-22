@@ -1078,7 +1078,7 @@ func benchWriteChainFile(b *testing.B, dir string, numEntries int) {
 	var lines []string
 	lines = append(lines, string(metaJSON))
 
-	for i := 0; i < numEntries; i++ {
+	for range numEntries {
 		entry := ChainEntry{
 			Step:      StepImplement,
 			Timestamp: time.Now(),
@@ -1102,7 +1102,7 @@ func BenchmarkLoadChain(b *testing.B) {
 	benchWriteChainFile(b, tmpDir, 20)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, _ = LoadChain(tmpDir)
 	}
 }
@@ -1124,7 +1124,7 @@ func BenchmarkChainAppend(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = chain.Append(entry)
 	}
 }

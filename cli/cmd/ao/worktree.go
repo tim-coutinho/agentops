@@ -93,56 +93,15 @@ func runWorktreeGC(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if len(skippedDirty) > 0 {
-		for _, path := range skippedDirty {
-			fmt.Printf("Skipped dirty worktree: %s\n", path)
-		}
+	for _, path := range skippedDirty {
+		fmt.Printf("Skipped dirty worktree: %s\n", path)
 	}
 
-	removed := 0
-	if len(candidates) == 0 {
-		fmt.Println("No stale RPI worktrees found.")
-	} else {
-		for _, candidate := range candidates {
-			age := now.Sub(candidate.Reference).Truncate(time.Second)
-			if GetDryRun() {
-				fmt.Printf("[dry-run] Would remove worktree: %s (run=%s age=%s dirty=%t)\n",
-					candidate.Path, candidate.RunID, age, candidate.Dirty)
-				continue
-			}
+	removed := gcWorktreeCandidates(candidates, liveWorktreeRuns, repoRoot, now)
 
-			if err := removeOrphanedWorktree(repoRoot, candidate.Path, candidate.RunID); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to remove worktree %s: %v\n", candidate.Path, err)
-				continue
-			}
-			fmt.Printf("Removed worktree: %s (run=%s age=%s)\n", candidate.Path, candidate.RunID, age)
-			removed++
-			delete(liveWorktreeRuns, candidate.RunID)
-		}
-	}
-
-	killedSessions := 0
-	tmuxCandidates := 0
+	killedSessions, tmuxCandidates := 0, 0
 	if worktreeGCCleanTmux {
-		staleSessions, err := findStaleRPITmuxSessions(now, worktreeGCStaleAfter, activeRuns, liveWorktreeRuns)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to inspect tmux sessions: %v\n", err)
-		} else {
-			tmuxCandidates = len(staleSessions)
-			for _, sess := range staleSessions {
-				age := now.Sub(sess.CreatedAt).Truncate(time.Second)
-				if GetDryRun() {
-					fmt.Printf("[dry-run] Would kill tmux session: %s (run=%s age=%s)\n", sess.Name, sess.RunID, age)
-					continue
-				}
-				if err := killTmuxSession(sess.Name); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to kill tmux session %s: %v\n", sess.Name, err)
-					continue
-				}
-				fmt.Printf("Killed tmux session: %s (run=%s age=%s)\n", sess.Name, sess.RunID, age)
-				killedSessions++
-			}
-		}
+		killedSessions, tmuxCandidates = gcTmuxSessions(now, activeRuns, liveWorktreeRuns)
 	}
 
 	if worktreeGCPrune && !GetDryRun() {
@@ -157,6 +116,55 @@ func runWorktreeGC(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("Worktree GC complete. removed=%d tmux_killed=%d\n", removed, killedSessions)
 	return nil
+}
+
+// gcWorktreeCandidates removes stale worktrees, printing dry-run or result messages.
+func gcWorktreeCandidates(candidates []worktreeGCCandidate, liveWorktreeRuns map[string]bool, repoRoot string, now time.Time) int {
+	if len(candidates) == 0 {
+		fmt.Println("No stale RPI worktrees found.")
+		return 0
+	}
+	removed := 0
+	for _, candidate := range candidates {
+		age := now.Sub(candidate.Reference).Truncate(time.Second)
+		if GetDryRun() {
+			fmt.Printf("[dry-run] Would remove worktree: %s (run=%s age=%s dirty=%t)\n",
+				candidate.Path, candidate.RunID, age, candidate.Dirty)
+			continue
+		}
+		if err := removeOrphanedWorktree(repoRoot, candidate.Path, candidate.RunID); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to remove worktree %s: %v\n", candidate.Path, err)
+			continue
+		}
+		fmt.Printf("Removed worktree: %s (run=%s age=%s)\n", candidate.Path, candidate.RunID, age)
+		removed++
+		delete(liveWorktreeRuns, candidate.RunID)
+	}
+	return removed
+}
+
+// gcTmuxSessions finds and kills stale RPI tmux sessions, returning (killed, candidates) counts.
+func gcTmuxSessions(now time.Time, activeRuns, liveWorktreeRuns map[string]bool) (killed, candidates int) {
+	staleSessions, err := findStaleRPITmuxSessions(now, worktreeGCStaleAfter, activeRuns, liveWorktreeRuns)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to inspect tmux sessions: %v\n", err)
+		return 0, 0
+	}
+	candidates = len(staleSessions)
+	for _, sess := range staleSessions {
+		age := now.Sub(sess.CreatedAt).Truncate(time.Second)
+		if GetDryRun() {
+			fmt.Printf("[dry-run] Would kill tmux session: %s (run=%s age=%s)\n", sess.Name, sess.RunID, age)
+			continue
+		}
+		if err := killTmuxSession(sess.Name); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to kill tmux session %s: %v\n", sess.Name, err)
+			continue
+		}
+		fmt.Printf("Killed tmux session: %s (run=%s age=%s)\n", sess.Name, sess.RunID, age)
+		killed++
+	}
+	return killed, candidates
 }
 
 func resolveRepoRoot(cwd string) (string, error) {

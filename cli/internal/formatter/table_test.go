@@ -152,7 +152,7 @@ func TestTable_SeparatorMatchesHeaderLength(t *testing.T) {
 // --- Benchmarks ---
 
 func BenchmarkTableRender(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		var buf bytes.Buffer
 		tbl := NewTable(&buf, "Name", "Value", "Status")
 		tbl.SetMaxWidth(0, 20)

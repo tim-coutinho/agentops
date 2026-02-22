@@ -570,35 +570,34 @@ func findPendingHandoffForSession(cwd, sessionID string) (handoffPath string, ma
 	return "", "", false, nil
 }
 
+// tailLineEnvelope is the JSON structure of a transcript line.
+type tailLineEnvelope struct {
+	Type      string `json:"type"`
+	Timestamp string `json:"timestamp"`
+	Message   struct {
+		Role    string          `json:"role"`
+		Model   string          `json:"model"`
+		Usage   json.RawMessage `json:"usage"`
+		Content json.RawMessage `json:"content"`
+	} `json:"message"`
+}
+
+// tailUsageEnvelope holds token counts from a transcript message.
+type tailUsageEnvelope struct {
+	InputTokens             int `json:"input_tokens"`
+	CacheCreationInputToken int `json:"cache_creation_input_tokens"`
+	CacheReadInputToken     int `json:"cache_read_input_tokens"`
+}
+
 func readSessionTail(path string) (transcriptUsage, string, time.Time, error) {
 	tail, err := readFileTail(path, transcriptTailMaxBytes)
 	if err != nil {
 		return transcriptUsage{}, "", time.Time{}, err
 	}
 
-	lines := make([]string, 0, 2048)
-	scanner := bufio.NewScanner(bytes.NewReader(tail))
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
+	lines, err := scanTailLines(tail)
+	if err != nil {
 		return transcriptUsage{}, "", time.Time{}, err
-	}
-
-	type lineEnvelope struct {
-		Type      string `json:"type"`
-		Timestamp string `json:"timestamp"`
-		Message   struct {
-			Role    string          `json:"role"`
-			Model   string          `json:"model"`
-			Usage   json.RawMessage `json:"usage"`
-			Content json.RawMessage `json:"content"`
-		} `json:"message"`
-	}
-	type usageEnvelope struct {
-		InputTokens             int `json:"input_tokens"`
-		CacheCreationInputToken int `json:"cache_creation_input_tokens"`
-		CacheReadInputToken     int `json:"cache_read_input_tokens"`
 	}
 
 	var usage transcriptUsage
@@ -610,38 +609,20 @@ func readSessionTail(path string) (transcriptUsage, string, time.Time, error) {
 		if raw == "" {
 			continue
 		}
-		var entry lineEnvelope
+		var entry tailLineEnvelope
 		if err := json.Unmarshal([]byte(raw), &entry); err != nil {
 			continue
 		}
-
 		ts := parseTimestamp(entry.Timestamp)
 		if newestTS.IsZero() && !ts.IsZero() {
 			newestTS = ts
 		}
-
-		if usage.Timestamp.IsZero() && len(entry.Message.Usage) > 0 {
-			var u usageEnvelope
-			if err := json.Unmarshal(entry.Message.Usage, &u); err == nil {
-				total := u.InputTokens + u.CacheCreationInputToken + u.CacheReadInputToken
-				if total > 0 {
-					usage = transcriptUsage{
-						InputTokens:             u.InputTokens,
-						CacheCreationInputToken: u.CacheCreationInputToken,
-						CacheReadInputToken:     u.CacheReadInputToken,
-						Model:                   entry.Message.Model,
-						Timestamp:               ts,
-					}
-				}
-			}
+		if usage.Timestamp.IsZero() {
+			usage = extractUsageFromTailEntry(entry, ts)
 		}
-
-		if lastTask == "" && entry.Type == "user" && len(entry.Message.Content) > 0 {
-			if task := extractTextContent(entry.Message.Content); task != "" {
-				lastTask = task
-			}
+		if lastTask == "" {
+			lastTask = extractTaskFromTailEntry(entry)
 		}
-
 		if !usage.Timestamp.IsZero() && lastTask != "" {
 			break
 		}
@@ -655,6 +636,46 @@ func readSessionTail(path string) (transcriptUsage, string, time.Time, error) {
 		usage.Timestamp = newestTS
 	}
 	return usage, lastTask, newestTS, nil
+}
+
+// scanTailLines reads all non-empty lines from a byte slice.
+func scanTailLines(data []byte) ([]string, error) {
+	lines := make([]string, 0, 2048)
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	return lines, scanner.Err()
+}
+
+// extractUsageFromTailEntry parses token usage from a transcript entry, returning zero value if absent.
+func extractUsageFromTailEntry(entry tailLineEnvelope, ts time.Time) transcriptUsage {
+	if len(entry.Message.Usage) == 0 {
+		return transcriptUsage{}
+	}
+	var u tailUsageEnvelope
+	if err := json.Unmarshal(entry.Message.Usage, &u); err != nil {
+		return transcriptUsage{}
+	}
+	total := u.InputTokens + u.CacheCreationInputToken + u.CacheReadInputToken
+	if total == 0 {
+		return transcriptUsage{}
+	}
+	return transcriptUsage{
+		InputTokens:             u.InputTokens,
+		CacheCreationInputToken: u.CacheCreationInputToken,
+		CacheReadInputToken:     u.CacheReadInputToken,
+		Model:                   entry.Message.Model,
+		Timestamp:               ts,
+	}
+}
+
+// extractTaskFromTailEntry returns the user message text, or empty string if not a user message.
+func extractTaskFromTailEntry(entry tailLineEnvelope) string {
+	if entry.Type != "user" || len(entry.Message.Content) == 0 {
+		return ""
+	}
+	return extractTextContent(entry.Message.Content)
 }
 
 func readFileTail(path string, maxBytes int64) ([]byte, error) {

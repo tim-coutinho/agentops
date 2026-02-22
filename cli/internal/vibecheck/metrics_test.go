@@ -222,7 +222,7 @@ func TestMetricFlow_SpikyDistribution(t *testing.T) {
 	base := baseTime()
 	// 10 commits on day 1, 0 on day 2, 0 on day 3
 	var events []TimelineEvent
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		events = append(events, makeTestEvent("a"+string(rune('0'+i)), "feat: work",
 			base.Add(time.Duration(i)*time.Hour)))
 	}
@@ -728,7 +728,7 @@ func TestMetricPartialCredit_VelocityNegativeThreshold(t *testing.T) {
 func benchEvents(n int) []TimelineEvent {
 	events := make([]TimelineEvent, n)
 	base := time.Now().Add(-time.Duration(n) * time.Hour)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		events[i] = TimelineEvent{
 			Timestamp:    base.Add(time.Duration(i) * time.Hour),
 			SHA:          fmt.Sprintf("abc%04d", i),
@@ -774,7 +774,7 @@ func TestClampScore_PassThrough(t *testing.T) {
 func BenchmarkComputeMetrics(b *testing.B) {
 	events := benchEvents(100)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ComputeMetrics(events)
 	}
 }
@@ -783,7 +783,7 @@ func BenchmarkComputeOverallRating(b *testing.B) {
 	events := benchEvents(100)
 	metrics := ComputeMetrics(events)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ComputeOverallRating(metrics)
 	}
 }

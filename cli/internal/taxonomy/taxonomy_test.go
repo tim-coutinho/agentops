@@ -251,7 +251,7 @@ func TestTierBoundariesAreContiguous(t *testing.T) {
 
 func BenchmarkAssignTier(b *testing.B) {
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		AssignTier(float64(i%10)*0.1, DefaultTierConfigs)
 	}
 }
@@ -263,7 +263,7 @@ func BenchmarkGetBaseScore(b *testing.B) {
 		types.KnowledgeTypeSolution,
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		GetBaseScore(knTypes[i%len(knTypes)])
 	}
 }
@@ -271,7 +271,7 @@ func BenchmarkGetBaseScore(b *testing.B) {
 func BenchmarkValidateWeights(b *testing.B) {
 	w := DefaultRubricWeights
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		w.ValidateWeights()
 	}
 }
