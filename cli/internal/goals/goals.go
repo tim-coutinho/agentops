@@ -96,34 +96,43 @@ func LoadGoals(path string) (*GoalFile, error) {
 func ValidateGoals(gf *GoalFile) []ValidationError {
 	var errs []ValidationError
 	seen := make(map[string]bool)
-
 	for _, g := range gf.Goals {
-		if g.ID == "" {
-			errs = append(errs, ValidationError{GoalID: g.ID, Field: "id", Message: "required"})
-		} else {
-			if seen[g.ID] {
-				errs = append(errs, ValidationError{GoalID: g.ID, Field: "id", Message: "duplicate"})
-			}
-			seen[g.ID] = true
-
-			if !KebabRe.MatchString(g.ID) {
-				errs = append(errs, ValidationError{GoalID: g.ID, Field: "id", Message: "must be kebab-case"})
-			}
-		}
-
-		if g.Description == "" {
-			errs = append(errs, ValidationError{GoalID: g.ID, Field: "description", Message: "required"})
-		}
-		if g.Check == "" {
-			errs = append(errs, ValidationError{GoalID: g.ID, Field: "check", Message: "required"})
-		}
-		if g.Weight < 1 || g.Weight > 10 {
-			errs = append(errs, ValidationError{GoalID: g.ID, Field: "weight", Message: "must be 1-10"})
-		}
-		if g.Type != "" && !ValidTypes[g.Type] {
-			errs = append(errs, ValidationError{GoalID: g.ID, Field: "type", Message: fmt.Sprintf("invalid type %q", g.Type)})
-		}
+		errs = append(errs, validateGoalID(g, seen)...)
+		errs = append(errs, validateGoalFields(g)...)
 	}
+	return errs
+}
 
+// validateGoalID checks ID presence, uniqueness, and format.
+func validateGoalID(g Goal, seen map[string]bool) []ValidationError {
+	var errs []ValidationError
+	if g.ID == "" {
+		return append(errs, ValidationError{GoalID: g.ID, Field: "id", Message: "required"})
+	}
+	if seen[g.ID] {
+		errs = append(errs, ValidationError{GoalID: g.ID, Field: "id", Message: "duplicate"})
+	}
+	seen[g.ID] = true
+	if !KebabRe.MatchString(g.ID) {
+		errs = append(errs, ValidationError{GoalID: g.ID, Field: "id", Message: "must be kebab-case"})
+	}
+	return errs
+}
+
+// validateGoalFields checks description, check, weight, and type fields.
+func validateGoalFields(g Goal) []ValidationError {
+	var errs []ValidationError
+	if g.Description == "" {
+		errs = append(errs, ValidationError{GoalID: g.ID, Field: "description", Message: "required"})
+	}
+	if g.Check == "" {
+		errs = append(errs, ValidationError{GoalID: g.ID, Field: "check", Message: "required"})
+	}
+	if g.Weight < 1 || g.Weight > 10 {
+		errs = append(errs, ValidationError{GoalID: g.ID, Field: "weight", Message: "must be 1-10"})
+	}
+	if g.Type != "" && !ValidTypes[g.Type] {
+		errs = append(errs, ValidationError{GoalID: g.ID, Field: "type", Message: fmt.Sprintf("invalid type %q", g.Type)})
+	}
 	return errs
 }

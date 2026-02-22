@@ -385,12 +385,20 @@ func generateSlug(text string) string {
 		return "session"
 	}
 
-	// Lowercase and replace non-alphanumeric with hyphens
-	slug := strings.ToLower(text)
+	s := slugify(strings.ToLower(text))
+	s = truncateSlug(s)
+
+	if s == "" {
+		return "session"
+	}
+	return s
+}
+
+// slugify replaces non-alphanumeric runs with single hyphens and trims leading/trailing hyphens.
+func slugify(input string) string {
 	var result strings.Builder
 	lastHyphen := false
-
-	for _, r := range slug {
+	for _, r := range input {
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
 			result.WriteRune(r)
 			lastHyphen = false
@@ -399,22 +407,18 @@ func generateSlug(text string) string {
 			lastHyphen = true
 		}
 	}
+	return strings.Trim(result.String(), "-")
+}
 
-	s := strings.Trim(result.String(), "-")
-
-	// Limit length
-	if len(s) > SlugMaxLength {
-		s = s[:SlugMaxLength]
-		// Trim at last hyphen if possible for cleaner word boundary
-		if idx := strings.LastIndex(s, "-"); idx > SlugMinWordBoundary {
-			s = s[:idx]
-		}
+// truncateSlug limits the slug to SlugMaxLength, preferring word boundaries.
+func truncateSlug(s string) string {
+	if len(s) <= SlugMaxLength {
+		return s
 	}
-
-	if s == "" {
-		return "session"
+	s = s[:SlugMaxLength]
+	if idx := strings.LastIndex(s, "-"); idx > SlugMinWordBoundary {
+		s = s[:idx]
 	}
-
 	return s
 }
 
