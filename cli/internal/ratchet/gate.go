@@ -17,6 +17,39 @@ const unknownValue = "unknown"
 // ErrBdCLITimeout is returned when bd CLI command times out.
 var ErrBdCLITimeout = fmt.Errorf("bd CLI timeout after %s", BdCLITimeout)
 
+// gateCheckerFuncs maps each step to its gate-checking method.
+var gateCheckerFuncs = map[Step]func(*GateChecker) (*GateResult, error){
+	StepResearch:   (*GateChecker).checkResearchGate,
+	StepPreMortem:  (*GateChecker).checkPreMortemGate,
+	StepPlan:       (*GateChecker).checkPlanGate,
+	StepImplement:  (*GateChecker).checkImplementGate,
+	StepCrank:      (*GateChecker).checkImplementGate,
+	StepVibe:       (*GateChecker).checkVibeGate,
+	StepPostMortem: (*GateChecker).checkPostMortemGate,
+}
+
+// requiredInputs maps each step to its required input artifact description.
+var requiredInputs = map[Step]string{
+	StepResearch:   "",
+	StepPreMortem:  ".agents/research/*.md",
+	StepPlan:       ".agents/specs/*-v2.md OR .agents/synthesis/*.md",
+	StepImplement:  "epic:<epic-id>",
+	StepCrank:      "epic:<epic-id>",
+	StepVibe:       "code changes (optional)",
+	StepPostMortem: "closed epic (optional)",
+}
+
+// expectedOutputs maps each step to its expected output artifact description.
+var expectedOutputs = map[Step]string{
+	StepResearch:   ".agents/research/<topic>.md",
+	StepPreMortem:  ".agents/specs/<topic>-v2.md",
+	StepPlan:       "epic:<epic-id>",
+	StepImplement:  "issue:<issue-id> (closed)",
+	StepCrank:      "issue:<issue-id> (closed)",
+	StepVibe:       "validation report",
+	StepPostMortem: ".agents/retros/<date>-<topic>.md",
+}
+
 // GateChecker validates that prerequisites are met before a step can proceed.
 type GateChecker struct {
 	locator *Locator
@@ -33,26 +66,14 @@ func NewGateChecker(startDir string) (*GateChecker, error) {
 
 // Check validates that the gate for a step is satisfied.
 func (g *GateChecker) Check(step Step) (*GateResult, error) {
-	switch step {
-	case StepResearch:
-		return g.checkResearchGate()
-	case StepPreMortem:
-		return g.checkPreMortemGate()
-	case StepPlan:
-		return g.checkPlanGate()
-	case StepImplement, StepCrank:
-		return g.checkImplementGate()
-	case StepVibe:
-		return g.checkVibeGate()
-	case StepPostMortem:
-		return g.checkPostMortemGate()
-	default:
-		return &GateResult{
-			Step:    step,
-			Passed:  false,
-			Message: fmt.Sprintf("Unknown step: %s", step),
-		}, nil
+	if checker, ok := gateCheckerFuncs[step]; ok {
+		return checker(g)
 	}
+	return &GateResult{
+		Step:    step,
+		Passed:  false,
+		Message: fmt.Sprintf("Unknown step: %s", step),
+	}, nil
 }
 
 // checkResearchGate - No gate (chaos phase, always passes).
@@ -191,6 +212,22 @@ func (g *GateChecker) checkPostMortemGate() (*GateResult, error) {
 	}, nil
 }
 
+// parseFirstEpicID extracts the first epic ID from bd CLI output.
+// Returns "" if no valid non-comment line is found.
+func parseFirstEpicID(out []byte) string {
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if fields := strings.Fields(line); len(fields) > 0 {
+			return fields[0]
+		}
+	}
+	return ""
+}
+
 // findEpic uses bd CLI to find an epic with the given status.
 func (g *GateChecker) findEpic(status string) (string, error) {
 	// Create context with 5s timeout
@@ -208,18 +245,8 @@ func (g *GateChecker) findEpic(status string) (string, error) {
 		return "", err
 	}
 
-	// Parse output - bd list outputs ID as first field
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		// First field is the ID
-		fields := strings.Fields(line)
-		if len(fields) > 0 {
-			return fields[0], nil
-		}
+	if id := parseFirstEpicID(out); id != "" {
+		return id, nil
 	}
 
 	return "", fmt.Errorf("no epic found with status %s", status)
@@ -237,40 +264,16 @@ func (g *GateChecker) checkGitChanges() bool {
 
 // GetRequiredInput returns the expected input artifact for a step.
 func GetRequiredInput(step Step) string {
-	switch step {
-	case StepResearch:
-		return "" // No input required
-	case StepPreMortem:
-		return ".agents/research/*.md"
-	case StepPlan:
-		return ".agents/specs/*-v2.md OR .agents/synthesis/*.md"
-	case StepImplement, StepCrank:
-		return "epic:<epic-id>"
-	case StepVibe:
-		return "code changes (optional)"
-	case StepPostMortem:
-		return "closed epic (optional)"
-	default:
-		return unknownValue
+	if input, ok := requiredInputs[step]; ok {
+		return input
 	}
+	return unknownValue
 }
 
 // GetExpectedOutput returns the expected output artifact for a step.
 func GetExpectedOutput(step Step) string {
-	switch step {
-	case StepResearch:
-		return ".agents/research/<topic>.md"
-	case StepPreMortem:
-		return ".agents/specs/<topic>-v2.md"
-	case StepPlan:
-		return "epic:<epic-id>"
-	case StepImplement, StepCrank:
-		return "issue:<issue-id> (closed)"
-	case StepVibe:
-		return "validation report"
-	case StepPostMortem:
-		return ".agents/retros/<date>-<topic>.md"
-	default:
-		return unknownValue
+	if output, ok := expectedOutputs[step]; ok {
+		return output
 	}
+	return unknownValue
 }

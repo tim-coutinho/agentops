@@ -228,26 +228,13 @@ func runContextGuard(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("get working directory: %w", err)
 	}
-	sessionID := strings.TrimSpace(contextSessionID)
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(os.Getenv("CLAUDE_SESSION_ID"))
+	sessionID, err := resolveGuardSessionID()
+	if err != nil {
+		return err
 	}
-	if sessionID == "" {
-		return errors.New("session id missing: set --session or CLAUDE_SESSION_ID")
-	}
-	if contextMaxTokens <= 0 {
-		contextMaxTokens = contextbudget.DefaultMaxTokens
-	}
-	watchdog := time.Duration(contextWatchdogMinute) * time.Minute
-	if watchdog <= 0 {
-		watchdog = defaultWatchdogMinutes * time.Minute
-	}
-	agentName := strings.TrimSpace(contextAgentName)
-	if agentName == "" {
-		agentName = strings.TrimSpace(os.Getenv("CLAUDE_AGENT_NAME"))
-	}
+	maxTokens, watchdog, agentName := resolveGuardOptions()
 
-	status, usage, err := collectSessionStatus(cwd, sessionID, strings.TrimSpace(contextPrompt), contextMaxTokens, watchdog, agentName)
+	status, usage, err := collectSessionStatus(cwd, sessionID, strings.TrimSpace(contextPrompt), maxTokens, watchdog, agentName)
 	if err != nil {
 		return err
 	}
@@ -265,16 +252,8 @@ func runContextGuard(cmd *cobra.Command, args []string) error {
 		Session:     status,
 		HookMessage: hookMessageForStatus(status),
 	}
-	if contextWriteHandoff && status.Status == string(contextbudget.StatusCritical) {
-		handoffPath, markerPath, hErr := ensureCriticalHandoff(cwd, status, usage)
-		if hErr != nil {
-			return fmt.Errorf("write critical handoff: %w", hErr)
-		}
-		result.HandoffFile = handoffPath
-		result.PendingMarker = markerPath
-		if result.HookMessage != "" {
-			result.HookMessage = fmt.Sprintf("%s Handoff saved to %s.", result.HookMessage, handoffPath)
-		}
+	if err := applyHandoffIfCritical(cwd, status, usage, &result); err != nil {
+		return err
 	}
 
 	if GetOutput() == "json" {
@@ -291,6 +270,52 @@ func runContextGuard(cmd *cobra.Command, args []string) error {
 	}
 	if result.HookMessage != "" {
 		fmt.Println(result.HookMessage)
+	}
+	return nil
+}
+
+// resolveGuardSessionID returns the session ID from the flag or CLAUDE_SESSION_ID env var.
+func resolveGuardSessionID() (string, error) {
+	sessionID := strings.TrimSpace(contextSessionID)
+	if sessionID == "" {
+		sessionID = strings.TrimSpace(os.Getenv("CLAUDE_SESSION_ID"))
+	}
+	if sessionID == "" {
+		return "", errors.New("session id missing: set --session or CLAUDE_SESSION_ID")
+	}
+	return sessionID, nil
+}
+
+// resolveGuardOptions returns maxTokens, watchdog, and agentName from flags/env.
+func resolveGuardOptions() (maxTokens int, watchdog time.Duration, agentName string) {
+	maxTokens = contextMaxTokens
+	if maxTokens <= 0 {
+		maxTokens = contextbudget.DefaultMaxTokens
+	}
+	watchdog = time.Duration(contextWatchdogMinute) * time.Minute
+	if watchdog <= 0 {
+		watchdog = defaultWatchdogMinutes * time.Minute
+	}
+	agentName = strings.TrimSpace(contextAgentName)
+	if agentName == "" {
+		agentName = strings.TrimSpace(os.Getenv("CLAUDE_AGENT_NAME"))
+	}
+	return maxTokens, watchdog, agentName
+}
+
+// applyHandoffIfCritical writes a handoff file when the session is critical and the flag is set.
+func applyHandoffIfCritical(cwd string, status contextSessionStatus, usage transcriptUsage, result *contextGuardResult) error {
+	if !contextWriteHandoff || status.Status != string(contextbudget.StatusCritical) {
+		return nil
+	}
+	handoffPath, markerPath, hErr := ensureCriticalHandoff(cwd, status, usage)
+	if hErr != nil {
+		return fmt.Errorf("write critical handoff: %w", hErr)
+	}
+	result.HandoffFile = handoffPath
+	result.PendingMarker = markerPath
+	if result.HookMessage != "" {
+		result.HookMessage = fmt.Sprintf("%s Handoff saved to %s.", result.HookMessage, handoffPath)
 	}
 	return nil
 }
@@ -337,32 +362,35 @@ func collectTrackedSessionStatuses(cwd string, watchdog time.Duration) ([]contex
 		mergePersistedAssignment(cwd, &status)
 		statuses = append(statuses, status)
 	}
-	slices.SortFunc(statuses, func(a, b contextSessionStatus) int {
-		if c := cmp.Compare(readinessRank(a.Readiness), readinessRank(b.Readiness)); c != 0 {
-			return c
-		}
-		rank := func(s string) int {
-			switch s {
-			case string(contextbudget.StatusCritical):
-				return 0
-			case string(contextbudget.StatusWarning):
-				return 1
-			default:
-				return 2
-			}
-		}
-		if c := cmp.Compare(rank(a.Status), rank(b.Status)); c != 0 {
-			return c
-		}
-		if a.IsStale != b.IsStale {
-			if a.IsStale {
-				return -1
-			}
-			return 1
-		}
-		return cmp.Compare(a.SessionID, b.SessionID)
-	})
+	slices.SortFunc(statuses, compareSessionStatuses)
 	return statuses, nil
+}
+
+// compareSessionStatuses orders sessions by readiness rank, then status severity, then stale-first, then ID.
+func compareSessionStatuses(a, b contextSessionStatus) int {
+	if c := cmp.Compare(readinessRank(a.Readiness), readinessRank(b.Readiness)); c != 0 {
+		return c
+	}
+	statusRank := func(s string) int {
+		switch s {
+		case string(contextbudget.StatusCritical):
+			return 0
+		case string(contextbudget.StatusWarning):
+			return 1
+		default:
+			return 2
+		}
+	}
+	if c := cmp.Compare(statusRank(a.Status), statusRank(b.Status)); c != 0 {
+		return c
+	}
+	if a.IsStale != b.IsStale {
+		if a.IsStale {
+			return -1
+		}
+		return 1
+	}
+	return cmp.Compare(a.SessionID, b.SessionID)
 }
 
 func collectSessionStatus(cwd, sessionID, prompt string, maxTokens int, watchdog time.Duration, agentName string) (contextSessionStatus, transcriptUsage, error) {
@@ -614,16 +642,7 @@ func readSessionTail(path string) (transcriptUsage, string, time.Time, error) {
 			continue
 		}
 		ts := parseTimestamp(entry.Timestamp)
-		if newestTS.IsZero() && !ts.IsZero() {
-			newestTS = ts
-		}
-		if usage.Timestamp.IsZero() {
-			usage = extractUsageFromTailEntry(entry, ts)
-		}
-		if lastTask == "" {
-			lastTask = extractTaskFromTailEntry(entry)
-		}
-		if !usage.Timestamp.IsZero() && lastTask != "" {
+		if updateTailState(entry, ts, &usage, &lastTask, &newestTS) {
 			break
 		}
 	}
@@ -676,6 +695,21 @@ func extractTaskFromTailEntry(entry tailLineEnvelope) string {
 		return ""
 	}
 	return extractTextContent(entry.Message.Content)
+}
+
+// updateTailState updates usage, lastTask, and newestTS from one parsed tail entry.
+// Returns true when both usage and lastTask have been found (early-exit signal).
+func updateTailState(entry tailLineEnvelope, ts time.Time, usage *transcriptUsage, lastTask *string, newestTS *time.Time) bool {
+	if newestTS.IsZero() && !ts.IsZero() {
+		*newestTS = ts
+	}
+	if usage.Timestamp.IsZero() {
+		*usage = extractUsageFromTailEntry(entry, ts)
+	}
+	if *lastTask == "" {
+		*lastTask = extractTaskFromTailEntry(entry)
+	}
+	return !usage.Timestamp.IsZero() && *lastTask != ""
 }
 
 func readFileTail(path string, maxBytes int64) ([]byte, error) {

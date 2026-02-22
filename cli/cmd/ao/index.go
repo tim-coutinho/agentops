@@ -112,29 +112,11 @@ func runIndex(cmd *cobra.Command, args []string) error {
 			return cmp.Compare(b.Date, a.Date)
 		})
 
-		if checkMode {
-			isStale, msg := checkIndex(fullPath, dir, entries)
-			if isStale {
-				stale = true
-				if !quiet {
-					fmt.Fprintf(os.Stderr, "%s\n", msg)
-				}
-			} else if !quiet {
-				fmt.Printf("%s: current (%d entries)\n", dir, len(entries))
-			}
-			results = append(results, indexResult{Dir: dir, Entries: entries, Written: false})
-		} else {
-			err := writeIndex(fullPath, dir, entries, GetDryRun())
-			written := err == nil && !GetDryRun()
-			result := indexResult{Dir: dir, Entries: entries, Written: written}
-			if err != nil {
-				result.Error = err.Error()
-				fmt.Fprintf(os.Stderr, "Error writing INDEX.md for %s: %v\n", dir, err)
-			} else if !quiet {
-				fmt.Printf("%s: %d entries indexed\n", dir, len(entries))
-			}
-			results = append(results, result)
+		result, dirStale := processIndexDir(checkMode, quiet, dir, fullPath, entries)
+		if dirStale {
+			stale = true
 		}
+		results = append(results, result)
 	}
 
 	if jsonMode {
@@ -150,6 +132,32 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// processIndexDir runs check or write mode for a single index directory.
+// Returns the indexResult and whether the index is stale.
+func processIndexDir(checkMode, quiet bool, dir, fullPath string, entries []indexEntry) (indexResult, bool) {
+	if checkMode {
+		isStale, msg := checkIndex(fullPath, dir, entries)
+		if isStale {
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "%s\n", msg)
+			}
+		} else if !quiet {
+			fmt.Printf("%s: current (%d entries)\n", dir, len(entries))
+		}
+		return indexResult{Dir: dir, Entries: entries, Written: false}, isStale
+	}
+	err := writeIndex(fullPath, dir, entries, GetDryRun())
+	written := err == nil && !GetDryRun()
+	result := indexResult{Dir: dir, Entries: entries, Written: written}
+	if err != nil {
+		result.Error = err.Error()
+		fmt.Fprintf(os.Stderr, "Error writing INDEX.md for %s: %v\n", dir, err)
+	} else if !quiet {
+		fmt.Printf("%s: %d entries indexed\n", dir, len(entries))
+	}
+	return result, false
 }
 
 // scanDirectory reads all .md files (excluding INDEX.md) in a directory and

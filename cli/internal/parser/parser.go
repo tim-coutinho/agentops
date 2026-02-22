@@ -387,6 +387,26 @@ func (p *Parser) ParseChannel(r io.Reader) (<-chan types.TranscriptMessage, <-ch
 	return msgCh, errCh
 }
 
+// processChannelLine parses one scanner line and forwards the result to msgCh/errCh.
+// Returns false if scanning should stop (fatal parse error).
+func (p *Parser) processChannelLine(line []byte, lineNum int, msgCh chan<- types.TranscriptMessage, errCh chan<- error) bool {
+	if len(line) == 0 {
+		return true
+	}
+	msg, err := p.parseLine(line, lineNum)
+	if err != nil {
+		if !p.SkipMalformed {
+			errCh <- fmt.Errorf("line %d: %w", lineNum, err)
+			return false
+		}
+		return true
+	}
+	if msg != nil {
+		msgCh <- *msg
+	}
+	return true
+}
+
 // channelScanner scans r line by line, sending parsed messages to msgCh and errors to errCh.
 func (p *Parser) channelScanner(r io.Reader, msgCh chan<- types.TranscriptMessage, errCh chan<- error) {
 	scanner := bufio.NewScanner(r)
@@ -396,22 +416,8 @@ func (p *Parser) channelScanner(r io.Reader, msgCh chan<- types.TranscriptMessag
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-
-		msg, err := p.parseLine(line, lineNum)
-		if err != nil {
-			if !p.SkipMalformed {
-				errCh <- fmt.Errorf("line %d: %w", lineNum, err)
-				return
-			}
-			continue
-		}
-
-		if msg != nil {
-			msgCh <- *msg
+		if !p.processChannelLine(scanner.Bytes(), lineNum, msgCh, errCh) {
+			return
 		}
 	}
 

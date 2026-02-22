@@ -66,26 +66,13 @@ func runForgeBatch(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Load forged index
 	forgedIndexPath := filepath.Join(cwd, storage.DefaultBaseDir, "forged.jsonl")
 	forgedSet, err := loadForgedIndex(forgedIndexPath)
 	if err != nil {
 		return fmt.Errorf("load forged index: %w", err)
 	}
 
-	// Filter out already-forged transcripts
-	var unforgedTranscripts []transcriptCandidate
-	var skippedCount int
-	for _, t := range transcripts {
-		if forgedSet[t.path] {
-			skippedCount++
-			VerbosePrintf("Skipping already-forged: %s\n", t.path)
-		} else {
-			unforgedTranscripts = append(unforgedTranscripts, t)
-		}
-	}
-
-	// Apply --max limit
+	unforgedTranscripts, skippedCount := filterUnforgedTranscripts(transcripts, forgedSet)
 	if batchMax > 0 && len(unforgedTranscripts) > batchMax {
 		unforgedTranscripts = unforgedTranscripts[:batchMax]
 	}
@@ -100,7 +87,6 @@ func runForgeBatch(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Found %d transcript(s) to process (skipped %d already forged).\n", len(unforgedTranscripts), skippedCount)
 
-	// Initialize storage
 	baseDir := filepath.Join(cwd, storage.DefaultBaseDir)
 	fs := storage.NewFileStorage(
 		storage.WithBaseDir(baseDir),
@@ -109,7 +95,6 @@ func runForgeBatch(cmd *cobra.Command, args []string) error {
 			formatter.NewJSONLFormatter(),
 		),
 	)
-
 	if err := fs.Init(); err != nil {
 		return fmt.Errorf("initialize storage: %w", err)
 	}
@@ -119,104 +104,124 @@ func runForgeBatch(cmd *cobra.Command, args []string) error {
 	extractor := parser.NewExtractor()
 
 	var (
-		totalProcessed   int
-		totalFailed      int
-		totalDecisions   int
-		totalKnowledge   int
-		totalDupsRemoved int
-		allKnowledge     []string
-		allDecisions     []string
-		processedPaths   []string
+		totalProcessed int
+		totalFailed    int
+		totalDecisions int
+		totalKnowledge int
+		allKnowledge   []string
+		allDecisions   []string
+		processedPaths []string
 	)
 
 	for i, t := range unforgedTranscripts {
-		fmt.Printf("[%d/%d] Processing %s...\n", i+1, len(unforgedTranscripts), filepath.Base(t.path))
-
-		session, err := processTranscript(t.path, p, extractor, false, os.Stdout)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  Warning: skipping %s: %v\n", t.path, err)
+		ok, decisions, knowledge, path := forgeSingleTranscript(i, len(unforgedTranscripts), t, fs, p, extractor, forgedIndexPath)
+		if !ok {
 			totalFailed++
 			continue
 		}
-
-		// Write session
-		sessionPath, err := fs.WriteSession(session)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "  Warning: failed to write session for %s: %v\n", t.path, err)
-			continue
-		}
-
-		// Write index entry
-		indexEntry := &storage.IndexEntry{
-			SessionID:   session.ID,
-			Date:        session.Date,
-			SessionPath: sessionPath,
-			Summary:     session.Summary,
-		}
-		if err := fs.WriteIndex(indexEntry); err != nil {
-			fmt.Fprintf(os.Stderr, "  Warning: failed to index session: %v\n", err)
-		}
-
-		// Write provenance
-		provRecord := &storage.ProvenanceRecord{
-			ID:           fmt.Sprintf("prov-%s", session.ID[:7]),
-			ArtifactPath: sessionPath,
-			ArtifactType: "session",
-			SourcePath:   t.path,
-			SourceType:   "transcript",
-			SessionID:    session.ID,
-			CreatedAt:    time.Now(),
-		}
-		if err := fs.WriteProvenance(provRecord); err != nil {
-			fmt.Fprintf(os.Stderr, "  Warning: failed to write provenance: %v\n", err)
-		}
-
 		totalProcessed++
-		totalDecisions += len(session.Decisions)
-		totalKnowledge += len(session.Knowledge)
-		allKnowledge = append(allKnowledge, session.Knowledge...)
-		allDecisions = append(allDecisions, session.Decisions...)
-		processedPaths = append(processedPaths, t.path)
-
-		// Record in forged index
-		forgedRecord := ForgedRecord{
-			Path:     t.path,
-			ForgedAt: time.Now(),
-			Session:  session.ID,
-		}
-		if err := appendForgedRecord(forgedIndexPath, forgedRecord); err != nil {
-			VerbosePrintf("  Warning: failed to record forged transcript: %v\n", err)
-		}
-
-		VerbosePrintf("  -> %d decisions, %d learnings\n", len(session.Decisions), len(session.Knowledge))
+		totalDecisions += len(decisions)
+		totalKnowledge += len(knowledge)
+		allKnowledge = append(allKnowledge, knowledge...)
+		allDecisions = append(allDecisions, decisions...)
+		processedPaths = append(processedPaths, path)
 	}
 
-	// Deduplicate across all sessions
 	dedupedKnowledge := dedupSimilar(allKnowledge)
 	dedupedDecisions := dedupSimilar(allDecisions)
-	knowledgeDups := len(allKnowledge) - len(dedupedKnowledge)
-	decisionDups := len(allDecisions) - len(dedupedDecisions)
-	totalDupsRemoved = knowledgeDups + decisionDups
+	totalDupsRemoved := (len(allKnowledge) - len(dedupedKnowledge)) + (len(allDecisions) - len(dedupedDecisions))
 
-	// Run extraction if --extract flag is set
-	totalExtracted := 0
-	if batchExtract && totalProcessed > 0 {
-		fmt.Printf("\nTriggering extraction for %d session(s)...\n", totalProcessed)
-		extractedCount, extractErr := triggerExtraction(cwd)
-		if extractErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: extraction failed: %v\n", extractErr)
+	totalExtracted := runBatchExtractionStep(cwd, totalProcessed)
+
+	return outputBatchForgeResult(baseDir, totalProcessed, skippedCount, totalFailed, totalDecisions, totalKnowledge, totalDupsRemoved, totalExtracted, dedupedKnowledge, dedupedDecisions, processedPaths)
+}
+
+// filterUnforgedTranscripts returns transcripts not yet in the forged index, plus a skip count.
+func filterUnforgedTranscripts(transcripts []transcriptCandidate, forgedSet map[string]bool) ([]transcriptCandidate, int) {
+	var unforged []transcriptCandidate
+	skipped := 0
+	for _, t := range transcripts {
+		if forgedSet[t.path] {
+			skipped++
+			VerbosePrintf("Skipping already-forged: %s\n", t.path)
 		} else {
-			totalExtracted = extractedCount
+			unforged = append(unforged, t)
 		}
 	}
+	return unforged, skipped
+}
 
-	// Output results
+// forgeSingleTranscript processes one transcript through the forge pipeline.
+// Returns (ok, decisions, knowledge, path).
+func forgeSingleTranscript(i, total int, t transcriptCandidate, fs *storage.FileStorage, p *parser.Parser, extractor *parser.Extractor, forgedIndexPath string) (bool, []string, []string, string) {
+	fmt.Printf("[%d/%d] Processing %s...\n", i+1, total, filepath.Base(t.path))
+
+	session, err := processTranscript(t.path, p, extractor, false, os.Stdout)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: skipping %s: %v\n", t.path, err)
+		return false, nil, nil, ""
+	}
+
+	sessionPath, err := fs.WriteSession(session)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: failed to write session for %s: %v\n", t.path, err)
+		return false, nil, nil, ""
+	}
+
+	indexEntry := &storage.IndexEntry{
+		SessionID:   session.ID,
+		Date:        session.Date,
+		SessionPath: sessionPath,
+		Summary:     session.Summary,
+	}
+	if err := fs.WriteIndex(indexEntry); err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: failed to index session: %v\n", err)
+	}
+
+	provRecord := &storage.ProvenanceRecord{
+		ID:           fmt.Sprintf("prov-%s", session.ID[:7]),
+		ArtifactPath: sessionPath,
+		ArtifactType: "session",
+		SourcePath:   t.path,
+		SourceType:   "transcript",
+		SessionID:    session.ID,
+		CreatedAt:    time.Now(),
+	}
+	if err := fs.WriteProvenance(provRecord); err != nil {
+		fmt.Fprintf(os.Stderr, "  Warning: failed to write provenance: %v\n", err)
+	}
+
+	forgedRecord := ForgedRecord{Path: t.path, ForgedAt: time.Now(), Session: session.ID}
+	if err := appendForgedRecord(forgedIndexPath, forgedRecord); err != nil {
+		VerbosePrintf("  Warning: failed to record forged transcript: %v\n", err)
+	}
+
+	VerbosePrintf("  -> %d decisions, %d learnings\n", len(session.Decisions), len(session.Knowledge))
+	return true, session.Decisions, session.Knowledge, t.path
+}
+
+// runBatchExtractionStep triggers extraction when --extract is set and transcripts were processed.
+func runBatchExtractionStep(cwd string, totalProcessed int) int {
+	if !batchExtract || totalProcessed == 0 {
+		return 0
+	}
+	fmt.Printf("\nTriggering extraction for %d session(s)...\n", totalProcessed)
+	extractedCount, extractErr := triggerExtraction(cwd)
+	if extractErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: extraction failed: %v\n", extractErr)
+		return 0
+	}
+	return extractedCount
+}
+
+// outputBatchForgeResult prints or JSON-encodes the batch forge summary.
+func outputBatchForgeResult(baseDir string, processed, skipped, failed, decisions, knowledge, dupsRemoved, extracted int, dedupedKnowledge, dedupedDecisions, processedPaths []string) error {
 	if GetOutput() == "json" {
 		result := BatchForgeResult{
-			Forged:    totalProcessed,
-			Skipped:   skippedCount,
-			Failed:    totalFailed,
-			Extracted: totalExtracted,
+			Forged:    processed,
+			Skipped:   skipped,
+			Failed:    failed,
+			Extracted: extracted,
 			Paths:     processedPaths,
 		}
 		data, err := json.MarshalIndent(result, "", "  ")
@@ -224,22 +229,21 @@ func runForgeBatch(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("marshal batch forge result: %w", err)
 		}
 		fmt.Println(string(data))
-	} else {
-		fmt.Printf("\n--- Batch Forge Summary ---\n")
-		fmt.Printf("Transcripts processed: %d\n", totalProcessed)
-		fmt.Printf("Skipped (already):     %d\n", skippedCount)
-		fmt.Printf("Failed:                %d\n", totalFailed)
-		fmt.Printf("Decisions extracted:   %d\n", totalDecisions)
-		fmt.Printf("Learnings extracted:   %d\n", totalKnowledge)
-		fmt.Printf("Duplicates removed:    %d\n", totalDupsRemoved)
-		fmt.Printf("Unique decisions:      %d\n", len(dedupedDecisions))
-		fmt.Printf("Unique learnings:      %d\n", len(dedupedKnowledge))
-		if totalExtracted > 0 {
-			fmt.Printf("Extractions processed: %d\n", totalExtracted)
-		}
-		fmt.Printf("Output:                %s\n", baseDir)
+		return nil
 	}
-
+	fmt.Printf("\n--- Batch Forge Summary ---\n")
+	fmt.Printf("Transcripts processed: %d\n", processed)
+	fmt.Printf("Skipped (already):     %d\n", skipped)
+	fmt.Printf("Failed:                %d\n", failed)
+	fmt.Printf("Decisions extracted:   %d\n", decisions)
+	fmt.Printf("Learnings extracted:   %d\n", knowledge)
+	fmt.Printf("Duplicates removed:    %d\n", dupsRemoved)
+	fmt.Printf("Unique decisions:      %d\n", len(dedupedDecisions))
+	fmt.Printf("Unique learnings:      %d\n", len(dedupedKnowledge))
+	if extracted > 0 {
+		fmt.Printf("Extractions processed: %d\n", extracted)
+	}
+	fmt.Printf("Output:                %s\n", baseDir)
 	return nil
 }
 

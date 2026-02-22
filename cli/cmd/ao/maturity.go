@@ -289,43 +289,7 @@ func runMaturityExpire(cmd *cobra.Command) error {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
 			continue
 		}
-
-		path := filepath.Join(learningsDir, entry.Name())
-		fields, err := parseFrontmatterFields(path, "valid_until", "expiry_status")
-		if err != nil {
-			VerbosePrintf("Warning: could not read %s: %v\n", entry.Name(), err)
-			cats.neverExpiring = append(cats.neverExpiring, entry.Name())
-			continue
-		}
-
-		// Check if already archived
-		if fields["expiry_status"] == "archived" {
-			cats.alreadyArchived = append(cats.alreadyArchived, entry.Name())
-			continue
-		}
-
-		validUntil, hasExpiry := fields["valid_until"]
-		if !hasExpiry || validUntil == "" {
-			cats.neverExpiring = append(cats.neverExpiring, entry.Name())
-			continue
-		}
-
-		// Parse date
-		expiry, parseErr := time.Parse("2006-01-02", validUntil)
-		if parseErr != nil {
-			expiry, parseErr = time.Parse(time.RFC3339, validUntil)
-		}
-		if parseErr != nil {
-			VerbosePrintf("Warning: malformed valid_until in %s: %s\n", entry.Name(), validUntil)
-			cats.neverExpiring = append(cats.neverExpiring, entry.Name())
-			continue
-		}
-
-		if time.Now().After(expiry) {
-			cats.newlyExpired = append(cats.newlyExpired, entry.Name())
-		} else {
-			cats.active = append(cats.active, entry.Name())
-		}
+		classifyExpiryEntry(entry, learningsDir, &cats)
 	}
 
 	total := len(cats.active) + len(cats.neverExpiring) + len(cats.newlyExpired) + len(cats.alreadyArchived)
@@ -337,34 +301,77 @@ func runMaturityExpire(cmd *cobra.Command) error {
 	fmt.Printf("  Already archived: %d\n", len(cats.alreadyArchived))
 	fmt.Printf("  Total:            %d\n", total)
 
-	// Archive expired files if requested
 	if maturityArchive && len(cats.newlyExpired) > 0 {
-		archiveDir := filepath.Join(cwd, ".agents", "archive", "learnings")
-
-		if GetDryRun() {
-			fmt.Println()
-			for _, name := range cats.newlyExpired {
-				fmt.Printf("[dry-run] Would archive: %s -> .agents/archive/learnings/%s\n", name, name)
-			}
-			return nil
-		}
-
-		if err := os.MkdirAll(archiveDir, 0o755); err != nil {
-			return fmt.Errorf("create archive directory: %w", err)
-		}
-
-		fmt.Println()
-		for _, name := range cats.newlyExpired {
-			src := filepath.Join(learningsDir, name)
-			dst := filepath.Join(archiveDir, name)
-			if err := os.Rename(src, dst); err != nil {
-				fmt.Fprintf(os.Stderr, "Error moving %s: %v\n", name, err)
-				continue
-			}
-			fmt.Printf("Archived: %s -> .agents/archive/learnings/%s\n", name, name)
-		}
+		return archiveExpiredLearnings(cwd, learningsDir, cats.newlyExpired)
 	}
 
+	return nil
+}
+
+// classifyExpiryEntry reads frontmatter from one learning file and appends to the appropriate category.
+func classifyExpiryEntry(entry os.DirEntry, learningsDir string, cats *expiryCategory) {
+	path := filepath.Join(learningsDir, entry.Name())
+	fields, err := parseFrontmatterFields(path, "valid_until", "expiry_status")
+	if err != nil {
+		VerbosePrintf("Warning: could not read %s: %v\n", entry.Name(), err)
+		cats.neverExpiring = append(cats.neverExpiring, entry.Name())
+		return
+	}
+
+	if fields["expiry_status"] == "archived" {
+		cats.alreadyArchived = append(cats.alreadyArchived, entry.Name())
+		return
+	}
+
+	validUntil, hasExpiry := fields["valid_until"]
+	if !hasExpiry || validUntil == "" {
+		cats.neverExpiring = append(cats.neverExpiring, entry.Name())
+		return
+	}
+
+	expiry, parseErr := time.Parse("2006-01-02", validUntil)
+	if parseErr != nil {
+		expiry, parseErr = time.Parse(time.RFC3339, validUntil)
+	}
+	if parseErr != nil {
+		VerbosePrintf("Warning: malformed valid_until in %s: %s\n", entry.Name(), validUntil)
+		cats.neverExpiring = append(cats.neverExpiring, entry.Name())
+		return
+	}
+
+	if time.Now().After(expiry) {
+		cats.newlyExpired = append(cats.newlyExpired, entry.Name())
+	} else {
+		cats.active = append(cats.active, entry.Name())
+	}
+}
+
+// archiveExpiredLearnings moves newly expired learnings to the archive directory.
+func archiveExpiredLearnings(cwd, learningsDir string, expired []string) error {
+	archiveDir := filepath.Join(cwd, ".agents", "archive", "learnings")
+
+	if GetDryRun() {
+		fmt.Println()
+		for _, name := range expired {
+			fmt.Printf("[dry-run] Would archive: %s -> .agents/archive/learnings/%s\n", name, name)
+		}
+		return nil
+	}
+
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		return fmt.Errorf("create archive directory: %w", err)
+	}
+
+	fmt.Println()
+	for _, name := range expired {
+		src := filepath.Join(learningsDir, name)
+		dst := filepath.Join(archiveDir, name)
+		if err := os.Rename(src, dst); err != nil {
+			fmt.Fprintf(os.Stderr, "Error moving %s: %v\n", name, err)
+			continue
+		}
+		fmt.Printf("Archived: %s -> .agents/archive/learnings/%s\n", name, name)
+	}
 	return nil
 }
 

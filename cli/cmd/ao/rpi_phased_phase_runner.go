@@ -7,6 +7,26 @@ import (
 	"time"
 )
 
+// handlePostPhaseGate runs post-phase gate checking and retry logic.
+// It is extracted from runSinglePhase to reduce its cyclomatic complexity.
+func handlePostPhaseGate(spawnCwd string, state *phasedState, p phase, logPath, statusPath string, allPhases []PhaseProgress, executor PhaseExecutor) error {
+	if err := postPhaseProcessing(spawnCwd, state, p.Num, logPath); err != nil {
+		var retryErr *gateFailError
+		if errors.As(err, &retryErr) {
+			retried, retryErr2 := handleGateRetry(spawnCwd, state, p.Num, retryErr, logPath, spawnCwd, statusPath, allPhases, executor)
+			if retryErr2 != nil {
+				return retryErr2
+			}
+			if !retried {
+				return fmt.Errorf("phase %d (%s): gate failed after max retries", p.Num, p.Name)
+			}
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 // runPhaseLoop executes phases sequentially and applies standard fatal logging on failures.
 func runPhaseLoop(cwd, spawnCwd string, state *phasedState, startPhase int, opts phasedEngineOptions, statusPath string, allPhases []PhaseProgress, logPath string, executor PhaseExecutor) error {
 	for i := startPhase; i <= len(phases); i++ {
@@ -86,18 +106,7 @@ func runSinglePhase(cwd, spawnCwd string, state *phasedState, startPhase int, p 
 	}
 	updateRunHeartbeat(spawnCwd, state.RunID)
 
-	if err := postPhaseProcessing(spawnCwd, state, p.Num, logPath); err != nil {
-		var retryErr *gateFailError
-		if errors.As(err, &retryErr) {
-			retried, retryErr2 := handleGateRetry(spawnCwd, state, p.Num, retryErr, logPath, spawnCwd, statusPath, allPhases, executor)
-			if retryErr2 != nil {
-				return retryErr2
-			}
-			if !retried {
-				return fmt.Errorf("phase %d (%s): gate failed after max retries", p.Num, p.Name)
-			}
-			return nil
-		}
+	if err := handlePostPhaseGate(spawnCwd, state, p, logPath, statusPath, allPhases, executor); err != nil {
 		return err
 	}
 

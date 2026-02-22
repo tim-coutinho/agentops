@@ -336,76 +336,77 @@ func findStaleRunsWithMinAge(root string, minAge time.Duration, now time.Time) [
 			continue
 		}
 
-		// Terminal runs (except completed) are cleanup candidates only when their
-		// worktree still exists.
 		if state.TerminalStatus != "" {
-			if state.TerminalStatus == "completed" {
-				continue
+			if sr, ok := checkTerminalRunStale(runID, root, statePath, state, minAge, now); ok {
+				stale = append(stale, sr)
 			}
-			if state.WorktreePath == "" {
-				continue
-			}
-			if _, statErr := os.Stat(state.WorktreePath); statErr != nil {
-				continue
-			}
-			if minAge > 0 {
-				candidateAt := cmp.Or(state.TerminatedAt, state.StartedAt)
-				parsedAt, parseErr := time.Parse(time.RFC3339, candidateAt)
-				if parseErr != nil || now.Sub(parsedAt) < minAge {
-					continue
-				}
-			}
-
-			reason := cmp.Or(state.TerminalReason, "terminal status: "+state.TerminalStatus)
-			stale = append(stale, staleRunEntry{
-				runID:        runID,
-				root:         root,
-				statePath:    statePath,
-				reason:       reason,
-				worktreePath: state.WorktreePath,
-				terminal:     state.TerminalStatus,
-			})
 			continue
 		}
 
-		// Check liveness.
-		isActive, _ := determineRunLiveness(root, state)
-		if isActive {
-			continue
+		if sr, ok := checkNonTerminalRunStale(runID, root, statePath, state, minAge, now); ok {
+			stale = append(stale, sr)
 		}
-
-		// Non-terminal completed runs are not stale.
-		if state.Phase >= completedPhaseNumber(*state) {
-			continue
-		}
-		// Optional age filter to reduce risk of cleaning recently interrupted runs.
-		if minAge > 0 {
-			startedAt, parseErr := time.Parse(time.RFC3339, state.StartedAt)
-			if parseErr != nil {
-				// Skip runs with malformed or missing start timestamps when age filtering is enabled.
-				continue
-			}
-			if now.Sub(startedAt) < minAge {
-				continue
-			}
-		}
-		// Determine reason.
-		reason := "no heartbeat, no tmux session"
-		if state.WorktreePath != "" {
-			if _, statErr := os.Stat(state.WorktreePath); statErr != nil {
-				reason = "worktree missing"
-			}
-		}
-
-		stale = append(stale, staleRunEntry{
-			runID:        runID,
-			root:         root,
-			statePath:    statePath,
-			reason:       reason,
-			worktreePath: state.WorktreePath,
-		})
 	}
 	return stale
+}
+
+// checkTerminalRunStale returns a staleRunEntry for a terminal run if it qualifies for cleanup.
+func checkTerminalRunStale(runID, root, statePath string, state *phasedState, minAge time.Duration, now time.Time) (staleRunEntry, bool) {
+	if state.TerminalStatus == "completed" {
+		return staleRunEntry{}, false
+	}
+	if state.WorktreePath == "" {
+		return staleRunEntry{}, false
+	}
+	if _, statErr := os.Stat(state.WorktreePath); statErr != nil {
+		return staleRunEntry{}, false
+	}
+	if minAge > 0 {
+		candidateAt := cmp.Or(state.TerminatedAt, state.StartedAt)
+		parsedAt, parseErr := time.Parse(time.RFC3339, candidateAt)
+		if parseErr != nil || now.Sub(parsedAt) < minAge {
+			return staleRunEntry{}, false
+		}
+	}
+	reason := cmp.Or(state.TerminalReason, "terminal status: "+state.TerminalStatus)
+	return staleRunEntry{
+		runID:        runID,
+		root:         root,
+		statePath:    statePath,
+		reason:       reason,
+		worktreePath: state.WorktreePath,
+		terminal:     state.TerminalStatus,
+	}, true
+}
+
+// checkNonTerminalRunStale returns a staleRunEntry for an inactive, non-completed run if it qualifies.
+func checkNonTerminalRunStale(runID, root, statePath string, state *phasedState, minAge time.Duration, now time.Time) (staleRunEntry, bool) {
+	isActive, _ := determineRunLiveness(root, state)
+	if isActive {
+		return staleRunEntry{}, false
+	}
+	if state.Phase >= completedPhaseNumber(*state) {
+		return staleRunEntry{}, false
+	}
+	if minAge > 0 {
+		startedAt, parseErr := time.Parse(time.RFC3339, state.StartedAt)
+		if parseErr != nil || now.Sub(startedAt) < minAge {
+			return staleRunEntry{}, false
+		}
+	}
+	reason := "no heartbeat, no tmux session"
+	if state.WorktreePath != "" {
+		if _, statErr := os.Stat(state.WorktreePath); statErr != nil {
+			reason = "worktree missing"
+		}
+	}
+	return staleRunEntry{
+		runID:        runID,
+		root:         root,
+		statePath:    statePath,
+		reason:       reason,
+		worktreePath: state.WorktreePath,
+	}, true
 }
 
 // markRunStale writes terminal metadata to the state file.
