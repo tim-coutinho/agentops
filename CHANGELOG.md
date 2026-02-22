@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-02-22
+
+### Added
+
+- **Two-tier execution mode taxonomy** — Skills now follow an explicit orchestrator/worker fork classification. Orchestrators (evolve, rpi, crank, vibe, post-mortem) stay in the main session for visibility. Worker spawners (council, codex-team) fork into subagents. Documented in `SKILL-TIERS.md` and `skill-structure.md`.
+- **116 evolve cycles** — Automated improvement loop ran 116 cycles, delivering: test coverage from ~70% to 95%+ across all packages, zero functions at complexity >= 8, sentinel errors in all packages, benchmarks in all 15 packages, Go 1.23 idiom modernization (slices, cmp.Or, range-over-int, CutPrefix), exhaustive switch statements, and consistent errorlint/gocritic compliance.
+- **RPI control plane hardening** — Integration tests for RPI orchestrator, supervisor determinism, recovery edges, and detached-HEAD healing. Branch pruning controls to prevent worktree sprawl.
+- **Pre-commit/pre-push gates** — Go build gate on commit, full validation gate (build + vet + test + hooks + skill counts) on push.
+- **Go modern idiom catalog** — Standards updated with JetBrains-sourced Go 1.21–1.23 idiom catalog covering slices, maps, cmp, slog, and range patterns.
+- **Validation scripts** — Added `check-evolve-cycle-logging.sh`, `check-go-absolute-complexity.sh`, `check-go-per-package-coverage.sh` for CI and evolve goal measurement.
+
+### Changed
+
+- **Fork classification corrected** — Removed `context: fork` from evolve, crank, and post-mortem (orchestrators that were invisibly forking). Added `context: fork` to codex-team (worker spawner that should fork). Council retains `context: fork` (correct).
+- **Go modernized to 1.23 idioms** — Replaced `sort.Slice` with `slices.SortFunc`, `interface{}` with `any` (280+ occurrences), `strings.HasPrefix`+slice with `strings.CutPrefix`, added `cmp.Or` for defaults, range-over-int for counting loops.
+- **Goals pruned 83 to 25** — Removed stale/redundant goals, added trust-and-prove track specs.
+- **RPI loop supervisor hardened** — Failure policy, cycle retries, lease-based locking, stale worktree auto-cleanup, landing policy controls.
+
+### Fixed
+
+- **Evolve visibility** — `/evolve` no longer forks into an invisible subagent. Operator can now see cycle-by-cycle progress, fitness measurements, and intervene.
+- **Detached-branch sprawl** — RPI loop now prunes branches and avoids detached-HEAD sprawl.
+- **Per-package coverage** — Fixed name extraction and kill-switch sentinel error in coverage tooling.
+- **Hook reliability** — Rotated chain.jsonl, cached file counts, removed redundant hooks.
+
 ## [2.13.2] - 2026-02-21
 
 ### Added
