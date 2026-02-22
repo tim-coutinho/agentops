@@ -230,25 +230,30 @@ func (p *Parser) parseContentBlocks(blocks []interface{}) (string, []types.ToolC
 		if !ok {
 			continue
 		}
-
-		blockType, _ := blockMap["type"].(string)
-		switch blockType {
-		case "text":
-			if text, ok := blockMap["text"].(string); ok {
-				content += p.truncate(text)
-			}
-		case "tool_use":
-			if toolCall := p.parseToolUse(blockMap); toolCall != nil {
-				tools = append(tools, *toolCall)
-			}
-		case "tool_result":
-			if toolResult := p.parseToolResult(blockMap); toolResult != nil {
-				tools = append(tools, *toolResult)
-			}
+		text, tool := p.classifyBlock(blockMap)
+		content += text
+		if tool != nil {
+			tools = append(tools, *tool)
 		}
 	}
 
 	return content, tools
+}
+
+// classifyBlock dispatches a single content block into text or tool call.
+func (p *Parser) classifyBlock(blockMap map[string]interface{}) (string, *types.ToolCall) {
+	blockType, _ := blockMap["type"].(string)
+	switch blockType {
+	case "text":
+		if text, ok := blockMap["text"].(string); ok {
+			return p.truncate(text), nil
+		}
+	case "tool_use":
+		return "", p.parseToolUse(blockMap)
+	case "tool_result":
+		return "", p.parseToolResult(blockMap)
+	}
+	return "", nil
 }
 
 // parseLine parses a single JSON line.
