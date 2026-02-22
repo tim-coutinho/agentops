@@ -471,29 +471,7 @@ func (v *Validator) countCitations(artifactPath string) int {
 // that mention the artifact by name.
 func (v *Validator) countSessionRefs(artifactPath string) int {
 	baseName := filepath.Base(artifactPath)
-
-	// Build list of session directories to search
-	var sessionsDirs []string
-
-	// Check current directory's sessions
-	localSessions := filepath.Join(v.locator.startDir, ".agents", "ao", "sessions")
-	if _, err := os.Stat(localSessions); err == nil {
-		sessionsDirs = append(sessionsDirs, localSessions)
-	}
-
-	// Check rig root sessions (if different from local)
-	if rigDir := v.locator.findRigRoot(); rigDir != "" && rigDir != v.locator.startDir {
-		rigSessions := filepath.Join(rigDir, ".agents", "ao", "sessions")
-		if _, err := os.Stat(rigSessions); err == nil {
-			sessionsDirs = append(sessionsDirs, rigSessions)
-		}
-	}
-
-	// Check town-level sessions
-	townSessions := filepath.Join(v.locator.townDir, ".agents", "ao", "sessions")
-	if _, err := os.Stat(townSessions); err == nil {
-		sessionsDirs = append(sessionsDirs, townSessions)
-	}
+	sessionsDirs := v.gatherSessionDirs()
 
 	if len(sessionsDirs) == 0 {
 		return 0
@@ -503,32 +481,66 @@ func (v *Validator) countSessionRefs(artifactPath string) int {
 	seen := make(map[string]bool) // Dedupe by session file
 
 	for _, sessionsDir := range sessionsDirs {
-		if err := filepath.Walk(sessionsDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
-				return nil
-			}
+		count += v.countRefsInDir(sessionsDir, baseName, seen)
+	}
 
-			// Only search JSONL and markdown files
-			ext := filepath.Ext(path)
-			if ext != ".jsonl" && ext != ".md" {
-				return nil
-			}
+	return count
+}
 
-			// Skip if already counted this file
-			if seen[path] {
-				return nil
-			}
+// gatherSessionDirs collects all session directories across locations.
+func (v *Validator) gatherSessionDirs() []string {
+	var dirs []string
 
-			if v.fileContains(path, baseName) {
-				seen[path] = true
-				count++
-			}
-			return nil
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to walk %s: %v\n", sessionsDir, err)
+	// Check current directory's sessions
+	localSessions := filepath.Join(v.locator.startDir, ".agents", "ao", "sessions")
+	if _, err := os.Stat(localSessions); err == nil {
+		dirs = append(dirs, localSessions)
+	}
+
+	// Check rig root sessions (if different from local)
+	if rigDir := v.locator.findRigRoot(); rigDir != "" && rigDir != v.locator.startDir {
+		rigSessions := filepath.Join(rigDir, ".agents", "ao", "sessions")
+		if _, err := os.Stat(rigSessions); err == nil {
+			dirs = append(dirs, rigSessions)
 		}
 	}
 
+	// Check town-level sessions
+	townSessions := filepath.Join(v.locator.townDir, ".agents", "ao", "sessions")
+	if _, err := os.Stat(townSessions); err == nil {
+		dirs = append(dirs, townSessions)
+	}
+
+	return dirs
+}
+
+// countRefsInDir walks a sessions directory counting files that reference baseName.
+func (v *Validator) countRefsInDir(sessionsDir, baseName string, seen map[string]bool) int {
+	count := 0
+	if err := filepath.Walk(sessionsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+
+		// Only search JSONL and markdown files
+		ext := filepath.Ext(path)
+		if ext != ".jsonl" && ext != ".md" {
+			return nil
+		}
+
+		// Skip if already counted this file
+		if seen[path] {
+			return nil
+		}
+
+		if v.fileContains(path, baseName) {
+			seen[path] = true
+			count++
+		}
+		return nil
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to walk %s: %v\n", sessionsDir, err)
+	}
 	return count
 }
 
