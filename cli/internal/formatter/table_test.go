@@ -148,3 +148,17 @@ func TestTable_SeparatorMatchesHeaderLength(t *testing.T) {
 		t.Errorf("expected 10 dashes for LONGHEADER, got %q", sepFields[1])
 	}
 }
+
+// --- Benchmarks ---
+
+func BenchmarkTableRender(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		var buf bytes.Buffer
+		tbl := NewTable(&buf, "Name", "Value", "Status")
+		tbl.SetMaxWidth(0, 20)
+		for j := 0; j < 10; j++ {
+			tbl.AddRow("some-item", "some-value", "active")
+		}
+		_ = tbl.Render()
+	}
+}

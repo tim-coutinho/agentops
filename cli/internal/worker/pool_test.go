@@ -184,3 +184,19 @@ func TestProcessResultsAreSortable(t *testing.T) {
 		t.Error("sorting by value failed")
 	}
 }
+
+// --- Benchmarks ---
+
+func BenchmarkPoolProcess(b *testing.B) {
+	items := make([]string, 100)
+	for i := range items {
+		items[i] = fmt.Sprintf("item-%d", i)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p := NewPool[string](4)
+		_ = p.Process(items, func(s string) (string, error) {
+			return s + "-done", nil
+		})
+	}
+}

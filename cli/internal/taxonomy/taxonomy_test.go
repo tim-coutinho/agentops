@@ -246,3 +246,32 @@ func TestTierBoundariesAreContiguous(t *testing.T) {
 	}
 	_ = prevMax // Suppress unused warning
 }
+
+// --- Benchmarks ---
+
+func BenchmarkAssignTier(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		AssignTier(float64(i%10)*0.1, DefaultTierConfigs)
+	}
+}
+
+func BenchmarkGetBaseScore(b *testing.B) {
+	knTypes := []types.KnowledgeType{
+		types.KnowledgeTypeLearning,
+		types.KnowledgeTypeDecision,
+		types.KnowledgeTypeSolution,
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		GetBaseScore(knTypes[i%len(knTypes)])
+	}
+}
+
+func BenchmarkValidateWeights(b *testing.B) {
+	w := DefaultRubricWeights
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		w.ValidateWeights()
+	}
+}

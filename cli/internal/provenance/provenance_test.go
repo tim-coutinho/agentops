@@ -390,3 +390,39 @@ func TestGraph_FindBySource_AbsolutePath(t *testing.T) {
 		t.Errorf("Expected 1 result, got %d", len(results))
 	}
 }
+
+// --- Benchmarks ---
+
+func benchProvFile(b *testing.B, numRecords int) string {
+	b.Helper()
+	dir := b.TempDir()
+	path := filepath.Join(dir, "graph.jsonl")
+	var content string
+	for i := 0; i < numRecords; i++ {
+		content += `{"artifact_path":".agents/learnings/` + time.Now().Format("2006-01-02") + `-bench.md","source_session":"sess-` + time.Now().Format("150405") + `","source_path":"cli/internal/provenance/bench_test.go","timestamp":"2025-01-15T12:00:00Z"}` + "\n"
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		b.Fatalf("write: %v", err)
+	}
+	return path
+}
+
+func BenchmarkNewGraph(b *testing.B) {
+	path := benchProvFile(b, 50)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = NewGraph(path)
+	}
+}
+
+func BenchmarkGraphGetStats(b *testing.B) {
+	path := benchProvFile(b, 50)
+	g, err := NewGraph(path)
+	if err != nil {
+		b.Fatalf("NewGraph: %v", err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		g.GetStats()
+	}
+}
