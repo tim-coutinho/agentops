@@ -873,30 +873,9 @@ func atomicMove(srcPath, destPath string) error {
 		return fmt.Errorf("read source: %w", err)
 	}
 
-	// Write to temp file
-	tempFile, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
-	}
-
-	// Write data
-	if _, err := tempFile.Write(data); err != nil {
-		_ = tempFile.Close()    //nolint:errcheck // cleanup in error path
-		_ = os.Remove(tempPath) //nolint:errcheck // cleanup in error path
-		return fmt.Errorf("write temp file: %w", err)
-	}
-
-	// Sync to disk
-	if err := tempFile.Sync(); err != nil {
-		_ = tempFile.Close()    //nolint:errcheck // cleanup in error path
-		_ = os.Remove(tempPath) //nolint:errcheck // cleanup in error path
-		return fmt.Errorf("sync temp file: %w", err)
-	}
-
-	// Close before rename
-	if err := tempFile.Close(); err != nil {
-		_ = os.Remove(tempPath) //nolint:errcheck // cleanup in error path
-		return fmt.Errorf("close temp file: %w", err)
+	// Write, sync, and close into temp file
+	if err := writeTempFile(tempPath, data); err != nil {
+		return err
 	}
 
 	// Atomic rename
@@ -909,6 +888,34 @@ func atomicMove(srcPath, destPath string) error {
 	if err := os.Remove(srcPath); err != nil {
 		// Non-fatal: the move succeeded, just cleanup failed
 		fmt.Fprintf(os.Stderr, "Warning: failed to remove source file %s: %v\n", srcPath, err)
+	}
+
+	return nil
+}
+
+// writeTempFile creates a temp file, writes data, syncs to disk, and closes.
+// On any error before Close it cleans up the temp file before returning.
+func writeTempFile(tempPath string, data []byte) error {
+	tempFile, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+
+	if _, err := tempFile.Write(data); err != nil {
+		_ = tempFile.Close()    //nolint:errcheck // cleanup in error path
+		_ = os.Remove(tempPath) //nolint:errcheck // cleanup in error path
+		return fmt.Errorf("write temp file: %w", err)
+	}
+
+	if err := tempFile.Sync(); err != nil {
+		_ = tempFile.Close()    //nolint:errcheck // cleanup in error path
+		_ = os.Remove(tempPath) //nolint:errcheck // cleanup in error path
+		return fmt.Errorf("sync temp file: %w", err)
+	}
+
+	if err := tempFile.Close(); err != nil {
+		_ = os.Remove(tempPath) //nolint:errcheck // cleanup in error path
+		return fmt.Errorf("close temp file: %w", err)
 	}
 
 	return nil
