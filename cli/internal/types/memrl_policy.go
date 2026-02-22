@@ -381,20 +381,27 @@ func resolveInputDefaults(contract MemRLPolicyContract, input MemRLPolicyInput) 
 	return resolvedInput{mode: mode, bucket: bucket, metadataPresent: metadataPresent}
 }
 
+// ruleMatchesInput checks whether a rule matches the given mode, failure class, and bucket.
+func ruleMatchesInput(rule MemRLPolicyRule, mode MemRLMode, failureClass MemRLFailureClass, bucket MemRLAttemptBucket) bool {
+	if rule.Mode != mode {
+		return false
+	}
+	if rule.FailureClass != MemRLFailureClassAny && rule.FailureClass != failureClass {
+		return false
+	}
+	if rule.AttemptBucket != MemRLAttemptBucketAny && rule.AttemptBucket != bucket {
+		return false
+	}
+	return true
+}
+
 // matchRules returns rules that match the given mode, failure class, and bucket.
 func matchRules(rules []MemRLPolicyRule, mode MemRLMode, failureClass MemRLFailureClass, bucket MemRLAttemptBucket) []MemRLPolicyRule {
 	var candidates []MemRLPolicyRule
 	for _, rule := range rules {
-		if rule.Mode != mode {
-			continue
+		if ruleMatchesInput(rule, mode, failureClass, bucket) {
+			candidates = append(candidates, rule)
 		}
-		if rule.FailureClass != MemRLFailureClassAny && rule.FailureClass != failureClass {
-			continue
-		}
-		if rule.AttemptBucket != MemRLAttemptBucketAny && rule.AttemptBucket != bucket {
-			continue
-		}
-		candidates = append(candidates, rule)
 	}
 	return candidates
 }
@@ -491,11 +498,8 @@ func validateContractRollbacks(triggers []MemRLRollbackTrigger) error {
 	return nil
 }
 
-// validatePolicyRule validates a single policy rule.
-func validatePolicyRule(rule MemRLPolicyRule) error {
-	if rule.RuleID == "" {
-		return ErrRuleIDEmpty
-	}
+// validateRuleEnums checks that the mode, action, and attempt_bucket fields of a rule have valid values.
+func validateRuleEnums(rule MemRLPolicyRule) error {
 	if !isValidMemRLMode(rule.Mode) {
 		return fmt.Errorf("rule %s has invalid mode %q", rule.RuleID, rule.Mode)
 	}
@@ -504,6 +508,17 @@ func validatePolicyRule(rule MemRLPolicyRule) error {
 	}
 	if !isValidAttemptBucket(rule.AttemptBucket) {
 		return fmt.Errorf("rule %s has invalid attempt_bucket %q", rule.RuleID, rule.AttemptBucket)
+	}
+	return nil
+}
+
+// validatePolicyRule validates a single policy rule.
+func validatePolicyRule(rule MemRLPolicyRule) error {
+	if rule.RuleID == "" {
+		return ErrRuleIDEmpty
+	}
+	if err := validateRuleEnums(rule); err != nil {
+		return err
 	}
 	if rule.FailureClass != MemRLFailureClassAny && !IsKnownMemRLFailureClass(rule.FailureClass) {
 		return fmt.Errorf("rule %s has unknown failure_class %q", rule.RuleID, rule.FailureClass)
