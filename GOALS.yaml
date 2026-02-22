@@ -7,7 +7,7 @@ pillars:
   - validated-acceleration
   - goal-driven-automation
   - zero-friction-workflow
-# Total: 33 goals
+# Total: 35 goals
 # Pruned 2026-02-21 per council consensus: feature saturation reached.
 # Removed 58 grep-for-string-in-file-we-control goals, file-exists checks,
 # keyword-in-README/SKILL.md goals, and duplicates (go-race-clean = go-cli-tests).
@@ -274,3 +274,22 @@ goals:
     weight: 6
     pillar: knowledge-compounding
     added: "2026-02-21"
+
+  # ============================================================================
+  # APPROACHABILITY (2 goals, weight 3)
+  # Ensure new users can discover and start using AgentOps quickly.
+  # ============================================================================
+
+  - id: starter-skill-discoverability
+    description: "README.md mentions the key starter skills (/quickstart, /status, /research, /vibe, /implement)"
+    check: "grep -q '/quickstart' README.md && grep -q '/status' README.md && grep -q '/research' README.md && grep -q '/vibe' README.md && grep -q '/implement' README.md"
+    weight: 3
+    pillar: zero-friction-workflow
+    added: "2026-02-22"
+
+  - id: onboarding-path-completeness
+    description: "Quickstart skill exists and is non-empty"
+    check: "test -s skills/quickstart/SKILL.md"
+    weight: 3
+    pillar: zero-friction-workflow
+    added: "2026-02-22"

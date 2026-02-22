@@ -52,6 +52,7 @@ state.json
 .tmp/
 skills/.tmp/
 hook-output.txt
+skills/vibe/README.md
 
 # Go binaries (built locally)
 cli/ao
