@@ -1508,6 +1508,177 @@ func TestPoolApproveNotFound(t *testing.T) {
 	}
 }
 
+func TestPoolInitReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	p := NewPool(readOnly)
+	err := p.Init()
+	if err == nil {
+		t.Error("expected error when Init in read-only directory")
+	}
+}
+
+func TestPoolListError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make the pending directory unreadable to trigger scan error
+	pendingDir := filepath.Join(p.PoolPath, PendingDir)
+	if err := os.Chmod(pendingDir, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(pendingDir, 0700) })
+
+	_, err := p.List(ListOptions{Status: types.PoolStatusPending})
+	if err == nil {
+		t.Error("expected error when listing unreadable directory")
+	}
+}
+
+func TestPoolListPendingReviewError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make pending directory unreadable
+	pendingDir := filepath.Join(p.PoolPath, PendingDir)
+	if err := os.Chmod(pendingDir, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(pendingDir, 0700) })
+
+	_, err := p.ListPendingReview()
+	if err == nil {
+		t.Error("expected error from ListPendingReview when list fails")
+	}
+}
+
+func TestPoolBulkApproveListError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make pending directory unreadable
+	pendingDir := filepath.Join(p.PoolPath, PendingDir)
+	if err := os.Chmod(pendingDir, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(pendingDir, 0700) })
+
+	_, err := p.BulkApprove(2*time.Hour, "tester", false)
+	if err == nil {
+		t.Error("expected error from BulkApprove when list fails")
+	}
+}
+
+func TestAtomicMoveDestDirReadOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcPath := filepath.Join(tmpDir, "source.json")
+	if err := os.WriteFile(srcPath, []byte(`{"test": true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a read-only directory for destination
+	readOnlyDir := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnlyDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnlyDir, 0700) })
+
+	destPath := filepath.Join(readOnlyDir, "dest.json")
+	err := atomicMove(srcPath, destPath)
+	if err == nil {
+		t.Error("expected error when dest directory is read-only")
+	}
+	if !strings.Contains(err.Error(), "create temp file") {
+		t.Errorf("expected 'create temp file' error, got: %v", err)
+	}
+}
+
+func TestPoolAddAtInitError(t *testing.T) {
+	// Use a read-only dir so Init fails
+	tmpDir := t.TempDir()
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	p := NewPool(readOnly)
+	err := p.AddAt(types.Candidate{ID: "test", Content: "c"}, types.Scoring{}, time.Now())
+	if err == nil {
+		t.Error("expected error when Init fails in AddAt")
+	}
+	if !strings.Contains(err.Error(), "init pool") {
+		t.Errorf("expected 'init pool' error, got: %v", err)
+	}
+}
+
+func TestPoolGetChainOpenError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create chain file as a directory to trigger open error
+	chainPath := filepath.Join(p.PoolPath, ChainFile)
+	if err := os.MkdirAll(chainPath, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := p.GetChain()
+	if err == nil {
+		t.Error("expected error when chain file is a directory")
+	}
+}
+
+func TestPoolApproachingAutoPromote(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	// Add a silver candidate with a timestamp more than 22 hours ago
+	candidate := types.Candidate{
+		ID:      "old-silver",
+		Tier:    types.TierSilver,
+		Content: "Old silver content",
+	}
+	pastTime := time.Now().Add(-23 * time.Hour)
+	if err := p.AddAt(candidate, types.Scoring{}, pastTime); err != nil {
+		t.Fatalf("AddAt failed: %v", err)
+	}
+
+	entries, err := p.List(ListOptions{Status: types.PoolStatusPending})
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+
+	found := false
+	for _, e := range entries {
+		if e.Candidate.ID == "old-silver" {
+			found = true
+			if !e.ApproachingAutoPromote {
+				t.Error("expected ApproachingAutoPromote to be true for 23h-old silver candidate")
+			}
+		}
+	}
+	if !found {
+		t.Error("old-silver candidate not found in list")
+	}
+}
+
 func TestPoolListPendingReviewFiltersReviewed(t *testing.T) {
 	tmpDir := t.TempDir()
 	p := NewPool(tmpDir)
