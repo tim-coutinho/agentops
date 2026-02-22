@@ -93,11 +93,8 @@ func (p *Parser) Parse(r io.Reader) (*ParseResult, error) {
 		Messages: make([]types.TranscriptMessage, 0),
 	}
 
-	// Hash all content for checksum
 	hasher := sha256.New()
-
 	scanner := bufio.NewScanner(r)
-	// Increase buffer size for potentially long lines
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024) // 1MB max line size
 
@@ -111,32 +108,13 @@ func (p *Parser) Parse(r io.Reader) (*ParseResult, error) {
 			continue
 		}
 
-		// Update checksum with line content
 		hasher.Write(line)
 		hasher.Write([]byte("\n"))
 
-		msg, err := p.parseLine(line, lineNum)
-		if err != nil {
-			result.MalformedLines++
-			if !p.SkipMalformed {
-				// Create structured parse error
-				parseErr := &ParseError{
-					Line:       lineNum,
-					Message:    err.Error(),
-					ErrorType:  classifyError(err),
-					RawContent: truncateForError(string(line), 100),
-				}
-				result.Errors = append(result.Errors, parseErr)
-			}
-			continue
-		}
-
-		if msg != nil {
-			result.Messages = append(result.Messages, *msg)
-		}
+		p.processLine(line, lineNum, result)
 
 		if p.OnProgress != nil && lineNum%100 == 0 {
-			p.OnProgress(lineNum, 0) // Total unknown for streaming
+			p.OnProgress(lineNum, 0)
 		}
 	}
 
@@ -144,12 +122,31 @@ func (p *Parser) Parse(r io.Reader) (*ParseResult, error) {
 		return result, fmt.Errorf("scanner error: %w", err)
 	}
 
-	// Set checksum (first 16 hex chars of SHA256)
 	hash := hasher.Sum(nil)
 	result.Checksum = hex.EncodeToString(hash[:8])
 	result.ParsedAt = time.Now()
 
 	return result, nil
+}
+
+// processLine parses a single JSONL line and appends the result or error.
+func (p *Parser) processLine(line []byte, lineNum int, result *ParseResult) {
+	msg, err := p.parseLine(line, lineNum)
+	if err != nil {
+		result.MalformedLines++
+		if !p.SkipMalformed {
+			result.Errors = append(result.Errors, &ParseError{
+				Line:       lineNum,
+				Message:    err.Error(),
+				ErrorType:  classifyError(err),
+				RawContent: truncateForError(string(line), 100),
+			})
+		}
+		return
+	}
+	if msg != nil {
+		result.Messages = append(result.Messages, *msg)
+	}
 }
 
 // classifyError determines the error type for structured reporting.
