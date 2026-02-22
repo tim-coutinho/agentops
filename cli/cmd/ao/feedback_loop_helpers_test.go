@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -64,4 +66,69 @@ func TestDeduplicateCitations(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWriteCitations(t *testing.T) {
+	now := time.Now()
+
+	t.Run("writes citations to file", func(t *testing.T) {
+		dir := t.TempDir()
+		citations := []types.CitationEvent{
+			{ArtifactPath: "/a.md", SessionID: "s1", CitedAt: now, CitationType: "retrieved"},
+			{ArtifactPath: "/b.md", SessionID: "s1", CitedAt: now, CitationType: "applied"},
+		}
+
+		if err := writeCitations(dir, citations); err != nil {
+			t.Fatalf("writeCitations: %v", err)
+		}
+
+		citationsPath := filepath.Join(dir, ".agents", "ao", "citations.jsonl")
+		content, err := os.ReadFile(citationsPath)
+		if err != nil {
+			t.Fatalf("read citations file: %v", err)
+		}
+
+		lines := splitNonEmpty(string(content))
+		if len(lines) != 2 {
+			t.Errorf("expected 2 lines, got %d", len(lines))
+		}
+	})
+
+	t.Run("empty citations creates empty file", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := writeCitations(dir, []types.CitationEvent{}); err != nil {
+			t.Fatalf("writeCitations: %v", err)
+		}
+		citationsPath := filepath.Join(dir, ".agents", "ao", "citations.jsonl")
+		if _, err := os.Stat(citationsPath); err != nil {
+			t.Errorf("expected file to exist even for empty citations: %v", err)
+		}
+	})
+
+	t.Run("overwrites existing file", func(t *testing.T) {
+		dir := t.TempDir()
+		// Write 2 citations first
+		initial := []types.CitationEvent{
+			{ArtifactPath: "/a.md", SessionID: "s1", CitedAt: now},
+			{ArtifactPath: "/b.md", SessionID: "s1", CitedAt: now},
+		}
+		if err := writeCitations(dir, initial); err != nil {
+			t.Fatalf("first write: %v", err)
+		}
+
+		// Overwrite with just 1 citation
+		updated := []types.CitationEvent{
+			{ArtifactPath: "/c.md", SessionID: "s2", CitedAt: now},
+		}
+		if err := writeCitations(dir, updated); err != nil {
+			t.Fatalf("second write: %v", err)
+		}
+
+		citationsPath := filepath.Join(dir, ".agents", "ao", "citations.jsonl")
+		content, _ := os.ReadFile(citationsPath)
+		lines := splitNonEmpty(string(content))
+		if len(lines) != 1 {
+			t.Errorf("expected 1 line after overwrite, got %d", len(lines))
+		}
+	})
 }

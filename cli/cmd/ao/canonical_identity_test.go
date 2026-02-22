@@ -66,4 +66,17 @@ func TestCanonicalArtifactPath(t *testing.T) {
 	if got := canonicalArtifactPath(baseDir, absWant); got != absWant {
 		t.Fatalf("canonicalArtifactPath(abs) = %q, want %q", got, absWant)
 	}
+
+	// Empty path returns empty string
+	if got := canonicalArtifactPath(baseDir, ""); got != "" {
+		t.Fatalf("canonicalArtifactPath(empty) = %q, want %q", got, "")
+	}
+	if got := canonicalArtifactPath("  ", ""); got != "" {
+		t.Fatalf("canonicalArtifactPath(whitespace, empty) = %q, want %q", got, "")
+	}
+
+	// Empty baseDir uses "." as base when path is relative
+	if got := canonicalArtifactPath("", "sub/file.md"); got == "" {
+		t.Fatalf("canonicalArtifactPath(empty baseDir, rel) should return non-empty path, got %q", got)
+	}
 }

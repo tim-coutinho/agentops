@@ -118,3 +118,47 @@ func TestPoolBulkApproveThreshold(t *testing.T) {
 		t.Errorf("approved=%d, want 1", len(approved))
 	}
 }
+
+func TestTruncateID(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		max  int
+		want string
+	}{
+		{"short id unchanged", "abc-123", 10, "abc-123"},
+		{"exact length unchanged", "abc-123", 7, "abc-123"},
+		{"truncated with ellipsis", "abcdefghij", 7, "abcd..."},
+		{"single char max", "hello", 4, "h..."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateID(tt.id, tt.max)
+			if got != tt.want {
+				t.Errorf("truncateID(%q, %d) = %q, want %q", tt.id, tt.max, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRepeat(t *testing.T) {
+	tests := []struct {
+		name string
+		s    string
+		n    int
+		want string
+	}{
+		{"repeat 0 times", "abc", 0, ""},
+		{"repeat 1 time", "abc", 1, "abc"},
+		{"repeat 3 times", "ab", 3, "ababab"},
+		{"empty string repeated", "", 5, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := repeat(tt.s, tt.n)
+			if got != tt.want {
+				t.Errorf("repeat(%q, %d) = %q, want %q", tt.s, tt.n, got, tt.want)
+			}
+		})
+	}
+}

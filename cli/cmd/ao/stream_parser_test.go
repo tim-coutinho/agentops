@@ -188,3 +188,38 @@ func TestParseStreamEvents_LargeLine(t *testing.T) {
 		t.Errorf("CurrentAction = %q, want %q", progress.CurrentAction, "result received")
 	}
 }
+
+func TestParseStreamEvents_ErrorResult(t *testing.T) {
+	t.Run("result with is_error=true sets error fields", func(t *testing.T) {
+		input := strings.Join([]string{
+			`{"type":"init","session_id":"s-err"}`,
+			`{"type":"result","is_error":true,"message":"something went wrong","cost_usd":0.01,"num_turns":1}`,
+		}, "\n")
+
+		progress, err := ParseStreamEvents(strings.NewReader(input), nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if progress.CurrentAction != "result error" {
+			t.Errorf("CurrentAction = %q, want %q", progress.CurrentAction, "result error")
+		}
+		if progress.LastError == "" {
+			t.Error("expected LastError to be set for error result")
+		}
+	})
+
+	t.Run("result with is_error=true and no message uses default error", func(t *testing.T) {
+		input := strings.Join([]string{
+			`{"type":"init","session_id":"s-err2"}`,
+			`{"type":"result","is_error":true,"cost_usd":0.0,"num_turns":0}`,
+		}, "\n")
+
+		progress, err := ParseStreamEvents(strings.NewReader(input), nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if progress.LastError != "result event reported error" {
+			t.Errorf("LastError = %q, want %q", progress.LastError, "result event reported error")
+		}
+	})
+}

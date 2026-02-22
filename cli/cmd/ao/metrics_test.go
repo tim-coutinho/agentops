@@ -318,3 +318,119 @@ func TestComputeMetricsSigmaBounded(t *testing.T) {
 		t.Fatalf("expected 2 unique cited artifacts in period, got %d", metrics.UniqueCitedArtifacts)
 	}
 }
+
+func TestCountRetros(t *testing.T) {
+	t.Run("missing retros dir returns 0 with no error", func(t *testing.T) {
+		baseDir := t.TempDir()
+		// No .agents/retros directory created
+		total, withLearnings, err := countRetros(baseDir, time.Now().AddDate(0, 0, -7))
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if total != 0 {
+			t.Errorf("expected 0 total, got %d", total)
+		}
+		if withLearnings != 0 {
+			t.Errorf("expected 0 withLearnings, got %d", withLearnings)
+		}
+	})
+
+	t.Run("retro within time period is counted", func(t *testing.T) {
+		baseDir := t.TempDir()
+		retrosDir := filepath.Join(baseDir, ".agents", "retros")
+		if err := os.MkdirAll(retrosDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		retroContent := "# My Retro\n\n## Key Learnings\n\n- Learned something"
+		if err := os.WriteFile(filepath.Join(retrosDir, "retro.md"), []byte(retroContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+		since := time.Now().AddDate(0, 0, -7)
+		total, withLearnings, err := countRetros(baseDir, since)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if total != 1 {
+			t.Errorf("expected 1 total retro, got %d", total)
+		}
+		if withLearnings != 1 {
+			t.Errorf("expected 1 retro with learnings, got %d", withLearnings)
+		}
+	})
+
+	t.Run("retro without learnings section not counted in withLearnings", func(t *testing.T) {
+		baseDir := t.TempDir()
+		retrosDir := filepath.Join(baseDir, ".agents", "retros")
+		if err := os.MkdirAll(retrosDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		retroContent := "# My Retro\n\n## Summary\n\nDid some things"
+		if err := os.WriteFile(filepath.Join(retrosDir, "retro.md"), []byte(retroContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+		since := time.Now().AddDate(0, 0, -7)
+		total, withLearnings, err := countRetros(baseDir, since)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if total != 1 {
+			t.Errorf("expected 1 total retro, got %d", total)
+		}
+		if withLearnings != 0 {
+			t.Errorf("expected 0 retros with learnings, got %d", withLearnings)
+		}
+	})
+
+	t.Run("non-md files not counted", func(t *testing.T) {
+		baseDir := t.TempDir()
+		retrosDir := filepath.Join(baseDir, ".agents", "retros")
+		if err := os.MkdirAll(retrosDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(retrosDir, "retro.txt"), []byte("content"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		total, _, err := countRetros(baseDir, time.Now().AddDate(0, 0, -7))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if total != 0 {
+			t.Errorf("expected 0 for non-md file, got %d", total)
+		}
+	})
+}
+
+func TestParseUtilityFromJSONL(t *testing.T) {
+	t.Run("returns utility from JSONL first line", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "learning.jsonl")
+		data := `{"id":"L1","utility":0.75}` + "\n"
+		if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+			t.Fatal(err)
+		}
+		got := parseUtilityFromFile(path)
+		if got != 0.75 {
+			t.Errorf("parseUtilityFromFile() = %f, want 0.75", got)
+		}
+	})
+
+	t.Run("returns 0 for nonexistent JSONL", func(t *testing.T) {
+		got := parseUtilityFromFile("/tmp/no-such-file-xyz.jsonl")
+		if got != 0 {
+			t.Errorf("expected 0 for nonexistent file, got %f", got)
+		}
+	})
+
+	t.Run("returns 0 for JSONL without utility field", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "noutil.jsonl")
+		data := `{"id":"L1","content":"no utility field"}` + "\n"
+		if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+			t.Fatal(err)
+		}
+		got := parseUtilityFromFile(path)
+		if got != 0 {
+			t.Errorf("expected 0 for missing utility, got %f", got)
+		}
+	})
+}

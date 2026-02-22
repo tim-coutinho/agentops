@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 )
 
 func TestParseBeadIDs(t *testing.T) {
@@ -72,4 +73,60 @@ func TestParseBeadIDs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDefaultFireConfig(t *testing.T) {
+	cfg := DefaultFireConfig()
+	if cfg.MaxPolecats != 4 {
+		t.Errorf("MaxPolecats = %d, want 4", cfg.MaxPolecats)
+	}
+	if cfg.MaxRetries != 3 {
+		t.Errorf("MaxRetries = %d, want 3", cfg.MaxRetries)
+	}
+	if cfg.PollInterval != 30*time.Second {
+		t.Errorf("PollInterval = %v, want 30s", cfg.PollInterval)
+	}
+	if cfg.BackoffBase != 30*time.Second {
+		t.Errorf("BackoffBase = %v, want 30s", cfg.BackoffBase)
+	}
+}
+
+func TestIsComplete(t *testing.T) {
+	t.Run("empty ready and burning is complete", func(t *testing.T) {
+		state := &FireState{
+			Ready:   []string{},
+			Burning: []string{},
+			Reaped:  []string{"ol-001"},
+		}
+		if !isComplete(state) {
+			t.Error("expected complete when ready and burning are empty")
+		}
+	})
+
+	t.Run("has ready issues means not complete", func(t *testing.T) {
+		state := &FireState{
+			Ready:   []string{"ol-001"},
+			Burning: []string{},
+		}
+		if isComplete(state) {
+			t.Error("expected not complete when ready has issues")
+		}
+	})
+
+	t.Run("has burning issues means not complete", func(t *testing.T) {
+		state := &FireState{
+			Ready:   []string{},
+			Burning: []string{"ol-002"},
+		}
+		if isComplete(state) {
+			t.Error("expected not complete when burning has issues")
+		}
+	})
+
+	t.Run("nil slices treated as empty (complete)", func(t *testing.T) {
+		state := &FireState{}
+		if !isComplete(state) {
+			t.Error("expected complete for empty state")
+		}
+	})
 }

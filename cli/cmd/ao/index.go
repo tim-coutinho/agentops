@@ -267,11 +267,11 @@ func extractDateFromFilename(filename string) string {
 // summaryFromFilename derives a summary from the filename.
 func summaryFromFilename(filename string) string {
 	name := strings.TrimSuffix(filename, ".md")
-	// Remove date prefix if present
-	if dateFromFilenameRe.MatchString(name) {
-		name = name[11:] // len("YYYY-MM-DD-") == 11
-		if len(name) == 0 {
-			name = strings.TrimSuffix(filename, ".md")
+	// Remove date prefix if present (YYYY-MM-DD-)
+	if len(name) > 11 && dateFromFilenameRe.MatchString(name) && name[10] == '-' {
+		rest := name[11:] // len("YYYY-MM-DD-") == 11
+		if len(rest) > 0 {
+			name = rest
 		}
 	}
 	return name
