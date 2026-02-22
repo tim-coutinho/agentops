@@ -9,96 +9,74 @@ import (
 	"time"
 )
 
-func TestLoadMessagesWithCorruption(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "inbox_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_ = os.RemoveAll(tmpDir) //nolint:errcheck // test cleanup
-	}()
-
+// setupInboxDir creates a temp directory with a .agents/mail/ subdirectory and
+// writes the given content to messages.jsonl. Returns the temp directory root.
+func setupInboxDir(t *testing.T, content string) string {
+	t.Helper()
+	tmpDir := t.TempDir()
 	mailDir := filepath.Join(tmpDir, ".agents", "mail")
 	if err := os.MkdirAll(mailDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-
-	// Write messages with some corrupted lines
 	messagesPath := filepath.Join(mailDir, "messages.jsonl")
-	content := `{"id":"msg-1","from":"agent-1","to":"mayor","body":"test 1","timestamp":"2024-01-01T00:00:00Z","read":false,"type":"progress"}
+	if err := os.WriteFile(messagesPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return tmpDir
+}
+
+func TestLoadMessages(t *testing.T) {
+	tests := []struct {
+		name           string
+		content        string
+		wantMessages   int
+		wantCorrupted  int
+	}{
+		{
+			name: "corrupted lines are skipped",
+			content: `{"id":"msg-1","from":"agent-1","to":"mayor","body":"test 1","timestamp":"2024-01-01T00:00:00Z","read":false,"type":"progress"}
 not valid json
 {"id":"msg-2","from":"agent-2","to":"mayor","body":"test 2","timestamp":"2024-01-02T00:00:00Z","read":false,"type":"completion"}
 {malformed
 {"id":"msg-3","from":"witness","to":"mayor","body":"test 3","timestamp":"2024-01-03T00:00:00Z","read":false,"type":"blocker"}
-`
-	if err := os.WriteFile(messagesPath, []byte(content), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	messages, corruptedCount, err := loadMessages(tmpDir)
-	if err != nil {
-		t.Errorf("loadMessages() error = %v", err)
-	}
-
-	if len(messages) != 3 {
-		t.Errorf("got %d messages, want 3", len(messages))
-	}
-
-	if corruptedCount != 2 {
-		t.Errorf("got %d corrupted, want 2", corruptedCount)
-	}
-}
-
-func TestLoadMessagesEmptyLines(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "inbox_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_ = os.RemoveAll(tmpDir) //nolint:errcheck // test cleanup
-	}()
-
-	mailDir := filepath.Join(tmpDir, ".agents", "mail")
-	if err := os.MkdirAll(mailDir, 0700); err != nil {
-		t.Fatal(err)
-	}
-
-	// Write messages with empty lines
-	messagesPath := filepath.Join(mailDir, "messages.jsonl")
-	content := `{"id":"msg-1","from":"agent-1","to":"mayor","body":"test 1","timestamp":"2024-01-01T00:00:00Z","read":false,"type":"progress"}
+`,
+			wantMessages:  3,
+			wantCorrupted: 2,
+		},
+		{
+			name: "empty lines are not counted as corrupted",
+			content: `{"id":"msg-1","from":"agent-1","to":"mayor","body":"test 1","timestamp":"2024-01-01T00:00:00Z","read":false,"type":"progress"}
 
 {"id":"msg-2","from":"agent-2","to":"mayor","body":"test 2","timestamp":"2024-01-02T00:00:00Z","read":false,"type":"completion"}
 
-`
-	if err := os.WriteFile(messagesPath, []byte(content), 0600); err != nil {
-		t.Fatal(err)
+`,
+			wantMessages:  2,
+			wantCorrupted: 0,
+		},
 	}
 
-	messages, corruptedCount, err := loadMessages(tmpDir)
-	if err != nil {
-		t.Errorf("loadMessages() error = %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := setupInboxDir(t, tt.content)
 
-	if len(messages) != 2 {
-		t.Errorf("got %d messages, want 2", len(messages))
-	}
-
-	// Empty lines should not count as corrupted
-	if corruptedCount != 0 {
-		t.Errorf("got %d corrupted, want 0 (empty lines should not count)", corruptedCount)
+			messages, corruptedCount, err := loadMessages(tmpDir)
+			if err != nil {
+				t.Errorf("loadMessages() error = %v", err)
+			}
+			if len(messages) != tt.wantMessages {
+				t.Errorf("got %d messages, want %d", len(messages), tt.wantMessages)
+			}
+			if corruptedCount != tt.wantCorrupted {
+				t.Errorf("got %d corrupted, want %d", corruptedCount, tt.wantCorrupted)
+			}
+		})
 	}
 }
 
 func TestLoadMessagesFileNotExist(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "inbox_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_ = os.RemoveAll(tmpDir) //nolint:errcheck // test cleanup
-	}()
+	tmpDir := t.TempDir()
 
-	_, _, err = loadMessages(tmpDir)
+	_, _, err := loadMessages(tmpDir)
 	if !os.IsNotExist(err) {
 		t.Errorf("expected os.IsNotExist error, got %v", err)
 	}
@@ -113,16 +91,16 @@ func TestFilterMessagesInvalidDuration(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		since          string
-		wantWarning    bool
-		wantMsgCount   int
+		name         string
+		since        string
+		wantWarning  bool
+		wantMsgCount int
 	}{
 		{"valid duration 5m", "5m", false, 2},
 		{"valid duration 1h", "1h", false, 2},
-		{"invalid duration 5x", "5x", true, 2},       // Invalid, should warn and show all
+		{"invalid duration 5x", "5x", true, 2},     // Invalid, should warn and show all
 		{"invalid duration abc", "abc", true, 2},    // Invalid, should warn and show all
-		{"valid negative duration -5m", "-5m", false, 0},   // Valid Go duration, results in future time filter
+		{"valid negative duration -5m", "-5m", false, 0}, // Valid Go duration, results in future time filter
 		{"empty duration", "", false, 2},            // No filter
 	}
 
@@ -191,13 +169,7 @@ func TestFilterMessagesUnreadOnly(t *testing.T) {
 }
 
 func TestAppendMessageConcurrent(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "inbox_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_ = os.RemoveAll(tmpDir) //nolint:errcheck // test cleanup
-	}()
+	tmpDir := t.TempDir()
 
 	// Create mail directory
 	mailDir := filepath.Join(tmpDir, ".agents", "mail")
@@ -265,13 +237,7 @@ func TestDefaultInboxLimit(t *testing.T) {
 }
 
 func TestMarkMessagesReadConcurrent(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "inbox_test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_ = os.RemoveAll(tmpDir) //nolint:errcheck // test cleanup
-	}()
+	tmpDir := t.TempDir()
 
 	mailDir := filepath.Join(tmpDir, ".agents", "mail")
 	if err := os.MkdirAll(mailDir, 0700); err != nil {
