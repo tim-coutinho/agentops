@@ -202,3 +202,225 @@ func TestMemRLRollbackMatrixValidation(t *testing.T) {
 		t.Fatal("expected validation error when rollback trigger min_sample_size <= 0")
 	}
 }
+
+func TestValidateMemRLPolicyContract_AllErrors(t *testing.T) {
+	valid := DefaultMemRLPolicyContract()
+
+	t.Run("schema_version_zero", func(t *testing.T) {
+		c := valid
+		c.SchemaVersion = 0
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for schema_version 0")
+		}
+	})
+
+	t.Run("invalid_default_mode", func(t *testing.T) {
+		c := valid
+		c.DefaultMode = "invalid"
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for invalid default_mode")
+		}
+	})
+
+	t.Run("invalid_unknown_failure_class_action", func(t *testing.T) {
+		c := valid
+		c.UnknownFailureClassAction = "invalid"
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for invalid unknown_failure_class_action")
+		}
+	})
+
+	t.Run("invalid_missing_metadata_action", func(t *testing.T) {
+		c := valid
+		c.MissingMetadataAction = "invalid"
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for invalid missing_metadata_action")
+		}
+	})
+
+	t.Run("empty_tie_break_rules", func(t *testing.T) {
+		c := valid
+		c.TieBreakRules = nil
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for empty tie_break_rules")
+		}
+	})
+
+	t.Run("empty_rules", func(t *testing.T) {
+		c := valid
+		c.Rules = nil
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for empty rules")
+		}
+	})
+
+	t.Run("rule_empty_id", func(t *testing.T) {
+		c := valid
+		c.Rules = []MemRLPolicyRule{{
+			RuleID:        "",
+			Mode:          MemRLModeObserve,
+			FailureClass:  MemRLFailureClassAny,
+			AttemptBucket: MemRLAttemptBucketAny,
+			Action:        MemRLActionRetry,
+		}}
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for empty rule_id")
+		}
+	})
+
+	t.Run("rule_invalid_mode", func(t *testing.T) {
+		c := valid
+		c.Rules = []MemRLPolicyRule{{
+			RuleID:        "test",
+			Mode:          "bad",
+			FailureClass:  MemRLFailureClassAny,
+			AttemptBucket: MemRLAttemptBucketAny,
+			Action:        MemRLActionRetry,
+		}}
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for invalid rule mode")
+		}
+	})
+
+	t.Run("rule_invalid_action", func(t *testing.T) {
+		c := valid
+		c.Rules = []MemRLPolicyRule{{
+			RuleID:        "test",
+			Mode:          MemRLModeObserve,
+			FailureClass:  MemRLFailureClassAny,
+			AttemptBucket: MemRLAttemptBucketAny,
+			Action:        "bad",
+		}}
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for invalid rule action")
+		}
+	})
+
+	t.Run("rule_invalid_attempt_bucket", func(t *testing.T) {
+		c := valid
+		c.Rules = []MemRLPolicyRule{{
+			RuleID:        "test",
+			Mode:          MemRLModeObserve,
+			FailureClass:  MemRLFailureClassAny,
+			AttemptBucket: "bad",
+			Action:        MemRLActionRetry,
+		}}
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for invalid attempt_bucket")
+		}
+	})
+
+	t.Run("rule_unknown_failure_class", func(t *testing.T) {
+		c := valid
+		c.Rules = []MemRLPolicyRule{{
+			RuleID:        "test",
+			Mode:          MemRLModeObserve,
+			FailureClass:  "nonexistent_class",
+			AttemptBucket: MemRLAttemptBucketAny,
+			Action:        MemRLActionRetry,
+		}}
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for unknown failure_class")
+		}
+	})
+
+	t.Run("empty_rollback_matrix", func(t *testing.T) {
+		c := valid
+		c.RollbackMatrix = nil
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for empty rollback_matrix")
+		}
+	})
+
+	t.Run("rollback_empty_trigger_id", func(t *testing.T) {
+		c := valid
+		c.RollbackMatrix = []MemRLRollbackTrigger{{TriggerID: ""}}
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for empty trigger_id")
+		}
+	})
+
+	t.Run("rollback_empty_metric", func(t *testing.T) {
+		c := valid
+		c.RollbackMatrix = []MemRLRollbackTrigger{{
+			TriggerID: "test",
+			Metric:    "",
+		}}
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for empty metric")
+		}
+	})
+
+	t.Run("rollback_empty_metric_source_command", func(t *testing.T) {
+		c := valid
+		c.RollbackMatrix = []MemRLRollbackTrigger{{
+			TriggerID:           "test",
+			Metric:              "score",
+			MetricSourceCommand: "",
+		}}
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for empty metric_source_command")
+		}
+	})
+
+	t.Run("rollback_empty_lookback_window", func(t *testing.T) {
+		c := valid
+		c.RollbackMatrix = []MemRLRollbackTrigger{{
+			TriggerID:           "test",
+			Metric:              "score",
+			MetricSourceCommand: "cmd",
+			LookbackWindow:      "",
+		}}
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for empty lookback_window")
+		}
+	})
+
+	t.Run("rollback_empty_threshold", func(t *testing.T) {
+		c := valid
+		c.RollbackMatrix = []MemRLRollbackTrigger{{
+			TriggerID:           "test",
+			Metric:              "score",
+			MetricSourceCommand: "cmd",
+			LookbackWindow:      "7d",
+			MinSampleSize:       3,
+			Threshold:           "",
+		}}
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for empty threshold")
+		}
+	})
+
+	t.Run("rollback_empty_operator_action", func(t *testing.T) {
+		c := valid
+		c.RollbackMatrix = []MemRLRollbackTrigger{{
+			TriggerID:           "test",
+			Metric:              "score",
+			MetricSourceCommand: "cmd",
+			LookbackWindow:      "7d",
+			MinSampleSize:       3,
+			Threshold:           ">0.8",
+			OperatorAction:      "",
+		}}
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for empty operator_action")
+		}
+	})
+
+	t.Run("rollback_empty_verification_command", func(t *testing.T) {
+		c := valid
+		c.RollbackMatrix = []MemRLRollbackTrigger{{
+			TriggerID:           "test",
+			Metric:              "score",
+			MetricSourceCommand: "cmd",
+			LookbackWindow:      "7d",
+			MinSampleSize:       3,
+			Threshold:           ">0.8",
+			OperatorAction:      "alert",
+			VerificationCommand: "",
+		}}
+		if err := ValidateMemRLPolicyContract(c); err == nil {
+			t.Error("expected error for empty verification_command")
+		}
+	})
+}

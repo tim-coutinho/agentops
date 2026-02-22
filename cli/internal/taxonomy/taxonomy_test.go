@@ -201,6 +201,36 @@ func TestTierConfigsCompleteness(t *testing.T) {
 	}
 }
 
+func TestAssignTier_EmptyConfigs(t *testing.T) {
+	// Empty config map: should return Discard for any score
+	emptyConfigs := map[types.Tier]TierConfig{}
+	got := AssignTier(0.95, emptyConfigs)
+	if got != types.TierDiscard {
+		t.Errorf("AssignTier(0.95, empty) = %q, want %q", got, types.TierDiscard)
+	}
+}
+
+func TestAssignTier_PartialConfigs(t *testing.T) {
+	// Config with only Gold tier
+	partial := map[types.Tier]TierConfig{
+		types.TierGold: DefaultTierConfigs[types.TierGold],
+	}
+	// Score that would be Gold
+	if got := AssignTier(0.90, partial); got != types.TierGold {
+		t.Errorf("AssignTier(0.90, gold-only) = %q, want %q", got, types.TierGold)
+	}
+	// Score that would be Silver (not in config) — should fall through to Discard
+	if got := AssignTier(0.75, partial); got != types.TierDiscard {
+		t.Errorf("AssignTier(0.75, gold-only) = %q, want %q", got, types.TierDiscard)
+	}
+}
+
+func TestRequiresHumanGate_UnknownTier(t *testing.T) {
+	if got := RequiresHumanGate(types.Tier("unknown"), DefaultTierConfigs); got != false {
+		t.Errorf("RequiresHumanGate(unknown) = %v, want false", got)
+	}
+}
+
 func TestTierBoundariesAreContiguous(t *testing.T) {
 	// Verify that tier boundaries don't have gaps
 	prevMax := 0.0

@@ -70,6 +70,15 @@ func TestHasSmartConnections(t *testing.T) {
 	}
 }
 
+func TestDetectVault_EmptyString(t *testing.T) {
+	// Empty string should use current working directory (os.Getwd)
+	// and walk upward. We don't control cwd, but it should not panic.
+	result := DetectVault("")
+	// Result depends on whether we're inside an Obsidian vault.
+	// Just verify no panic and it returns a string.
+	_ = result
+}
+
 func TestIsInVault(t *testing.T) {
 	tmpDir := t.TempDir()
 
