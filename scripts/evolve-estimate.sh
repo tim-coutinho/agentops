@@ -135,19 +135,9 @@ compute_avg_rate() {
     if (count > 0) printf "%.1f", sum/count; else print ""
   }')
 
-  # If no violations_fixed data, try to infer from cycle count
+  # If no violations_fixed data, we cannot compute a rate
   if [[ -z "$rate" ]]; then
-    # Count total cycles for this goal
-    local cycle_count
-    cycle_count=$(jq -r --arg g "$goal" '
-      select(.goal_id == $g or (.goal_ids // [] | index($g)))
-    ' "$history_file" 2>/dev/null | jq -s 'length' 2>/dev/null || echo "0")
-    if [[ "$cycle_count" -gt 0 && "$cycle_count" != "0" ]]; then
-      # Return empty — we know cycles happened but not the rate
-      echo ""
-    else
-      echo ""
-    fi
+    echo ""
     return
   fi
 

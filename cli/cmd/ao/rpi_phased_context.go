@@ -195,6 +195,14 @@ Fallback direct command:
 {{end}}/post-mortem{{if .FastPath}} --quick{{end}} {{.EpicID}}`,
 }
 
+// retryContextDisciplineInstruction is appended to retry prompts to prevent
+// re-doing work that already succeeded in prior phases or prior attempts.
+const retryContextDisciplineInstruction = `Before retrying, summarize what was accomplished in prior phases and what specific issue caused the retry. Do not repeat work that already succeeded.`
+
+// retryPhaseSummaryInstruction is appended to retry prompts so the model
+// includes prior phase context when constructing the retry attempt.
+const retryPhaseSummaryInstruction = `Include a brief summary of prior phase outcomes when constructing the retry context. This helps the model avoid re-doing completed work and focus on the specific failure.`
+
 // retryPrompts defines templates for retry invocations with feedback context.
 // Phase 1 retries are handled WITHIN the session (the prompt instructs Claude to retry).
 // Phase 3 (validation) FAIL triggers a fresh phase 2 (implementation) session.
@@ -445,7 +453,16 @@ func buildRetryPrompt(cwd string, phaseNum int, state *phasedState, retryCtx *re
 		}
 	}
 
-	// 3. Retry skill invocation (last — the actual command with findings)
+	// 3. Retry-specific context discipline (avoid repeating prior work)
+	prompt.WriteString("\n")
+	prompt.WriteString(retryContextDisciplineInstruction)
+	prompt.WriteString("\n\n")
+
+	// 4. Retry phase summary instruction (include prior phase outcomes)
+	prompt.WriteString(retryPhaseSummaryInstruction)
+	prompt.WriteString("\n\n")
+
+	// 5. Retry skill invocation (last — the actual command with findings)
 	prompt.WriteString(skillInvocation)
 
 	return prompt.String(), nil

@@ -363,6 +363,18 @@ jobs:
             echo "✅ All test packages completed within ${THRESHOLD}s"
           fi
 
+      - name: Verify embedded hooks in sync
+        run: |
+          echo "=== Verifying embedded hooks are in sync ==="
+          cd cli && make sync-hooks
+          if ! git diff --exit-code cli/embedded/; then
+            echo ""
+            echo "❌ Embedded hooks are out of sync with hooks/ source files."
+            echo "   Run 'cd cli && make sync-hooks' and commit the result."
+            exit 1
+          fi
+          echo "✅ Embedded hooks are in sync"
+
       - name: Enforce Go complexity budget on changed files
         run: |
           echo "=== Enforcing Go complexity budget ==="

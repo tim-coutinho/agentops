@@ -90,6 +90,9 @@ if [[ "$TRACK_DELTA" == "true" ]]; then
   echo "# Coverage snapshot: $TIMESTAMP (git: $GIT_SHA)" > "$CURRENT_SNAPSHOT"
   sort "$CURRENT_DATA" >> "$CURRENT_SNAPSHOT"
 
+  # Retention: keep last 30 snapshots, prune older
+  ls -1t "$SNAPSHOT_DIR"/*.tsv 2>/dev/null | tail -n +31 | xargs rm -f 2>/dev/null || true
+
   echo ""
   echo "=== Coverage Delta ==="
 

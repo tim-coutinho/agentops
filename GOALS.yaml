@@ -114,6 +114,23 @@ goals:
   # Complexity, coverage, and lint checks that catch regressions.
   # ============================================================================
 
+  # Complexity Goal Hierarchy:
+  #   go-internal-complexity-ceiling: cli/internal/ packages only, strict threshold (CC < 8)
+  #   go-absolute-complexity-ceiling: all of cli/, moderate threshold (CC < 10), absolute (all files)
+  #   go-cmdao-complexity-tracking:   cli/cmd/ao/ only, same threshold as ceiling (CC < 10), weight 3
+  #   go-complexity-gate:             pre-commit gate, delta-only (changed files), regression prevention
+  #
+  # Subsumption note:
+  #   go-cmdao-complexity-tracking is fully subsumed by go-absolute-complexity-ceiling.
+  #   Both check CC < 10, and cli/cmd/ao/ is a strict subset of cli/. Any violation caught by
+  #   go-cmdao-complexity-tracking would also be caught by go-absolute-complexity-ceiling.
+  #   Keeping go-cmdao-complexity-tracking for explicitness and lower weight (3 vs 5) — useful
+  #   as a focused signal for cmd/ao/ specifically (e.g., per-area reporting, future tightening).
+  #
+  # Coverage summary by directory:
+  #   cli/              → go-absolute-complexity-ceiling (CC<10, absolute) + go-complexity-gate (delta)
+  #   cli/internal/     → go-internal-complexity-ceiling (CC<8, stricter) + above two
+  #   cli/cmd/ao/       → go-cmdao-complexity-tracking (CC<10, redundant w/ ceiling) + above two
   - id: go-complexity-gate
     description: "Changed non-test Go code under cli/ stays below complexity failure threshold"
     check: "bash scripts/check-go-complexity.sh"

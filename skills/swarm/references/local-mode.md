@@ -118,6 +118,12 @@ You are worker-<task-id>.
 Your Assignment: Task #<id>: <subject>
 <description>
 
+FILE MANIFEST (files you are permitted to modify):
+<list of files from plan — one per line>
+
+You MUST NOT modify files outside this manifest. If you need to read other files for context, that is fine.
+If your task requires modifying a file not in this manifest, write a blocked result instead.
+
 Instructions:
 1. Execute your pre-assigned task independently — create/edit files as needed, verify your work
 2. Write your result to .agents/swarm/results/<task-id>.json (see format below)
@@ -143,6 +149,21 @@ Rules:
 - Do NOT message other workers
 - Do NOT run git add, git commit, or git push — the lead commits
 ```
+
+> **Orchestrator note — populating the FILE MANIFEST:** When building each worker prompt, replace
+> `<list of files from plan — one per line>` with the explicit file paths assigned to that task in
+> your plan. Pull these from the task's `metadata.files` field if present, or derive them from the
+> task description during planning. Example populated manifest:
+>
+> ```
+> FILE MANIFEST (files you are permitted to modify):
+> src/middleware/auth.py
+> tests/test_auth.py
+> ```
+>
+> If the plan does not yet enumerate files, add a planning step to identify them before spawning
+> workers. An empty or missing manifest is a signal to pause and plan further — not to let workers
+> operate unconstrained.
 
 ## Race Condition Prevention
 
