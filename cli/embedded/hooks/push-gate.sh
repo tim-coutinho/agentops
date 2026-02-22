@@ -29,7 +29,7 @@ fi
 # Hot path: only care about git push/tag (<50ms for non-git commands)
 echo "$CMD" | grep -qE 'git\s+(push|tag)' || exit 0
 
-# Find repo root
+# Find repo root (needed by race gate and chain checks)
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 if [ -z "$ROOT" ]; then
     # Not in a git repo — can't enforce, fail open
@@ -69,6 +69,25 @@ else
         fi
         return 1
     }
+fi
+
+# --- Race test gate: cmd/ao ---
+if command -v go &>/dev/null && [ -d "$ROOT/cli" ]; then
+  echo "Running race tests on cli/cmd/ao/..." >&2
+  if ! (cd "$ROOT/cli" && go test -race -count=1 -timeout 120s ./cmd/ao/... 2>&1); then
+    echo "ERROR: Race condition detected in cli/cmd/ao/" >&2
+    exit 2
+  fi
+fi
+
+# --- Complexity gate: prevent regressions above CC 10 ---
+if command -v gocyclo &>/dev/null; then
+  VIOLATIONS=$(gocyclo -over 9 "$ROOT/cli/cmd/ao/" 2>/dev/null | grep -v "_test\.go" | head -20)
+  if [ -n "$VIOLATIONS" ]; then
+    echo "WARNING: Functions exceeding complexity 10 in cli/cmd/ao/:" >&2
+    echo "$VIOLATIONS" >&2
+    # Warn but don't block (CC reduction in progress)
+  fi
 fi
 
 LOG_DIR="$ROOT/.agents/ao"

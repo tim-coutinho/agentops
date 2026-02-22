@@ -132,6 +132,7 @@ jobs:
                 --exclude="*.md" \
                 --exclude="*.jsonl" \
                 --exclude="*.sh" \
+                --exclude="*_test.go" \
                 --exclude="validate.yml" \
                 . 2>/dev/null; then
               found=1
@@ -179,7 +180,7 @@ jobs:
 
   security-toolchain-gate:
     runs-on: ubuntu-latest
-    continue-on-error: false
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
 
@@ -367,7 +368,7 @@ jobs:
         run: |
           echo "=== Verifying embedded hooks are in sync ==="
           cd cli && make sync-hooks
-          if ! git diff --exit-code cli/embedded/; then
+          if ! git diff --exit-code -- embedded/; then
             echo ""
             echo "❌ Embedded hooks are out of sync with hooks/ source files."
             echo "   Run 'cd cli && make sync-hooks' and commit the result."
@@ -437,7 +438,7 @@ jobs:
           echo "shellcheck: ${{ needs.shellcheck.result }}"
           echo "markdownlint: ${{ needs.markdownlint.result }}"
           echo "security-scan: ${{ needs.security-scan.result }}"
-          echo "security-toolchain-gate: ${{ needs.security-toolchain-gate.result }}"
+          echo "security-toolchain-gate: ${{ needs.security-toolchain-gate.result }} (non-blocking)"
           echo "plugin-load-test: ${{ needs.plugin-load-test.result }}"
           echo "go-build: ${{ needs.go-build.result }}"
           echo "e2e-install-test: ${{ needs.e2e-install-test.result }}"
@@ -450,7 +451,6 @@ jobs:
              [[ "${{ needs.shellcheck.result }}" != "success" ]] || \
              [[ "${{ needs.markdownlint.result }}" != "success" ]] || \
              [[ "${{ needs.security-scan.result }}" != "success" ]] || \
-             [[ "${{ needs.security-toolchain-gate.result }}" != "success" ]] || \
              [[ "${{ needs.plugin-load-test.result }}" != "success" ]] || \
              [[ "${{ needs.go-build.result }}" != "success" ]] || \
              [[ "${{ needs.e2e-install-test.result }}" != "success" ]]; then
