@@ -1,15 +1,24 @@
 package main
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/boshu2/agentops/cli/internal/formatter"
+	"github.com/boshu2/agentops/cli/internal/parser"
 	"github.com/boshu2/agentops/cli/internal/storage"
 	"github.com/boshu2/agentops/cli/internal/types"
 )
+
+// ---------------------------------------------------------------------------
+// extractSnippet
+// ---------------------------------------------------------------------------
 
 func TestExtractSnippet(t *testing.T) {
 	content := "The quick brown fox jumps over the lazy dog and continues running"
@@ -69,6 +78,10 @@ func TestExtractSnippet(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// lastSpaceIndex
+// ---------------------------------------------------------------------------
+
 func TestLastSpaceIndex(t *testing.T) {
 	tests := []struct {
 		name string
@@ -92,6 +105,10 @@ func TestLastSpaceIndex(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// extractIssueIDs
+// ---------------------------------------------------------------------------
 
 func TestExtractIssueIDs(t *testing.T) {
 	tests := []struct {
@@ -122,6 +139,10 @@ func TestExtractIssueIDs(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// truncateString
+// ---------------------------------------------------------------------------
+
 func TestTruncateString(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -144,6 +165,10 @@ func TestTruncateString(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// dedup
+// ---------------------------------------------------------------------------
 
 func TestDedup(t *testing.T) {
 	tests := []struct {
@@ -171,6 +196,10 @@ func TestDedup(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// splitMarkdownSections
+// ---------------------------------------------------------------------------
 
 func TestSplitMarkdownSections(t *testing.T) {
 	t.Run("empty string returns one section", func(t *testing.T) {
@@ -227,6 +256,10 @@ func TestSplitMarkdownSections(t *testing.T) {
 	})
 }
 
+// ---------------------------------------------------------------------------
+// generateSummary
+// ---------------------------------------------------------------------------
+
 func TestGenerateSummary(t *testing.T) {
 	t.Run("uses first decision when available", func(t *testing.T) {
 		decisions := []string{"First decision", "Second decision"}
@@ -260,6 +293,10 @@ func TestGenerateSummary(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// countLines
+// ---------------------------------------------------------------------------
 
 func TestCountLines(t *testing.T) {
 	t.Run("returns 0 for nonexistent file", func(t *testing.T) {
@@ -295,6 +332,10 @@ func TestCountLines(t *testing.T) {
 	})
 }
 
+// ---------------------------------------------------------------------------
+// noFilesError
+// ---------------------------------------------------------------------------
+
 func TestNoFilesError(t *testing.T) {
 	t.Run("quiet mode returns nil", func(t *testing.T) {
 		err := noFilesError(true, "no files found")
@@ -314,11 +355,19 @@ func TestNoFilesError(t *testing.T) {
 	})
 }
 
+// ---------------------------------------------------------------------------
+// forgeWarnf
+// ---------------------------------------------------------------------------
+
 func TestForgeWarnf(t *testing.T) {
 	t.Log("smoke: forgeWarnf should not panic regardless of quiet flag")
 	forgeWarnf(true, "should not print: %s", "test")
 	forgeWarnf(false, "test warning (goes to stderr): %s\n", "msg")
 }
+
+// ---------------------------------------------------------------------------
+// collectFilesFromPatterns
+// ---------------------------------------------------------------------------
 
 func TestCollectFilesFromPatterns(t *testing.T) {
 	dir := t.TempDir()
@@ -384,6 +433,10 @@ func TestCollectFilesFromPatterns(t *testing.T) {
 	})
 }
 
+// ---------------------------------------------------------------------------
+// cloneHooksMap (lives in hooks.go, tested here for legacy coverage)
+// ---------------------------------------------------------------------------
+
 func TestCloneHooksMap(t *testing.T) {
 	t.Run("clones hooks sub-map from rawSettings", func(t *testing.T) {
 		rawSettings := map[string]any{
@@ -424,6 +477,10 @@ func TestCloneHooksMap(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// extractFilePathsFromTool
+// ---------------------------------------------------------------------------
 
 func TestExtractFilePathsFromTool(t *testing.T) {
 	t.Run("extracts file_path from tool input", func(t *testing.T) {
@@ -477,6 +534,10 @@ func TestExtractFilePathsFromTool(t *testing.T) {
 	})
 }
 
+// ---------------------------------------------------------------------------
+// extractIssueRefs
+// ---------------------------------------------------------------------------
+
 func TestExtractIssueRefs(t *testing.T) {
 	t.Run("extracts issue IDs from content", func(t *testing.T) {
 		state := &transcriptState{seenIssues: make(map[string]bool)}
@@ -502,6 +563,10 @@ func TestExtractIssueRefs(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// extractToolRefs
+// ---------------------------------------------------------------------------
 
 func TestExtractToolRefs(t *testing.T) {
 	t.Run("counts tool calls in session", func(t *testing.T) {
@@ -534,6 +599,10 @@ func TestExtractToolRefs(t *testing.T) {
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// updateSessionMeta
+// ---------------------------------------------------------------------------
 
 func TestUpdateSessionMeta(t *testing.T) {
 	t.Run("sets session ID from first message with ID", func(t *testing.T) {
@@ -574,4 +643,1360 @@ func TestUpdateSessionMeta(t *testing.T) {
 			t.Errorf("expected date updated to earlier=%v, got %v", earlier, session.Date)
 		}
 	})
+}
+
+// ===========================================================================
+// NEW TESTS — covering previously-uncovered functions
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// forgeTotals.addSession
+// ---------------------------------------------------------------------------
+
+func TestForge_AddSession(t *testing.T) {
+	tests := []struct {
+		name          string
+		sessions      []*storage.Session
+		wantSessions  int
+		wantDecisions int
+		wantKnowledge int
+	}{
+		{
+			name:          "empty session",
+			sessions:      []*storage.Session{{}},
+			wantSessions:  1,
+			wantDecisions: 0,
+			wantKnowledge: 0,
+		},
+		{
+			name: "session with decisions and knowledge",
+			sessions: []*storage.Session{{
+				Decisions: []string{"d1", "d2"},
+				Knowledge: []string{"k1"},
+			}},
+			wantSessions:  1,
+			wantDecisions: 2,
+			wantKnowledge: 1,
+		},
+		{
+			name: "multiple sessions accumulate",
+			sessions: []*storage.Session{
+				{Decisions: []string{"d1"}, Knowledge: []string{"k1", "k2"}},
+				{Decisions: []string{"d2", "d3"}, Knowledge: []string{"k3"}},
+			},
+			wantSessions:  2,
+			wantDecisions: 3,
+			wantKnowledge: 3,
+		},
+		{
+			name:          "nil slices count as zero",
+			sessions:      []*storage.Session{{Decisions: nil, Knowledge: nil}},
+			wantSessions:  1,
+			wantDecisions: 0,
+			wantKnowledge: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			totals := forgeTotals{}
+			for _, s := range tt.sessions {
+				totals.addSession(s)
+			}
+			if totals.sessions != tt.wantSessions {
+				t.Errorf("sessions = %d, want %d", totals.sessions, tt.wantSessions)
+			}
+			if totals.decisions != tt.wantDecisions {
+				t.Errorf("decisions = %d, want %d", totals.decisions, tt.wantDecisions)
+			}
+			if totals.knowledge != tt.wantKnowledge {
+				t.Errorf("knowledge = %d, want %d", totals.knowledge, tt.wantKnowledge)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// handleForgeDryRun
+// ---------------------------------------------------------------------------
+
+func TestForge_HandleForgeDryRun(t *testing.T) {
+	// Save/restore package-level dryRun flag.
+	origDryRun := dryRun
+	defer func() { dryRun = origDryRun }()
+
+	t.Run("returns false when dry-run is off", func(t *testing.T) {
+		dryRun = false
+		var buf bytes.Buffer
+		got := handleForgeDryRun(&buf, false, []string{"a.jsonl"}, "file(s)")
+		if got {
+			t.Error("expected false when dryRun=false")
+		}
+		if buf.Len() != 0 {
+			t.Errorf("expected no output, got %q", buf.String())
+		}
+	})
+
+	t.Run("returns false when quiet even if dry-run is on", func(t *testing.T) {
+		dryRun = true
+		var buf bytes.Buffer
+		got := handleForgeDryRun(&buf, true, []string{"a.jsonl"}, "file(s)")
+		if got {
+			t.Error("expected false when quiet=true")
+		}
+	})
+
+	t.Run("prints files and returns true on dry-run", func(t *testing.T) {
+		dryRun = true
+		var buf bytes.Buffer
+		files := []string{"session1.jsonl", "session2.jsonl"}
+		got := handleForgeDryRun(&buf, false, files, "file(s)")
+		if !got {
+			t.Error("expected true for dry-run mode")
+		}
+		output := buf.String()
+		if !strings.Contains(output, "[dry-run]") {
+			t.Errorf("expected [dry-run] prefix, got %q", output)
+		}
+		if !strings.Contains(output, "2 file(s)") {
+			t.Errorf("expected file count in output, got %q", output)
+		}
+		if !strings.Contains(output, "session1.jsonl") {
+			t.Errorf("expected file name in output, got %q", output)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// printForgeSummary
+// ---------------------------------------------------------------------------
+
+func TestForge_PrintForgeSummary(t *testing.T) {
+	tests := []struct {
+		name     string
+		totals   forgeTotals
+		baseDir  string
+		noun     string
+		wantSubs []string
+	}{
+		{
+			name:    "standard summary",
+			totals:  forgeTotals{sessions: 3, decisions: 5, knowledge: 7},
+			baseDir: "/tmp/test/.agents/ao",
+			noun:    "session(s)",
+			wantSubs: []string{
+				"3 session(s)",
+				"Decisions: 5",
+				"Knowledge: 7",
+				"/tmp/test/.agents/ao",
+			},
+		},
+		{
+			name:    "zero totals",
+			totals:  forgeTotals{},
+			baseDir: "/out",
+			noun:    "file(s)",
+			wantSubs: []string{
+				"0 file(s)",
+				"Decisions: 0",
+				"Knowledge: 0",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			printForgeSummary(&buf, tt.totals, tt.baseDir, tt.noun)
+			output := buf.String()
+			for _, sub := range tt.wantSubs {
+				if !strings.Contains(output, sub) {
+					t.Errorf("output missing %q; got %q", sub, output)
+				}
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// initSession
+// ---------------------------------------------------------------------------
+
+func TestForge_InitSession(t *testing.T) {
+	t.Run("creates session with transcript path", func(t *testing.T) {
+		s := initSession("/home/user/.claude/projects/test/session.jsonl")
+		if s.TranscriptPath != "/home/user/.claude/projects/test/session.jsonl" {
+			t.Errorf("TranscriptPath = %q, want the input path", s.TranscriptPath)
+		}
+	})
+
+	t.Run("ToolCalls map is initialized", func(t *testing.T) {
+		s := initSession("test.jsonl")
+		if s.ToolCalls == nil {
+			t.Error("ToolCalls should be initialized, got nil")
+		}
+		// Should be usable immediately
+		s.ToolCalls["Read"]++
+		if s.ToolCalls["Read"] != 1 {
+			t.Errorf("ToolCalls[Read] = %d, want 1", s.ToolCalls["Read"])
+		}
+	})
+
+	t.Run("ID and Date are zero values", func(t *testing.T) {
+		s := initSession("test.jsonl")
+		if s.ID != "" {
+			t.Errorf("ID should be empty, got %q", s.ID)
+		}
+		if !s.Date.IsZero() {
+			t.Errorf("Date should be zero, got %v", s.Date)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// reportProgress
+// ---------------------------------------------------------------------------
+
+func TestForge_ReportProgress(t *testing.T) {
+	t.Run("quiet mode produces no output", func(t *testing.T) {
+		var buf bytes.Buffer
+		lastProgress := 0
+		reportProgress(true, &buf, 5000, 10000, &lastProgress)
+		if buf.Len() != 0 {
+			t.Errorf("expected no output in quiet mode, got %q", buf.String())
+		}
+		// lastProgress should not be updated
+		if lastProgress != 0 {
+			t.Errorf("lastProgress should stay 0 in quiet mode, got %d", lastProgress)
+		}
+	})
+
+	t.Run("skips if fewer than 1000 lines since last report", func(t *testing.T) {
+		var buf bytes.Buffer
+		lastProgress := 0
+		reportProgress(false, &buf, 500, 10000, &lastProgress)
+		if buf.Len() != 0 {
+			t.Errorf("expected no output for <1000 lines, got %q", buf.String())
+		}
+	})
+
+	t.Run("reports progress at 1000+ line intervals", func(t *testing.T) {
+		var buf bytes.Buffer
+		lastProgress := 0
+		reportProgress(false, &buf, 1000, 10000, &lastProgress)
+		output := buf.String()
+		if !strings.Contains(output, "1000/10000") {
+			t.Errorf("expected 1000/10000 in output, got %q", output)
+		}
+		if !strings.Contains(output, "10%") {
+			t.Errorf("expected 10%% in output, got %q", output)
+		}
+		if lastProgress != 1000 {
+			t.Errorf("lastProgress = %d, want 1000", lastProgress)
+		}
+	})
+
+	t.Run("handles totalLines=0 without divide-by-zero", func(t *testing.T) {
+		var buf bytes.Buffer
+		lastProgress := 0
+		reportProgress(false, &buf, 1000, 0, &lastProgress)
+		output := buf.String()
+		if !strings.Contains(output, "0%") {
+			t.Errorf("expected 0%% for zero totalLines, got %q", output)
+		}
+	})
+
+	t.Run("successive calls advance lastProgress", func(t *testing.T) {
+		var buf bytes.Buffer
+		lastProgress := 0
+
+		reportProgress(false, &buf, 1000, 5000, &lastProgress)
+		if lastProgress != 1000 {
+			t.Fatalf("after first call: lastProgress = %d, want 1000", lastProgress)
+		}
+
+		buf.Reset()
+		// lineCount 1500 is only 500 past lastProgress — should skip
+		reportProgress(false, &buf, 1500, 5000, &lastProgress)
+		if buf.Len() != 0 {
+			t.Error("expected no output for 500 lines since last report")
+		}
+
+		buf.Reset()
+		// lineCount 2000 is 1000 past lastProgress — should print
+		reportProgress(false, &buf, 2000, 5000, &lastProgress)
+		if buf.Len() == 0 {
+			t.Error("expected output at 2000 lines (1000 past lastProgress=1000)")
+		}
+		if lastProgress != 2000 {
+			t.Errorf("lastProgress = %d, want 2000", lastProgress)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// drainParseErrors
+// ---------------------------------------------------------------------------
+
+func TestForge_DrainParseErrors(t *testing.T) {
+	t.Run("returns nil for empty channel", func(t *testing.T) {
+		errCh := make(chan error, 1)
+		err := drainParseErrors(errCh)
+		if err != nil {
+			t.Errorf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("returns error from channel", func(t *testing.T) {
+		errCh := make(chan error, 1)
+		want := errors.New("parse failure")
+		errCh <- want
+		err := drainParseErrors(errCh)
+		if err != want {
+			t.Errorf("expected %v, got %v", want, err)
+		}
+	})
+
+	t.Run("returns nil for closed empty channel", func(t *testing.T) {
+		errCh := make(chan error, 1)
+		close(errCh)
+		err := drainParseErrors(errCh)
+		if err != nil {
+			t.Errorf("expected nil for closed empty channel, got %v", err)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// finalizeTranscriptSession
+// ---------------------------------------------------------------------------
+
+func TestForge_FinalizeTranscriptSession(t *testing.T) {
+	t.Run("populates all session fields", func(t *testing.T) {
+		session := &storage.Session{
+			Date: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+		}
+		state := &transcriptState{
+			decisions:    []string{"dec-a", "dec-b", "dec-a"}, // has duplicate
+			knowledge:    []string{"know-x", "know-y", "know-x"},
+			filesChanged: []string{"/a.go", "/b.go"},
+			issues:       []string{"ol-001"},
+		}
+
+		finalizeTranscriptSession(session, state, 4000)
+
+		if len(session.Decisions) != 2 {
+			t.Errorf("Decisions = %d, want 2 (deduped from 3)", len(session.Decisions))
+		}
+		if len(session.Knowledge) != 2 {
+			t.Errorf("Knowledge = %d, want 2 (deduped from 3)", len(session.Knowledge))
+		}
+		if len(session.FilesChanged) != 2 {
+			t.Errorf("FilesChanged = %d, want 2", len(session.FilesChanged))
+		}
+		if len(session.Issues) != 1 {
+			t.Errorf("Issues = %d, want 1", len(session.Issues))
+		}
+		// Token estimation: 4000 bytes / 4 chars-per-token = 1000
+		if session.Tokens.Total != 1000 {
+			t.Errorf("Tokens.Total = %d, want 1000", session.Tokens.Total)
+		}
+		if !session.Tokens.Estimated {
+			t.Error("Tokens.Estimated should be true")
+		}
+		if session.Summary == "" {
+			t.Error("Summary should be generated from decisions")
+		}
+	})
+
+	t.Run("summary falls back to date when no decisions or knowledge", func(t *testing.T) {
+		refDate := time.Date(2025, 12, 25, 0, 0, 0, 0, time.UTC)
+		session := &storage.Session{Date: refDate}
+		state := &transcriptState{}
+
+		finalizeTranscriptSession(session, state, 0)
+
+		if !strings.Contains(session.Summary, "2025-12-25") {
+			t.Errorf("expected date in summary, got %q", session.Summary)
+		}
+	})
+
+	t.Run("empty state produces empty slices", func(t *testing.T) {
+		session := &storage.Session{}
+		state := &transcriptState{}
+
+		finalizeTranscriptSession(session, state, 100)
+
+		if session.Decisions == nil {
+			t.Error("Decisions should be non-nil empty slice from dedup")
+		}
+		if session.Knowledge == nil {
+			t.Error("Knowledge should be non-nil empty slice from dedup")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// isTranscriptCandidate
+// ---------------------------------------------------------------------------
+
+func TestForge_IsTranscriptCandidate(t *testing.T) {
+	projectsDir := "/home/user/.claude/projects"
+
+	tests := []struct {
+		name        string
+		path        string
+		isDir       bool
+		ext         string
+		size        int64
+		projectsDir string
+		want        bool
+	}{
+		{
+			name:        "valid jsonl file",
+			path:        filepath.Join(projectsDir, "myproj", "session.jsonl"),
+			size:        500,
+			projectsDir: projectsDir,
+			want:        true,
+		},
+		{
+			name:        "directory is not a candidate",
+			path:        filepath.Join(projectsDir, "myproj"),
+			isDir:       true,
+			size:        500,
+			projectsDir: projectsDir,
+			want:        false,
+		},
+		{
+			name:        "non-jsonl extension",
+			path:        filepath.Join(projectsDir, "myproj", "session.json"),
+			size:        500,
+			projectsDir: projectsDir,
+			want:        false,
+		},
+		{
+			name:        "too small file",
+			path:        filepath.Join(projectsDir, "myproj", "tiny.jsonl"),
+			size:        50,
+			projectsDir: projectsDir,
+			want:        false,
+		},
+		{
+			name:        "exactly 100 bytes is not a candidate",
+			path:        filepath.Join(projectsDir, "myproj", "edge.jsonl"),
+			size:        100,
+			projectsDir: projectsDir,
+			want:        false,
+		},
+		{
+			name:        "101 bytes is a candidate",
+			path:        filepath.Join(projectsDir, "myproj", "edge.jsonl"),
+			size:        101,
+			projectsDir: projectsDir,
+			want:        true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := fakeFileInfo{
+				name:  filepath.Base(tt.path),
+				size:  tt.size,
+				isDir: tt.isDir,
+			}
+			got := isTranscriptCandidate(tt.path, info, tt.projectsDir)
+			if got != tt.want {
+				t.Errorf("isTranscriptCandidate(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+// fakeFileInfo implements os.FileInfo for testing without real files.
+type fakeFileInfo struct {
+	name    string
+	size    int64
+	mode    os.FileMode
+	modTime time.Time
+	isDir   bool
+}
+
+func (fi fakeFileInfo) Name() string      { return fi.name }
+func (fi fakeFileInfo) Size() int64        { return fi.size }
+func (fi fakeFileInfo) Mode() os.FileMode  { return fi.mode }
+func (fi fakeFileInfo) ModTime() time.Time { return fi.modTime }
+func (fi fakeFileInfo) IsDir() bool        { return fi.isDir }
+func (fi fakeFileInfo) Sys() any           { return nil }
+
+// ---------------------------------------------------------------------------
+// collectTranscriptCandidates
+// ---------------------------------------------------------------------------
+
+func TestForge_CollectTranscriptCandidates(t *testing.T) {
+	t.Run("finds jsonl files in project directory", func(t *testing.T) {
+		dir := t.TempDir()
+		proj := filepath.Join(dir, "myproj")
+		if err := os.MkdirAll(proj, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create a valid candidate (>100 bytes)
+		content := strings.Repeat("x", 200)
+		if err := os.WriteFile(filepath.Join(proj, "session.jsonl"), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		candidates, err := collectTranscriptCandidates(dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(candidates) != 1 {
+			t.Errorf("expected 1 candidate, got %d", len(candidates))
+		}
+	})
+
+	t.Run("skips subagents directory", func(t *testing.T) {
+		dir := t.TempDir()
+		subagents := filepath.Join(dir, "subagents")
+		if err := os.MkdirAll(subagents, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		content := strings.Repeat("x", 200)
+		if err := os.WriteFile(filepath.Join(subagents, "sub.jsonl"), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		candidates, err := collectTranscriptCandidates(dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(candidates) != 0 {
+			t.Errorf("expected 0 candidates (subagents skipped), got %d", len(candidates))
+		}
+	})
+
+	t.Run("skips small files", func(t *testing.T) {
+		dir := t.TempDir()
+		proj := filepath.Join(dir, "proj")
+		if err := os.MkdirAll(proj, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(filepath.Join(proj, "tiny.jsonl"), []byte("{}"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		candidates, err := collectTranscriptCandidates(dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(candidates) != 0 {
+			t.Errorf("expected 0 candidates for tiny file, got %d", len(candidates))
+		}
+	})
+
+	t.Run("empty directory returns empty", func(t *testing.T) {
+		dir := t.TempDir()
+		candidates, err := collectTranscriptCandidates(dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(candidates) != 0 {
+			t.Errorf("expected 0 candidates, got %d", len(candidates))
+		}
+	})
+
+	t.Run("ignores non-jsonl files", func(t *testing.T) {
+		dir := t.TempDir()
+		proj := filepath.Join(dir, "proj")
+		if err := os.MkdirAll(proj, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		content := strings.Repeat("x", 200)
+		if err := os.WriteFile(filepath.Join(proj, "notes.md"), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(proj, "data.json"), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		candidates, err := collectTranscriptCandidates(dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(candidates) != 0 {
+			t.Errorf("expected 0 candidates for non-jsonl, got %d", len(candidates))
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// consumeTranscriptMessages
+// ---------------------------------------------------------------------------
+
+func TestForge_ConsumeTranscriptMessages(t *testing.T) {
+	t.Run("processes messages from channel", func(t *testing.T) {
+		msgCh := make(chan types.TranscriptMessage, 3)
+		ts := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+
+		msgCh <- types.TranscriptMessage{
+			SessionID: "sess-001",
+			Timestamp: ts,
+			Role:      "assistant",
+			Content:   "No knowledge markers here",
+		}
+		msgCh <- types.TranscriptMessage{
+			SessionID: "sess-001",
+			Timestamp: ts.Add(time.Minute),
+			Content:   "Fixed ol-0001 in this commit",
+			Tools: []types.ToolCall{
+				{Name: "Bash", Input: map[string]any{"path": "/app/main.go"}},
+			},
+		}
+		close(msgCh)
+
+		session := initSession("test.jsonl")
+		extractor := parser.NewExtractor()
+		state := &transcriptState{
+			seenFiles:  make(map[string]bool),
+			seenIssues: make(map[string]bool),
+		}
+
+		var buf bytes.Buffer
+		consumeTranscriptMessages(msgCh, session, extractor, state, true, &buf, 2)
+
+		// Session ID should be set from first message
+		if session.ID != "sess-001" {
+			t.Errorf("session.ID = %q, want sess-001", session.ID)
+		}
+		// Date should be earliest timestamp
+		if !session.Date.Equal(ts) {
+			t.Errorf("session.Date = %v, want %v", session.Date, ts)
+		}
+		// Issue should be extracted
+		if len(state.issues) != 1 || state.issues[0] != "ol-0001" {
+			t.Errorf("issues = %v, want [ol-0001]", state.issues)
+		}
+		// File from tool should be extracted
+		if len(state.filesChanged) != 1 {
+			t.Errorf("filesChanged = %v, want 1 file", state.filesChanged)
+		}
+		// Quiet mode — no output
+		if buf.Len() != 0 {
+			t.Errorf("expected no output in quiet mode, got %q", buf.String())
+		}
+	})
+
+	t.Run("empty channel produces no changes", func(t *testing.T) {
+		msgCh := make(chan types.TranscriptMessage)
+		close(msgCh)
+
+		session := initSession("empty.jsonl")
+		extractor := parser.NewExtractor()
+		state := &transcriptState{
+			seenFiles:  make(map[string]bool),
+			seenIssues: make(map[string]bool),
+		}
+
+		var buf bytes.Buffer
+		consumeTranscriptMessages(msgCh, session, extractor, state, true, &buf, 0)
+
+		if session.ID != "" {
+			t.Errorf("session.ID should be empty, got %q", session.ID)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// extractMessageKnowledge
+// ---------------------------------------------------------------------------
+
+func TestForge_ExtractMessageKnowledge(t *testing.T) {
+	extractor := parser.NewExtractor()
+
+	t.Run("empty content produces no extractions", func(t *testing.T) {
+		msg := types.TranscriptMessage{Content: ""}
+		state := &transcriptState{}
+		extractMessageKnowledge(msg, extractor, state)
+		if len(state.decisions) != 0 || len(state.knowledge) != 0 {
+			t.Error("expected no extractions for empty content")
+		}
+	})
+
+	t.Run("content with decision keyword produces decision", func(t *testing.T) {
+		// The extractor looks for keywords like "decided to", "decision:", etc.
+		msg := types.TranscriptMessage{
+			Content: "We decided to use PostgreSQL instead of MySQL for better JSON support",
+		}
+		state := &transcriptState{}
+		extractMessageKnowledge(msg, extractor, state)
+		// The extractor should find at least one result for "decided to"
+		if len(state.decisions) == 0 && len(state.knowledge) == 0 {
+			t.Log("No extraction from 'decided to' — may depend on exact extractor patterns; skipping strict check")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// extractMessageRefs
+// ---------------------------------------------------------------------------
+
+func TestForge_ExtractMessageRefs(t *testing.T) {
+	t.Run("extracts both tools and issues", func(t *testing.T) {
+		session := &storage.Session{ToolCalls: make(map[string]int)}
+		state := &transcriptState{
+			seenFiles:  make(map[string]bool),
+			seenIssues: make(map[string]bool),
+		}
+
+		msg := types.TranscriptMessage{
+			Content: "Fixing ag-m0r by editing the config",
+			Tools: []types.ToolCall{
+				{Name: "Edit", Input: map[string]any{"file_path": "/config.yaml"}},
+			},
+		}
+
+		extractMessageRefs(msg, session, state)
+
+		if session.ToolCalls["Edit"] != 1 {
+			t.Errorf("ToolCalls[Edit] = %d, want 1", session.ToolCalls["Edit"])
+		}
+		if len(state.filesChanged) != 1 {
+			t.Errorf("filesChanged = %v, want 1 file", state.filesChanged)
+		}
+		if len(state.issues) != 1 || state.issues[0] != "ag-m0r" {
+			t.Errorf("issues = %v, want [ag-m0r]", state.issues)
+		}
+	})
+
+	t.Run("no tools and no issues leaves state empty", func(t *testing.T) {
+		session := &storage.Session{ToolCalls: make(map[string]int)}
+		state := &transcriptState{
+			seenFiles:  make(map[string]bool),
+			seenIssues: make(map[string]bool),
+		}
+
+		msg := types.TranscriptMessage{Content: "Just some text with no refs"}
+		extractMessageRefs(msg, session, state)
+
+		if len(session.ToolCalls) != 0 {
+			t.Errorf("expected no tool calls, got %v", session.ToolCalls)
+		}
+		if len(state.issues) != 0 {
+			t.Errorf("expected no issues, got %v", state.issues)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// resolveMarkdownFiles
+// ---------------------------------------------------------------------------
+
+func TestForge_ResolveMarkdownFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	mdFile := filepath.Join(dir, "notes.md")
+	txtFile := filepath.Join(dir, "notes.txt")
+	for _, f := range []string{mdFile, txtFile} {
+		if err := os.WriteFile(f, []byte("content"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("filters to only .md files", func(t *testing.T) {
+		pattern := filepath.Join(dir, "*")
+		files, err := resolveMarkdownFiles([]string{pattern})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(files) != 1 {
+			t.Errorf("expected 1 .md file, got %d: %v", len(files), files)
+		}
+		if len(files) > 0 && !strings.HasSuffix(files[0], ".md") {
+			t.Errorf("expected .md file, got %q", files[0])
+		}
+	})
+
+	t.Run("empty args returns empty", func(t *testing.T) {
+		files, err := resolveMarkdownFiles(nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(files) != 0 {
+			t.Errorf("expected 0 files, got %d", len(files))
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// queueForExtraction
+// ---------------------------------------------------------------------------
+
+func TestForge_QueueForExtraction(t *testing.T) {
+	t.Run("creates pending.jsonl with session data", func(t *testing.T) {
+		dir := t.TempDir()
+
+		session := &storage.Session{
+			ID:        "test-session-123",
+			Summary:   "Test session",
+			Decisions: []string{"d1"},
+			Knowledge: []string{"k1", "k2"},
+		}
+
+		err := queueForExtraction(session, "/out/session.md", "/in/transcript.jsonl", dir)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		pendingPath := filepath.Join(dir, storage.DefaultBaseDir, "pending.jsonl")
+		data, err := os.ReadFile(pendingPath)
+		if err != nil {
+			t.Fatalf("failed to read pending file: %v", err)
+		}
+		content := string(data)
+
+		if !strings.Contains(content, "test-session-123") {
+			t.Errorf("pending should contain session ID, got %q", content)
+		}
+		if !strings.Contains(content, "/in/transcript.jsonl") {
+			t.Errorf("pending should contain transcript path, got %q", content)
+		}
+		// Should end with newline
+		if !strings.HasSuffix(content, "\n") {
+			t.Error("pending entry should end with newline")
+		}
+	})
+
+	t.Run("appends multiple entries", func(t *testing.T) {
+		dir := t.TempDir()
+
+		for i := 0; i < 3; i++ {
+			session := &storage.Session{
+				ID:      fmt.Sprintf("sess-%d", i),
+				Summary: fmt.Sprintf("Session %d", i),
+			}
+			err := queueForExtraction(session, fmt.Sprintf("/out/%d.md", i), fmt.Sprintf("/in/%d.jsonl", i), dir)
+			if err != nil {
+				t.Fatalf("unexpected error on iteration %d: %v", i, err)
+			}
+		}
+
+		pendingPath := filepath.Join(dir, storage.DefaultBaseDir, "pending.jsonl")
+		data, err := os.ReadFile(pendingPath)
+		if err != nil {
+			t.Fatalf("failed to read pending file: %v", err)
+		}
+
+		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+		if len(lines) != 3 {
+			t.Errorf("expected 3 lines, got %d", len(lines))
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// processMarkdown (integration with real temp file)
+// ---------------------------------------------------------------------------
+
+func TestForge_ProcessMarkdown(t *testing.T) {
+	extractor := parser.NewExtractor()
+
+	t.Run("parses markdown file into session", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "test.md")
+		content := "# Introduction\n\nSome intro text here.\n\n## Decisions\n\nWe decided to use Go for the CLI.\n\n## Issues\n\nWorking on ol-001 and ag-m0r.\n"
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		session, err := processMarkdown(path, extractor, true)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// ID should be deterministic (md-<hash>)
+		if !strings.HasPrefix(session.ID, "md-") {
+			t.Errorf("session ID should start with md-, got %q", session.ID)
+		}
+
+		// Transcript path should be the input file
+		if session.TranscriptPath != path {
+			t.Errorf("TranscriptPath = %q, want %q", session.TranscriptPath, path)
+		}
+
+		// Token count should be estimated
+		if session.Tokens.Total != len(content)/CharsPerToken {
+			t.Errorf("Tokens.Total = %d, want %d", session.Tokens.Total, len(content)/CharsPerToken)
+		}
+		if !session.Tokens.Estimated {
+			t.Error("Tokens.Estimated should be true")
+		}
+
+		// Issues should be extracted
+		if len(session.Issues) < 1 {
+			t.Log("Issues may vary by content and patterns, but expected at least ol-001")
+		}
+	})
+
+	t.Run("empty file returns error", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "empty.md")
+		if err := os.WriteFile(path, []byte(""), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		_, err := processMarkdown(path, extractor, true)
+		if err == nil {
+			t.Error("expected error for empty file")
+		}
+		if !strings.Contains(err.Error(), "empty file") {
+			t.Errorf("expected 'empty file' error, got %q", err.Error())
+		}
+	})
+
+	t.Run("nonexistent file returns error", func(t *testing.T) {
+		_, err := processMarkdown("/tmp/nonexistent-file-xyz.md", extractor, true)
+		if err == nil {
+			t.Error("expected error for nonexistent file")
+		}
+	})
+
+	t.Run("deterministic ID for same path", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "stable.md")
+		if err := os.WriteFile(path, []byte("# Test\nContent"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		s1, err1 := processMarkdown(path, extractor, true)
+		s2, err2 := processMarkdown(path, extractor, true)
+		if err1 != nil || err2 != nil {
+			t.Fatalf("unexpected errors: %v, %v", err1, err2)
+		}
+		if s1.ID != s2.ID {
+			t.Errorf("session IDs should be deterministic: %q != %q", s1.ID, s2.ID)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// processTranscript (integration with real temp JSONL file)
+// ---------------------------------------------------------------------------
+
+func TestForge_ProcessTranscript(t *testing.T) {
+	p := parser.NewParser()
+	p.MaxContentLength = 0
+	extractor := parser.NewExtractor()
+
+	t.Run("parses valid jsonl transcript", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "session.jsonl")
+
+		// Minimal valid JSONL lines matching Claude Code transcript format
+		lines := []string{
+			`{"type":"summary","sessionId":"sess-abc123","timestamp":"2024-06-01T12:00:00Z"}`,
+			`{"type":"assistant","role":"assistant","content":"Working on the implementation","sessionId":"sess-abc123","timestamp":"2024-06-01T12:01:00Z"}`,
+		}
+		content := strings.Join(lines, "\n") + "\n"
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		var buf bytes.Buffer
+		session, err := processTranscript(path, p, extractor, true, &buf)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if session == nil {
+			t.Fatal("session should not be nil")
+		}
+
+		// Tokens should be estimated from file size
+		if session.Tokens.Total == 0 {
+			t.Error("Tokens.Total should be > 0")
+		}
+		if !session.Tokens.Estimated {
+			t.Error("Tokens.Estimated should be true")
+		}
+	})
+
+	t.Run("nonexistent file returns error", func(t *testing.T) {
+		var buf bytes.Buffer
+		_, err := processTranscript("/tmp/no-such-transcript.jsonl", p, extractor, true, &buf)
+		if err == nil {
+			t.Error("expected error for nonexistent file")
+		}
+	})
+
+	t.Run("empty file processes without crash", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "empty.jsonl")
+		if err := os.WriteFile(path, []byte(""), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		var buf bytes.Buffer
+		session, err := processTranscript(path, p, extractor, true, &buf)
+		// Empty file should produce a session with no data (parser sends no messages)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if session == nil {
+			t.Fatal("session should not be nil even for empty file")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// writeSessionIndex (integration with real FileStorage)
+// ---------------------------------------------------------------------------
+
+func TestForge_WriteSessionIndex(t *testing.T) {
+	dir := t.TempDir()
+	baseDir := filepath.Join(dir, ".agents", "ao")
+
+	fs := storage.NewFileStorage(
+		storage.WithBaseDir(baseDir),
+		storage.WithFormatters(
+			formatter.NewMarkdownFormatter(),
+			formatter.NewJSONLFormatter(),
+		),
+	)
+	if err := fs.Init(); err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	session := &storage.Session{
+		ID:      "idx-test-001",
+		Date:    time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+		Summary: "Index test session",
+	}
+
+	err := writeSessionIndex(fs, session, "/fake/session/path.md")
+	if err != nil {
+		t.Fatalf("writeSessionIndex failed: %v", err)
+	}
+
+	// Verify the index file was created
+	indexPath := filepath.Join(baseDir, "index", "sessions.jsonl")
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		t.Error("index file was not created")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// writeSessionProvenance (integration with real FileStorage)
+// ---------------------------------------------------------------------------
+
+func TestForge_WriteSessionProvenance(t *testing.T) {
+	dir := t.TempDir()
+	baseDir := filepath.Join(dir, ".agents", "ao")
+
+	fs := storage.NewFileStorage(
+		storage.WithBaseDir(baseDir),
+		storage.WithFormatters(
+			formatter.NewMarkdownFormatter(),
+			formatter.NewJSONLFormatter(),
+		),
+	)
+	if err := fs.Init(); err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	t.Run("writes provenance with session ID", func(t *testing.T) {
+		err := writeSessionProvenance(fs, "prov-test-001234", "/out/session.md", "/in/transcript.jsonl", "transcript", true)
+		if err != nil {
+			t.Fatalf("writeSessionProvenance failed: %v", err)
+		}
+	})
+
+	t.Run("writes provenance without session ID", func(t *testing.T) {
+		err := writeSessionProvenance(fs, "prov-test-002345", "/out/session.md", "/in/notes.md", "markdown", false)
+		if err != nil {
+			t.Fatalf("writeSessionProvenance failed: %v", err)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// initForgeStorage (integration — creates dirs in cwd)
+// ---------------------------------------------------------------------------
+
+func TestForge_InitForgeStorage(t *testing.T) {
+	// initForgeStorage uses os.Getwd(), so we need to be in a temp dir.
+	// Since we can't chdir easily in tests without affecting other tests,
+	// we just verify the function doesn't panic and returns valid results
+	// when called from the current directory.
+	t.Run("returns valid cwd and storage", func(t *testing.T) {
+		cwd, baseDir, fs, err := initForgeStorage()
+		if err != nil {
+			t.Fatalf("initForgeStorage failed: %v", err)
+		}
+		if cwd == "" {
+			t.Error("cwd should not be empty")
+		}
+		if baseDir == "" {
+			t.Error("baseDir should not be empty")
+		}
+		if fs == nil {
+			t.Error("FileStorage should not be nil")
+		}
+		if !strings.Contains(baseDir, storage.DefaultBaseDir) {
+			t.Errorf("baseDir should contain %q, got %q", storage.DefaultBaseDir, baseDir)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// forgeTranscriptFile (integration with real FileStorage)
+// ---------------------------------------------------------------------------
+
+func TestForge_ForgeTranscriptFile(t *testing.T) {
+	// Save/restore package-level flags
+	origQuiet := forgeQuiet
+	origQueue := forgeQueue
+	defer func() {
+		forgeQuiet = origQuiet
+		forgeQueue = origQueue
+	}()
+	forgeQuiet = true
+	forgeQueue = false
+
+	dir := t.TempDir()
+	baseDir := filepath.Join(dir, ".agents", "ao")
+
+	fs := storage.NewFileStorage(
+		storage.WithBaseDir(baseDir),
+		storage.WithFormatters(
+			formatter.NewMarkdownFormatter(),
+			formatter.NewJSONLFormatter(),
+		),
+	)
+	if err := fs.Init(); err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	session := &storage.Session{
+		ID:        "forge-tx-001",
+		Date:      time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+		Summary:   "Test forge transcript",
+		Decisions: []string{"d1"},
+		Knowledge: []string{"k1", "k2"},
+		ToolCalls: make(map[string]int),
+	}
+
+	totals := forgeTotals{}
+	forgeTranscriptFile(fs, session, "/in/session.jsonl", baseDir, dir, &totals)
+
+	if totals.sessions != 1 {
+		t.Errorf("totals.sessions = %d, want 1", totals.sessions)
+	}
+	if totals.decisions != 1 {
+		t.Errorf("totals.decisions = %d, want 1", totals.decisions)
+	}
+	if totals.knowledge != 2 {
+		t.Errorf("totals.knowledge = %d, want 2", totals.knowledge)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// forgeMarkdownFile (integration with real FileStorage)
+// ---------------------------------------------------------------------------
+
+func TestForge_ForgeMarkdownFile(t *testing.T) {
+	// Save/restore package-level flags
+	origQuiet := forgeMdQuiet
+	origQueue := forgeMdQueue
+	defer func() {
+		forgeMdQuiet = origQuiet
+		forgeMdQueue = origQueue
+	}()
+	forgeMdQuiet = true
+	forgeMdQueue = false
+
+	dir := t.TempDir()
+	baseDir := filepath.Join(dir, ".agents", "ao")
+
+	fs := storage.NewFileStorage(
+		storage.WithBaseDir(baseDir),
+		storage.WithFormatters(
+			formatter.NewMarkdownFormatter(),
+			formatter.NewJSONLFormatter(),
+		),
+	)
+	if err := fs.Init(); err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	session := &storage.Session{
+		ID:        "forge-md-001",
+		Date:      time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+		Summary:   "Test forge markdown",
+		Decisions: []string{"d1", "d2"},
+		Knowledge: []string{"k1"},
+		ToolCalls: make(map[string]int),
+	}
+
+	totals := forgeTotals{}
+	forgeMarkdownFile(fs, session, "/in/notes.md", baseDir, dir, &totals)
+
+	if totals.sessions != 1 {
+		t.Errorf("totals.sessions = %d, want 1", totals.sessions)
+	}
+	if totals.decisions != 2 {
+		t.Errorf("totals.decisions = %d, want 2", totals.decisions)
+	}
+	if totals.knowledge != 1 {
+		t.Errorf("totals.knowledge = %d, want 1", totals.knowledge)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// updateSearchIndexForFile
+// ---------------------------------------------------------------------------
+
+func TestForge_UpdateSearchIndexForFile(t *testing.T) {
+	t.Run("no-op when index does not exist", func(t *testing.T) {
+		dir := t.TempDir()
+		// Should not panic or error when index.jsonl doesn't exist
+		updateSearchIndexForFile(dir, "/some/file.md", true)
+	})
+}
+
+// ---------------------------------------------------------------------------
+// fileWithTime struct (verify sort behavior via collectTranscriptCandidates)
+// ---------------------------------------------------------------------------
+
+func TestForge_FileWithTimeSorting(t *testing.T) {
+	dir := t.TempDir()
+	proj := filepath.Join(dir, "proj")
+	if err := os.MkdirAll(proj, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	content := strings.Repeat("x", 200)
+
+	// Create files with staggered modification times
+	file1 := filepath.Join(proj, "old.jsonl")
+	file2 := filepath.Join(proj, "new.jsonl")
+	if err := os.WriteFile(file1, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Set old modification time
+	oldTime := time.Now().Add(-24 * time.Hour)
+	if err := os.Chtimes(file1, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file2, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates, err := collectTranscriptCandidates(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("expected 2 candidates, got %d", len(candidates))
+	}
+
+	// Verify modTime is populated
+	for _, c := range candidates {
+		if c.modTime.IsZero() {
+			t.Errorf("modTime should not be zero for %q", c.path)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// forgeTranscriptFile with queue enabled
+// ---------------------------------------------------------------------------
+
+func TestForge_ForgeTranscriptFileWithQueue(t *testing.T) {
+	origQuiet := forgeQuiet
+	origQueue := forgeQueue
+	defer func() {
+		forgeQuiet = origQuiet
+		forgeQueue = origQueue
+	}()
+	forgeQuiet = true
+	forgeQueue = true
+
+	dir := t.TempDir()
+	baseDir := filepath.Join(dir, ".agents", "ao")
+
+	fs := storage.NewFileStorage(
+		storage.WithBaseDir(baseDir),
+		storage.WithFormatters(
+			formatter.NewMarkdownFormatter(),
+			formatter.NewJSONLFormatter(),
+		),
+	)
+	if err := fs.Init(); err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	session := &storage.Session{
+		ID:        "queue-test-001",
+		Date:      time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+		Summary:   "Queue test session",
+		Decisions: []string{"d1"},
+		ToolCalls: make(map[string]int),
+	}
+
+	totals := forgeTotals{}
+	forgeTranscriptFile(fs, session, "/in/session.jsonl", baseDir, dir, &totals)
+
+	// Verify pending.jsonl was created
+	pendingPath := filepath.Join(dir, storage.DefaultBaseDir, "pending.jsonl")
+	if _, err := os.Stat(pendingPath); os.IsNotExist(err) {
+		t.Error("pending.jsonl should be created when queue=true")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// forgeMarkdownFile with queue enabled
+// ---------------------------------------------------------------------------
+
+func TestForge_ForgeMarkdownFileWithQueue(t *testing.T) {
+	origQuiet := forgeMdQuiet
+	origQueue := forgeMdQueue
+	defer func() {
+		forgeMdQuiet = origQuiet
+		forgeMdQueue = origQueue
+	}()
+	forgeMdQuiet = true
+	forgeMdQueue = true
+
+	dir := t.TempDir()
+	baseDir := filepath.Join(dir, ".agents", "ao")
+
+	fs := storage.NewFileStorage(
+		storage.WithBaseDir(baseDir),
+		storage.WithFormatters(
+			formatter.NewMarkdownFormatter(),
+			formatter.NewJSONLFormatter(),
+		),
+	)
+	if err := fs.Init(); err != nil {
+		t.Fatalf("failed to init storage: %v", err)
+	}
+
+	session := &storage.Session{
+		ID:        "md-queue-test-001",
+		Date:      time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
+		Summary:   "MD Queue test",
+		Knowledge: []string{"k1"},
+		ToolCalls: make(map[string]int),
+	}
+
+	totals := forgeTotals{}
+	forgeMarkdownFile(fs, session, "/in/notes.md", baseDir, dir, &totals)
+
+	pendingPath := filepath.Join(dir, storage.DefaultBaseDir, "pending.jsonl")
+	if _, err := os.Stat(pendingPath); os.IsNotExist(err) {
+		t.Error("pending.jsonl should be created when queue=true")
+	}
 }

@@ -7,992 +7,1454 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	contextbudget "github.com/boshu2/agentops/cli/internal/context"
 )
 
-// Tests for pure helper functions in context.go
+// --- scanTailLines ---
 
-func TestParseTimestamp(t *testing.T) {
+func TestContext_ScanTailLines(t *testing.T) {
 	tests := []struct {
-		name  string
-		input string
-		want  time.Time
+		name      string
+		input     []byte
+		wantCount int
+		wantFirst string
+		wantLast  string
 	}{
 		{
-			name:  "empty string returns zero time",
-			input: "",
-			want:  time.Time{},
+			name:      "empty input yields no lines",
+			input:     []byte{},
+			wantCount: 0,
 		},
 		{
-			name:  "whitespace only returns zero time",
-			input: "   ",
-			want:  time.Time{},
+			name:      "single line without newline",
+			input:     []byte("hello"),
+			wantCount: 1,
+			wantFirst: "hello",
+			wantLast:  "hello",
 		},
 		{
-			name:  "valid RFC3339 timestamp",
-			input: "2026-01-15T10:30:00Z",
-			want:  time.Date(2026, 1, 15, 10, 30, 0, 0, time.UTC),
+			name:      "two lines with trailing newline",
+			input:     []byte("first\nsecond\n"),
+			wantCount: 2, // scanner yields "first", "second" (no trailing empty)
+			wantFirst: "first",
+			wantLast:  "second",
 		},
 		{
-			name:  "valid RFC3339Nano timestamp",
-			input: "2026-01-15T10:30:00.123456789Z",
-			want:  time.Date(2026, 1, 15, 10, 30, 0, 123456789, time.UTC),
+			name:      "multiple lines",
+			input:     []byte("a\nb\nc"),
+			wantCount: 3,
+			wantFirst: "a",
+			wantLast:  "c",
 		},
 		{
-			name:  "invalid string returns zero time",
-			input: "not-a-timestamp",
-			want:  time.Time{},
-		},
-		{
-			name:  "RFC3339 with timezone offset",
-			input: "2026-01-15T10:30:00+05:00",
-			want:  time.Date(2026, 1, 15, 5, 30, 0, 0, time.UTC),
+			name:      "blank lines preserved",
+			input:     []byte("\n\n"),
+			wantCount: 2,
+			wantFirst: "",
+			wantLast:  "",
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := parseTimestamp(tt.input)
-			if !got.Equal(tt.want) {
-				t.Errorf("parseTimestamp(%q) = %v, want %v", tt.input, got, tt.want)
+			lines, err := scanTailLines(tt.input)
+			if err != nil {
+				t.Fatalf("scanTailLines error: %v", err)
+			}
+			if len(lines) != tt.wantCount {
+				t.Fatalf("got %d lines, want %d; lines=%v", len(lines), tt.wantCount, lines)
+			}
+			if tt.wantCount > 0 {
+				if lines[0] != tt.wantFirst {
+					t.Errorf("first line = %q, want %q", lines[0], tt.wantFirst)
+				}
+				if lines[len(lines)-1] != tt.wantLast {
+					t.Errorf("last line = %q, want %q", lines[len(lines)-1], tt.wantLast)
+				}
 			}
 		})
 	}
 }
 
-func TestExtractTextContent(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "empty raw message",
-			input: "",
-			want:  "",
-		},
-		{
-			name:  "plain string JSON",
-			input: `"hello world"`,
-			want:  "hello world",
-		},
-		{
-			name:  "array with text field",
-			input: `[{"type":"text","text":"hello from array"}]`,
-			want:  "hello from array",
-		},
-		{
-			name:  "array with empty text fields skips to next",
-			input: `[{"type":"text","text":""},{"type":"text","text":"second"}]`,
-			want:  "second",
-		},
-		{
-			name:  "invalid JSON returns empty",
-			input: `{invalid}`,
-			want:  "",
-		},
-		{
-			name:  "array with no text field returns empty",
-			input: `[{"type":"image"}]`,
-			want:  "",
-		},
-	}
+// --- extractUsageFromTailEntry ---
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractTextContent(json.RawMessage(tt.input))
-			if got != tt.want {
-				t.Errorf("extractTextContent(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
+func TestContext_ExtractUsageFromTailEntry(t *testing.T) {
+	ts := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
 
-func TestEstimateTokens(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		wantN int
-	}{
-		{
-			name:  "empty string returns 0",
-			input: "",
-			wantN: 0,
-		},
-		{
-			name:  "whitespace only returns 0",
-			input: "   ",
-			wantN: 0,
-		},
-		{
-			name:  "short text returns at least 1",
-			input: "hi",
-			wantN: 1,
-		},
-		{
-			name:  "40 chars returns 10 tokens",
-			input: "1234567890123456789012345678901234567890",
-			wantN: 10,
-		},
-		{
-			name:  "4 chars returns 1 token",
-			input: "abcd",
-			wantN: 1,
-		},
-		{
-			name:  "8 chars returns 2 tokens",
-			input: "abcdefgh",
-			wantN: 2,
-		},
-	}
+	t.Run("valid usage parsed", func(t *testing.T) {
+		entry := tailLineEnvelope{}
+		entry.Message.Model = "claude-opus"
+		entry.Message.Usage = json.RawMessage(`{"input_tokens":500,"cache_creation_input_tokens":1000,"cache_read_input_tokens":2000}`)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := estimateTokens(tt.input)
-			if got != tt.wantN {
-				t.Errorf("estimateTokens(%q) = %d, want %d", tt.input, got, tt.wantN)
-			}
-		})
-	}
-}
-
-func TestInferAgentRole(t *testing.T) {
-	tests := []struct {
-		name         string
-		agentName    string
-		explicitRole string
-		want         string
-	}{
-		{
-			name:         "explicit role takes priority",
-			agentName:    "worker",
-			explicitRole: "reviewer",
-			want:         "reviewer",
-		},
-		{
-			name:         "empty agent name returns empty",
-			agentName:    "",
-			explicitRole: "",
-			want:         "",
-		},
-		{
-			name:         "admiral maps to team-lead",
-			agentName:    "admiral-01",
-			explicitRole: "",
-			want:         "team-lead",
-		},
-		{
-			name:         "captain maps to team-lead",
-			agentName:    "captain-crunch",
-			explicitRole: "",
-			want:         "team-lead",
-		},
-		{
-			name:         "lead maps to team-lead",
-			agentName:    "team-lead",
-			explicitRole: "",
-			want:         "team-lead",
-		},
-		{
-			name:         "leader maps to team-lead",
-			agentName:    "project-leader",
-			explicitRole: "",
-			want:         "team-lead",
-		},
-		{
-			name:         "mayor maps to team-lead",
-			agentName:    "mayor",
-			explicitRole: "",
-			want:         "team-lead",
-		},
-		{
-			name:         "reviewer maps to review",
-			agentName:    "reviewer-01",
-			explicitRole: "",
-			want:         "review",
-		},
-		{
-			name:         "judge maps to review",
-			agentName:    "judge",
-			explicitRole: "",
-			want:         "review",
-		},
-		{
-			name:         "worker maps to worker",
-			agentName:    "worker-01",
-			explicitRole: "",
-			want:         "worker",
-		},
-		{
-			name:         "crew maps to worker",
-			agentName:    "crew-member",
-			explicitRole: "",
-			want:         "worker",
-		},
-		{
-			name:         "unknown maps to agent",
-			agentName:    "something-random",
-			explicitRole: "",
-			want:         "agent",
-		},
-		{
-			name:         "explicit role whitespace trimmed",
-			agentName:    "worker",
-			explicitRole: "  custom-role  ",
-			want:         "custom-role",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := inferAgentRole(tt.agentName, tt.explicitRole)
-			if got != tt.want {
-				t.Errorf("inferAgentRole(%q, %q) = %q, want %q", tt.agentName, tt.explicitRole, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestRemainingPercent(t *testing.T) {
-	tests := []struct {
-		name         string
-		usagePercent float64
-		want         float64
-	}{
-		{name: "0% usage = 1.0 remaining", usagePercent: 0.0, want: 1.0},
-		{name: "0.5 usage = 0.5 remaining", usagePercent: 0.5, want: 0.5},
-		{name: "1.0 usage = 0.0 remaining", usagePercent: 1.0, want: 0.0},
-		{name: "over 1.0 clamps to 0", usagePercent: 1.5, want: 0.0},
-		{name: "negative usage clamps to 1", usagePercent: -0.1, want: 1.0},
-		{name: "0.25 usage = 0.75 remaining", usagePercent: 0.25, want: 0.75},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := remainingPercent(tt.usagePercent)
-			if got != tt.want {
-				t.Errorf("remainingPercent(%v) = %v, want %v", tt.usagePercent, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestExtractIssueID(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{name: "no issue ID returns empty", input: "no issue here", want: ""},
-		{name: "ag- prefix extracted", input: "working on ag-123", want: "ag-123"},
-		{name: "uppercase AG- extracted and lowercased", input: "AG-abc", want: "ag-abc"},
-		{name: "mixed case normalized", input: "Ag-XYZ", want: "ag-xyz"},
-		{name: "empty string returns empty", input: "", want: ""},
-		{name: "longer ID", input: "task ag-abc123 complete", want: "ag-abc123"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractIssueID(tt.input)
-			if got != tt.want {
-				t.Errorf("extractIssueID(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestTmuxTargetFromPaneID(t *testing.T) {
-	tests := []struct {
-		name   string
-		paneID string
-		want   string
-	}{
-		{name: "empty pane ID returns empty", paneID: "", want: ""},
-		{name: "in-process returns empty", paneID: "in-process", want: ""},
-		{name: "pane with dot returns session:window", paneID: "mysession:0.1", want: "mysession:0"},
-		{name: "pane without dot returns as-is", paneID: "mysession", want: "mysession"},
-		{name: "whitespace trimmed", paneID: "  mysession:0.1  ", want: "mysession:0"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tmuxTargetFromPaneID(tt.paneID)
-			if got != tt.want {
-				t.Errorf("tmuxTargetFromPaneID(%q) = %q, want %q", tt.paneID, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestTmuxSessionFromTarget(t *testing.T) {
-	tests := []struct {
-		name   string
-		target string
-		want   string
-	}{
-		{name: "empty target returns empty", target: "", want: ""},
-		{name: "session:window returns session", target: "mysession:0", want: "mysession"},
-		{name: "no colon returns target as-is", target: "mysession", want: "mysession"},
-		{name: "whitespace trimmed", target: "  mysession:1  ", want: "mysession"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tmuxSessionFromTarget(tt.target)
-			if got != tt.want {
-				t.Errorf("tmuxSessionFromTarget(%q) = %q, want %q", tt.target, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestNonZeroOrDefault(t *testing.T) {
-	tests := []struct {
-		name     string
-		value    int
-		fallback int
-		want     int
-	}{
-		{name: "positive value returned", value: 5, fallback: 10, want: 5},
-		{name: "zero value returns fallback", value: 0, fallback: 10, want: 10},
-		{name: "negative value returns fallback", value: -1, fallback: 10, want: 10},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := nonZeroOrDefault(tt.value, tt.fallback)
-			if got != tt.want {
-				t.Errorf("nonZeroOrDefault(%d, %d) = %d, want %d", tt.value, tt.fallback, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestTruncateDisplay(t *testing.T) {
-	tests := []struct {
-		name string
-		s    string
-		max  int
-		want string
-	}{
-		{name: "short string unchanged", s: "hello", max: 10, want: "hello"},
-		{name: "exact length unchanged", s: "hello", max: 5, want: "hello"},
-		{name: "truncated with ellipsis", s: "hello world", max: 8, want: "hello..."},
-		{name: "max<=3 truncates without ellipsis", s: "hello", max: 3, want: "hel"},
-		{name: "max=0 is empty", s: "hello", max: 0, want: ""},
-		{name: "empty string unchanged", s: "", max: 10, want: ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := truncateDisplay(tt.s, tt.max)
-			if got != tt.want {
-				t.Errorf("truncateDisplay(%q, %d) = %q, want %q", tt.s, tt.max, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestToRepoRelative(t *testing.T) {
-	t.Run("relative path computed", func(t *testing.T) {
-		cwd := "/home/user/project"
-		full := "/home/user/project/src/main.go"
-		got := toRepoRelative(cwd, full)
-		if got != "src/main.go" {
-			t.Errorf("toRepoRelative(%q, %q) = %q, want %q", cwd, full, got, "src/main.go")
+		got := extractUsageFromTailEntry(entry, ts)
+		if got.InputTokens != 500 {
+			t.Errorf("InputTokens = %d, want 500", got.InputTokens)
+		}
+		if got.CacheCreationInputToken != 1000 {
+			t.Errorf("CacheCreationInputToken = %d, want 1000", got.CacheCreationInputToken)
+		}
+		if got.CacheReadInputToken != 2000 {
+			t.Errorf("CacheReadInputToken = %d, want 2000", got.CacheReadInputToken)
+		}
+		if got.Model != "claude-opus" {
+			t.Errorf("Model = %q, want %q", got.Model, "claude-opus")
+		}
+		if !got.Timestamp.Equal(ts) {
+			t.Errorf("Timestamp = %v, want %v", got.Timestamp, ts)
 		}
 	})
-	t.Run("empty path returns empty", func(t *testing.T) {
-		got := toRepoRelative("/cwd", "")
+
+	t.Run("nil usage returns zero value", func(t *testing.T) {
+		entry := tailLineEnvelope{}
+		got := extractUsageFromTailEntry(entry, ts)
+		if got.InputTokens != 0 || got.Model != "" {
+			t.Errorf("expected zero-value usage, got %+v", got)
+		}
+	})
+
+	t.Run("zero total tokens returns zero value", func(t *testing.T) {
+		entry := tailLineEnvelope{}
+		entry.Message.Usage = json.RawMessage(`{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}`)
+		got := extractUsageFromTailEntry(entry, ts)
+		if got.InputTokens != 0 {
+			t.Errorf("expected zero-value usage for zero totals, got %+v", got)
+		}
+	})
+
+	t.Run("invalid JSON returns zero value", func(t *testing.T) {
+		entry := tailLineEnvelope{}
+		entry.Message.Usage = json.RawMessage(`{invalid}`)
+		got := extractUsageFromTailEntry(entry, ts)
+		if got.InputTokens != 0 {
+			t.Errorf("expected zero-value usage for invalid JSON, got %+v", got)
+		}
+	})
+}
+
+// --- extractTaskFromTailEntry ---
+
+func TestContext_ExtractTaskFromTailEntry(t *testing.T) {
+	t.Run("user message with string content", func(t *testing.T) {
+		entry := tailLineEnvelope{Type: "user"}
+		entry.Message.Content = json.RawMessage(`"hello world"`)
+		got := extractTaskFromTailEntry(entry)
+		if got != "hello world" {
+			t.Errorf("got %q, want %q", got, "hello world")
+		}
+	})
+
+	t.Run("non-user type returns empty", func(t *testing.T) {
+		entry := tailLineEnvelope{Type: "assistant"}
+		entry.Message.Content = json.RawMessage(`"hello"`)
+		got := extractTaskFromTailEntry(entry)
 		if got != "" {
-			t.Errorf("toRepoRelative with empty path = %q, want \"\"", got)
+			t.Errorf("got %q, want empty for non-user type", got)
+		}
+	})
+
+	t.Run("user type with empty content returns empty", func(t *testing.T) {
+		entry := tailLineEnvelope{Type: "user"}
+		got := extractTaskFromTailEntry(entry)
+		if got != "" {
+			t.Errorf("got %q, want empty for nil content", got)
+		}
+	})
+
+	t.Run("user message with array content", func(t *testing.T) {
+		entry := tailLineEnvelope{Type: "user"}
+		entry.Message.Content = json.RawMessage(`[{"type":"text","text":"array task"}]`)
+		got := extractTaskFromTailEntry(entry)
+		if got != "array task" {
+			t.Errorf("got %q, want %q", got, "array task")
 		}
 	})
 }
 
-func TestSanitizeForFilename(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{name: "simple string unchanged", input: "hello", want: "hello"},
-		{name: "spaces replaced with dashes", input: "hello world", want: "hello-world"},
-		{name: "special chars replaced", input: "abc/def:ghi", want: "abc-def-ghi"},
-		{name: "leading/trailing dashes trimmed", input: "/hello/", want: "hello"},
-		{name: "empty string returns session", input: "", want: "session"},
-		{name: "all special chars returns session", input: "!!!", want: "session"},
-		{name: "alphanumeric preserved", input: "abc-123_def.txt", want: "abc-123_def.txt"},
-	}
+// --- updateTailState ---
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := sanitizeForFilename(tt.input)
-			if got != tt.want {
-				t.Errorf("sanitizeForFilename(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
+func TestContext_UpdateTailState(t *testing.T) {
+	t.Run("sets newestTS from first non-zero timestamp", func(t *testing.T) {
+		ts := time.Date(2026, 2, 20, 12, 0, 0, 0, time.UTC)
+		entry := tailLineEnvelope{Timestamp: ts.Format(time.RFC3339)}
+		var usage transcriptUsage
+		var lastTask string
+		var newestTS time.Time
+
+		_ = updateTailState(entry, ts, &usage, &lastTask, &newestTS)
+		if !newestTS.Equal(ts) {
+			t.Errorf("newestTS = %v, want %v", newestTS, ts)
+		}
+	})
+
+	t.Run("returns true when both usage and task found", func(t *testing.T) {
+		ts := time.Date(2026, 2, 20, 12, 0, 0, 0, time.UTC)
+		// Create entry with usage
+		entry := tailLineEnvelope{Type: "assistant"}
+		entry.Message.Model = "claude-opus"
+		entry.Message.Usage = json.RawMessage(`{"input_tokens":100,"cache_creation_input_tokens":200,"cache_read_input_tokens":300}`)
+
+		var usage transcriptUsage
+		lastTask := "already set"
+		var newestTS time.Time
+
+		done := updateTailState(entry, ts, &usage, &lastTask, &newestTS)
+		if !done {
+			t.Error("expected true when both usage and task are set")
+		}
+	})
+
+	t.Run("returns false when only task found", func(t *testing.T) {
+		ts := time.Date(2026, 2, 20, 12, 0, 0, 0, time.UTC)
+		entry := tailLineEnvelope{Type: "user"}
+		entry.Message.Content = json.RawMessage(`"my task"`)
+
+		var usage transcriptUsage
+		var lastTask string
+		var newestTS time.Time
+
+		done := updateTailState(entry, ts, &usage, &lastTask, &newestTS)
+		if done {
+			t.Error("expected false when only task found, no usage")
+		}
+		if lastTask != "my task" {
+			t.Errorf("lastTask = %q, want %q", lastTask, "my task")
+		}
+	})
+
+	t.Run("does not overwrite newestTS once set", func(t *testing.T) {
+		ts1 := time.Date(2026, 2, 20, 12, 0, 0, 0, time.UTC)
+		ts2 := time.Date(2026, 2, 20, 13, 0, 0, 0, time.UTC)
+
+		entry := tailLineEnvelope{}
+		var usage transcriptUsage
+		var lastTask string
+		newestTS := ts1
+
+		_ = updateTailState(entry, ts2, &usage, &lastTask, &newestTS)
+		if !newestTS.Equal(ts1) {
+			t.Errorf("newestTS should not change once set, got %v want %v", newestTS, ts1)
+		}
+	})
 }
 
-func TestContextAssignmentIsEmpty(t *testing.T) {
-	t.Run("empty assignment returns true", func(t *testing.T) {
-		a := contextAssignment{}
-		if !a.isEmpty() {
-			t.Error("empty contextAssignment.isEmpty() should return true")
+// --- extractTailUsageAndTask ---
+
+func TestContext_ExtractTailUsageAndTask(t *testing.T) {
+	t.Run("extracts from reverse order", func(t *testing.T) {
+		lines := []string{
+			`{"type":"user","timestamp":"2026-02-20T10:00:00Z","message":{"role":"user","content":"first task"}}`,
+			`{"type":"assistant","timestamp":"2026-02-20T10:01:00Z","message":{"role":"assistant","model":"claude-opus","usage":{"input_tokens":100,"cache_creation_input_tokens":200,"cache_read_input_tokens":300}}}`,
+			`{"type":"user","timestamp":"2026-02-20T10:02:00Z","message":{"role":"user","content":"second task"}}`,
+		}
+
+		usage, task, ts := extractTailUsageAndTask(lines)
+		if task != "second task" {
+			t.Errorf("task = %q, want %q", task, "second task")
+		}
+		if usage.InputTokens != 100 {
+			t.Errorf("InputTokens = %d, want 100", usage.InputTokens)
+		}
+		if ts.IsZero() {
+			t.Error("expected non-zero timestamp")
 		}
 	})
 
-	t.Run("whitespace-only fields returns true", func(t *testing.T) {
-		a := contextAssignment{AgentName: "  ", AgentRole: "\t"}
-		if !a.isEmpty() {
-			t.Error("whitespace-only contextAssignment.isEmpty() should return true")
+	t.Run("empty lines returns zero values", func(t *testing.T) {
+		usage, task, ts := extractTailUsageAndTask(nil)
+		if task != "" || usage.InputTokens != 0 || !ts.IsZero() {
+			t.Errorf("expected zero values for empty input, got task=%q usage=%+v ts=%v", task, usage, ts)
 		}
 	})
 
-	t.Run("non-empty agent name returns false", func(t *testing.T) {
-		a := contextAssignment{AgentName: "worker-01"}
-		if a.isEmpty() {
-			t.Error("contextAssignment with AgentName should not be empty")
+	t.Run("skips invalid JSON lines", func(t *testing.T) {
+		lines := []string{
+			"not json at all",
+			`{"type":"user","timestamp":"2026-02-20T10:00:00Z","message":{"role":"user","content":"valid task"}}`,
+		}
+		_, task, _ := extractTailUsageAndTask(lines)
+		if task != "valid task" {
+			t.Errorf("task = %q, want %q", task, "valid task")
 		}
 	})
 
-	t.Run("non-empty issue ID returns false", func(t *testing.T) {
-		a := contextAssignment{IssueID: "ag-123"}
-		if a.isEmpty() {
-			t.Error("contextAssignment with IssueID should not be empty")
+	t.Run("skips blank lines", func(t *testing.T) {
+		lines := []string{
+			"",
+			"   ",
+			`{"type":"user","timestamp":"2026-02-20T10:00:00Z","message":{"role":"user","content":"the task"}}`,
+		}
+		_, task, _ := extractTailUsageAndTask(lines)
+		if task != "the task" {
+			t.Errorf("task = %q, want %q", task, "the task")
 		}
 	})
 }
 
-func TestAssignmentFromStatus(t *testing.T) {
-	status := contextSessionStatus{
-		AgentName:   "  worker-01  ",
-		AgentRole:   "  worker  ",
-		TeamName:    "  team-a  ",
-		IssueID:     "  ag-123  ",
-		TmuxPaneID:  "  pane-1  ",
-		TmuxTarget:  "  target-1  ",
-		TmuxSession: "  session-1  ",
-	}
-	got := assignmentFromStatus(status)
-	if got.AgentName != "worker-01" {
-		t.Errorf("AgentName = %q, want %q", got.AgentName, "worker-01")
-	}
-	if got.IssueID != "ag-123" {
-		t.Errorf("IssueID = %q, want %q", got.IssueID, "ag-123")
-	}
-	if got.TmuxSession != "session-1" {
-		t.Errorf("TmuxSession = %q, want %q", got.TmuxSession, "session-1")
-	}
-}
+// --- fixupTailTimestamps ---
 
-func TestReadPersistedAssignment(t *testing.T) {
-	dir := t.TempDir()
-
-	t.Run("missing file returns not found", func(t *testing.T) {
-		_, ok := readPersistedAssignment(dir, "nonexistent-session")
-		if ok {
-			t.Error("expected readPersistedAssignment to return false for missing file")
-		}
-	})
-
-	t.Run("valid assignment file returned", func(t *testing.T) {
-		contextDir := filepath.Join(dir, ".agents", "ao", "context")
-		if err := os.MkdirAll(contextDir, 0755); err != nil {
+func TestContext_FixupTailTimestamps(t *testing.T) {
+	t.Run("uses file mod time when newestTS is zero", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "test.jsonl")
+		if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
 			t.Fatal(err)
 		}
-		snapshot := contextAssignmentSnapshot{
-			AgentName: "worker-01",
-			AgentRole: "worker",
-			IssueID:   "ag-456",
-			UpdatedAt: "2026-01-01T00:00:00Z",
-		}
-		data, _ := json.Marshal(snapshot)
-		sessionID := "test-session-123"
-		filename := "assignment-" + sanitizeForFilename(sessionID) + ".json"
-		if err := os.WriteFile(filepath.Join(contextDir, filename), data, 0644); err != nil {
-			t.Fatal(err)
-		}
-		got, ok := readPersistedAssignment(dir, sessionID)
-		if !ok {
-			t.Fatal("expected readPersistedAssignment to return true for existing file")
-		}
-		if got.AgentName != "worker-01" {
-			t.Errorf("AgentName = %q, want %q", got.AgentName, "worker-01")
-		}
-		if got.IssueID != "ag-456" {
-			t.Errorf("IssueID = %q, want %q", got.IssueID, "ag-456")
+
+		var usage transcriptUsage
+		newestTS := time.Time{}
+
+		fixupTailTimestamps(path, &usage, &newestTS)
+		if newestTS.IsZero() {
+			t.Error("expected newestTS to be set from file mod time")
 		}
 	})
 
-	t.Run("empty assignment returns not found", func(t *testing.T) {
-		contextDir := filepath.Join(dir, ".agents", "ao", "context")
-		snapshot := contextAssignmentSnapshot{} // all empty
-		data, _ := json.Marshal(snapshot)
-		sessionID := "empty-session"
-		filename := "assignment-" + sanitizeForFilename(sessionID) + ".json"
-		if err := os.WriteFile(filepath.Join(contextDir, filename), data, 0644); err != nil {
+	t.Run("does not overwrite non-zero newestTS", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "test.jsonl")
+		if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
 			t.Fatal(err)
 		}
-		_, ok := readPersistedAssignment(dir, sessionID)
-		if ok {
-			t.Error("expected readPersistedAssignment to return false for empty snapshot")
+
+		var usage transcriptUsage
+		original := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		newestTS := original
+
+		fixupTailTimestamps(path, &usage, &newestTS)
+		if !newestTS.Equal(original) {
+			t.Errorf("newestTS should not change, got %v want %v", newestTS, original)
 		}
 	})
 
-	t.Run("invalid JSON returns not found", func(t *testing.T) {
-		contextDir := filepath.Join(dir, ".agents", "ao", "context")
-		sessionID := "bad-json-session"
-		filename := "assignment-" + sanitizeForFilename(sessionID) + ".json"
-		if err := os.WriteFile(filepath.Join(contextDir, filename), []byte("{invalid json}"), 0644); err != nil {
+	t.Run("sets usage.Timestamp from newestTS when zero", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "test.jsonl")
+		if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
 			t.Fatal(err)
 		}
-		_, ok := readPersistedAssignment(dir, sessionID)
-		if ok {
-			t.Error("expected readPersistedAssignment to return false for invalid JSON")
+
+		var usage transcriptUsage
+		newestTS := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+
+		fixupTailTimestamps(path, &usage, &newestTS)
+		if !usage.Timestamp.Equal(newestTS) {
+			t.Errorf("usage.Timestamp = %v, want %v", usage.Timestamp, newestTS)
+		}
+	})
+
+	t.Run("does not overwrite non-zero usage.Timestamp", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "test.jsonl")
+		if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		usageTS := time.Date(2026, 1, 15, 8, 0, 0, 0, time.UTC)
+		usage := transcriptUsage{Timestamp: usageTS}
+		newestTS := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+
+		fixupTailTimestamps(path, &usage, &newestTS)
+		if !usage.Timestamp.Equal(usageTS) {
+			t.Errorf("usage.Timestamp should not change, got %v want %v", usage.Timestamp, usageTS)
 		}
 	})
 }
 
-func TestMergePersistedAssignment(t *testing.T) {
-	dir := t.TempDir()
+// --- seekAndReadTail ---
 
-	t.Run("nil status is no-op", func(t *testing.T) {
+func TestContext_SeekAndReadTail(t *testing.T) {
+	t.Run("reads full file when smaller than maxBytes", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "small.txt")
+		content := "line1\nline2\nline3\n"
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+
+		fi, _ := f.Stat()
+		got, err := seekAndReadTail(f, fi.Size(), 10000)
+		if err != nil {
+			t.Fatalf("seekAndReadTail: %v", err)
+		}
+		if string(got) != content {
+			t.Errorf("got %q, want %q", string(got), content)
+		}
+	})
+
+	t.Run("truncates and aligns to newline when exceeding maxBytes", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "large.txt")
+		// 5 lines of 10 chars each = 55 bytes total
+		content := "aaaaaaaaaa\nbbbbbbbbbb\ncccccccccc\ndddddddddd\neeeeeeeeee\n"
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+
+		fi, _ := f.Stat()
+		got, err := seekAndReadTail(f, fi.Size(), 25)
+		if err != nil {
+			t.Fatalf("seekAndReadTail: %v", err)
+		}
+		// Should start after the first newline in the truncated portion
+		gotStr := string(got)
+		if strings.Contains(gotStr, "aaaaaaaaaa") {
+			t.Errorf("expected head content to be truncated, got %q", gotStr)
+		}
+		// Should contain the tail
+		if !strings.Contains(gotStr, "eeeeeeeeee") {
+			t.Errorf("expected tail content, got %q", gotStr)
+		}
+	})
+}
+
+// --- compareSessionStatuses ---
+
+func TestContext_CompareSessionStatuses(t *testing.T) {
+	t.Run("CRITICAL sorts before GREEN", func(t *testing.T) {
+		a := contextSessionStatus{Readiness: contextReadinessCritical, Status: string(contextbudget.StatusCritical)}
+		b := contextSessionStatus{Readiness: contextReadinessGreen, Status: string(contextbudget.StatusOptimal)}
+		if compareSessionStatuses(a, b) >= 0 {
+			t.Error("CRITICAL should sort before GREEN")
+		}
+	})
+
+	t.Run("same readiness, CRITICAL status before WARNING", func(t *testing.T) {
+		a := contextSessionStatus{Readiness: contextReadinessCritical, Status: string(contextbudget.StatusCritical)}
+		b := contextSessionStatus{Readiness: contextReadinessCritical, Status: string(contextbudget.StatusWarning)}
+		if compareSessionStatuses(a, b) >= 0 {
+			t.Error("CRITICAL status should sort before WARNING")
+		}
+	})
+
+	t.Run("same readiness and status, stale before non-stale", func(t *testing.T) {
+		a := contextSessionStatus{Readiness: contextReadinessRed, Status: string(contextbudget.StatusWarning), IsStale: true, SessionID: "z"}
+		b := contextSessionStatus{Readiness: contextReadinessRed, Status: string(contextbudget.StatusWarning), IsStale: false, SessionID: "a"}
+		if compareSessionStatuses(a, b) >= 0 {
+			t.Error("stale should sort before non-stale")
+		}
+	})
+
+	t.Run("identical everything sorts by session ID", func(t *testing.T) {
+		a := contextSessionStatus{Readiness: contextReadinessGreen, Status: string(contextbudget.StatusOptimal), SessionID: "aaa"}
+		b := contextSessionStatus{Readiness: contextReadinessGreen, Status: string(contextbudget.StatusOptimal), SessionID: "zzz"}
+		if compareSessionStatuses(a, b) >= 0 {
+			t.Error("aaa should sort before zzz")
+		}
+	})
+
+	t.Run("equal sessions return 0", func(t *testing.T) {
+		a := contextSessionStatus{Readiness: contextReadinessGreen, Status: string(contextbudget.StatusOptimal), SessionID: "same"}
+		b := contextSessionStatus{Readiness: contextReadinessGreen, Status: string(contextbudget.StatusOptimal), SessionID: "same"}
+		if compareSessionStatuses(a, b) != 0 {
+			t.Error("identical sessions should compare as equal")
+		}
+	})
+}
+
+// --- staleBudgetFallbackStatus ---
+
+func TestContext_StaleBudgetFallbackStatus(t *testing.T) {
+	t.Run("zero-value budget yields OPTIMAL", func(t *testing.T) {
+		b := contextbudget.BudgetTracker{
+			SessionID: "test-session",
+			MaxTokens: contextbudget.DefaultMaxTokens,
+		}
+		watchdog := 20 * time.Minute
+
+		status := staleBudgetFallbackStatus(b, watchdog)
+		if status.SessionID != "test-session" {
+			t.Errorf("SessionID = %q, want %q", status.SessionID, "test-session")
+		}
+		if status.Status != string(contextbudget.StatusOptimal) {
+			t.Errorf("Status = %q, want OPTIMAL", status.Status)
+		}
+		if status.Readiness != contextReadinessGreen {
+			t.Errorf("Readiness = %q, want GREEN", status.Readiness)
+		}
+		if status.IsStale {
+			t.Error("expected not stale for zero LastUpdated")
+		}
+	})
+
+	t.Run("old budget is marked stale", func(t *testing.T) {
+		b := contextbudget.BudgetTracker{
+			SessionID:      "stale-session",
+			MaxTokens:      contextbudget.DefaultMaxTokens,
+			EstimatedUsage: 150000,
+			LastUpdated:    time.Now().Add(-2 * time.Hour),
+		}
+		watchdog := 20 * time.Minute
+
+		status := staleBudgetFallbackStatus(b, watchdog)
+		if !status.IsStale {
+			t.Error("expected stale for old LastUpdated")
+		}
+	})
+
+	t.Run("recent budget not stale", func(t *testing.T) {
+		b := contextbudget.BudgetTracker{
+			SessionID:      "fresh-session",
+			MaxTokens:      contextbudget.DefaultMaxTokens,
+			EstimatedUsage: 100000,
+			LastUpdated:    time.Now().Add(-5 * time.Minute),
+		}
+		watchdog := 20 * time.Minute
+
+		status := staleBudgetFallbackStatus(b, watchdog)
+		if status.IsStale {
+			t.Error("expected not stale for recent LastUpdated")
+		}
+	})
+
+	t.Run("zero MaxTokens uses default", func(t *testing.T) {
+		b := contextbudget.BudgetTracker{
+			SessionID: "no-max-session",
+			MaxTokens: 0,
+		}
+		status := staleBudgetFallbackStatus(b, 20*time.Minute)
+		if status.MaxTokens != contextbudget.DefaultMaxTokens {
+			t.Errorf("MaxTokens = %d, want %d", status.MaxTokens, contextbudget.DefaultMaxTokens)
+		}
+	})
+}
+
+// --- applyContextAssignment ---
+
+func TestContext_ApplyContextAssignment(t *testing.T) {
+	t.Run("nil status is safe", func(t *testing.T) {
 		// Should not panic
-		mergePersistedAssignment(dir, nil)
+		applyContextAssignment(nil, contextAssignment{AgentName: "test"})
 	})
 
-	t.Run("empty session ID is no-op", func(t *testing.T) {
+	t.Run("applies all non-empty fields", func(t *testing.T) {
 		status := &contextSessionStatus{}
-		mergePersistedAssignment(dir, status)
-		// Should not panic or modify
+		assignment := contextAssignment{
+			AgentName:   "worker-01",
+			AgentRole:   "worker",
+			TeamName:    "team-alpha",
+			IssueID:     "ag-123",
+			TmuxPaneID:  "session:0.1",
+			TmuxTarget:  "session:0",
+			TmuxSession: "session",
+		}
+		applyContextAssignment(status, assignment)
+		if status.AgentName != "worker-01" {
+			t.Errorf("AgentName = %q, want %q", status.AgentName, "worker-01")
+		}
+		if status.AgentRole != "worker" {
+			t.Errorf("AgentRole = %q, want %q", status.AgentRole, "worker")
+		}
+		if status.TeamName != "team-alpha" {
+			t.Errorf("TeamName = %q, want %q", status.TeamName, "team-alpha")
+		}
+		if status.IssueID != "ag-123" {
+			t.Errorf("IssueID = %q, want %q", status.IssueID, "ag-123")
+		}
+		if status.TmuxPaneID != "session:0.1" {
+			t.Errorf("TmuxPaneID = %q, want %q", status.TmuxPaneID, "session:0.1")
+		}
+		if status.TmuxTarget != "session:0" {
+			t.Errorf("TmuxTarget = %q, want %q", status.TmuxTarget, "session:0")
+		}
+		if status.TmuxSession != "session" {
+			t.Errorf("TmuxSession = %q, want %q", status.TmuxSession, "session")
+		}
 	})
 
-	t.Run("merges persisted agent name into empty field", func(t *testing.T) {
-		contextDir := filepath.Join(dir, ".agents", "ao", "context")
-		if err := os.MkdirAll(contextDir, 0755); err != nil {
-			t.Fatal(err)
-		}
-
-		sessionID := "merge-test-session"
-		snapshot := contextAssignmentSnapshot{
-			AgentName: "persisted-worker",
-			IssueID:   "ag-789",
-		}
-		data, _ := json.Marshal(snapshot)
-		filename := "assignment-" + sanitizeForFilename(sessionID) + ".json"
-		if err := os.WriteFile(filepath.Join(contextDir, filename), data, 0644); err != nil {
-			t.Fatal(err)
-		}
-
+	t.Run("does not overwrite with empty fields", func(t *testing.T) {
 		status := &contextSessionStatus{
-			SessionID: sessionID,
-			AgentName: "", // empty - should be merged from persisted
+			AgentName: "existing-agent",
+			IssueID:   "ag-existing",
 		}
-		mergePersistedAssignment(dir, status)
+		assignment := contextAssignment{} // all empty
+		applyContextAssignment(status, assignment)
+		if status.AgentName != "existing-agent" {
+			t.Errorf("AgentName should not change, got %q", status.AgentName)
+		}
+		if status.IssueID != "ag-existing" {
+			t.Errorf("IssueID should not change, got %q", status.IssueID)
+		}
+	})
+
+	t.Run("whitespace-only fields do not overwrite", func(t *testing.T) {
+		status := &contextSessionStatus{
+			AgentName: "existing",
+		}
+		assignment := contextAssignment{
+			AgentName: "   ",
+		}
+		applyContextAssignment(status, assignment)
+		if status.AgentName != "existing" {
+			t.Errorf("AgentName should not change for whitespace-only, got %q", status.AgentName)
+		}
+	})
+}
+
+// --- mergeAssignmentFields ---
+
+func TestContext_MergeAssignmentFields(t *testing.T) {
+	t.Run("fills empty current fields from persisted", func(t *testing.T) {
+		current := &contextAssignment{}
+		persisted := &contextAssignment{
+			AgentName:   "persisted-worker",
+			AgentRole:   "worker",
+			TeamName:    "team-a",
+			IssueID:     "ag-111",
+			TmuxPaneID:  "sess:0.1",
+			TmuxTarget:  "sess:0",
+			TmuxSession: "sess",
+		}
+		status := &contextSessionStatus{}
+
+		mergeAssignmentFields(current, persisted, status)
+
 		if status.AgentName != "persisted-worker" {
 			t.Errorf("AgentName = %q, want %q", status.AgentName, "persisted-worker")
 		}
-		if status.IssueID != "ag-789" {
-			t.Errorf("IssueID = %q, want %q", status.IssueID, "ag-789")
+		if status.AgentRole != "worker" {
+			t.Errorf("AgentRole = %q, want %q", status.AgentRole, "worker")
+		}
+		if status.TeamName != "team-a" {
+			t.Errorf("TeamName = %q, want %q", status.TeamName, "team-a")
+		}
+		if status.IssueID != "ag-111" {
+			t.Errorf("IssueID = %q, want %q", status.IssueID, "ag-111")
+		}
+		if status.TmuxPaneID != "sess:0.1" {
+			t.Errorf("TmuxPaneID = %q, want %q", status.TmuxPaneID, "sess:0.1")
+		}
+		if status.TmuxTarget != "sess:0" {
+			t.Errorf("TmuxTarget = %q, want %q", status.TmuxTarget, "sess:0")
+		}
+		if status.TmuxSession != "sess" {
+			t.Errorf("TmuxSession = %q, want %q", status.TmuxSession, "sess")
 		}
 	})
 
-	t.Run("existing field not overwritten by persisted", func(t *testing.T) {
-		contextDir := filepath.Join(dir, ".agents", "ao", "context")
-		sessionID := "no-overwrite-session"
-		snapshot := contextAssignmentSnapshot{
-			AgentName: "persisted-worker",
-		}
-		data, _ := json.Marshal(snapshot)
-		filename := "assignment-" + sanitizeForFilename(sessionID) + ".json"
-		if err := os.WriteFile(filepath.Join(contextDir, filename), data, 0644); err != nil {
-			t.Fatal(err)
-		}
-
-		status := &contextSessionStatus{
-			SessionID: sessionID,
+	t.Run("does not overwrite non-empty current fields", func(t *testing.T) {
+		current := &contextAssignment{
 			AgentName: "current-worker",
+			IssueID:   "ag-current",
 		}
-		mergePersistedAssignment(dir, status)
-		if status.AgentName != "current-worker" {
-			t.Errorf("AgentName should not be overwritten: got %q, want %q", status.AgentName, "current-worker")
+		persisted := &contextAssignment{
+			AgentName: "persisted-worker",
+			IssueID:   "ag-persisted",
+			TeamName:  "persisted-team",
+		}
+		status := &contextSessionStatus{}
+
+		mergeAssignmentFields(current, persisted, status)
+
+		// These should NOT be set (current is non-empty)
+		if status.AgentName != "" {
+			t.Errorf("AgentName should remain empty when current is non-empty, got %q", status.AgentName)
+		}
+		if status.IssueID != "" {
+			t.Errorf("IssueID should remain empty when current is non-empty, got %q", status.IssueID)
+		}
+		// TeamName should be set (current is empty)
+		if status.TeamName != "persisted-team" {
+			t.Errorf("TeamName = %q, want %q", status.TeamName, "persisted-team")
 		}
 	})
 }
 
-func TestContextWithTimeout(t *testing.T) {
-	t.Run("positive timeout creates WithTimeout", func(t *testing.T) {
-		ctx, cancel := contextWithTimeout(100 * time.Millisecond)
-		defer cancel()
-		if ctx == nil {
-			t.Error("expected non-nil context")
-		}
-		deadline, ok := ctx.Deadline()
-		if !ok {
-			t.Error("expected context with deadline")
-		}
-		if deadline.IsZero() {
-			t.Error("expected non-zero deadline")
-		}
-	})
+// --- searchTeamConfig ---
 
-	t.Run("zero timeout creates WithCancel", func(t *testing.T) {
-		ctx, cancel := contextWithTimeout(0)
-		defer cancel()
-		if ctx == nil {
-			t.Error("expected non-nil context")
-		}
-		_, ok := ctx.Deadline()
-		if ok {
-			t.Error("expected context without deadline for zero timeout")
-		}
-	})
-
-	t.Run("negative timeout creates WithCancel", func(t *testing.T) {
-		ctx, cancel := contextWithTimeout(-1)
-		defer cancel()
-		if ctx == nil {
-			t.Error("expected non-nil context")
-		}
-		_, ok := ctx.Deadline()
-		if ok {
-			t.Error("expected context without deadline for negative timeout")
-		}
-	})
-}
-
-func TestActionForStatus(t *testing.T) {
-	tests := []struct {
-		name   string
-		status string
-		stale  bool
-		want   string
-	}{
-		{name: "CRITICAL → handoff_now", status: "CRITICAL", stale: false, want: "handoff_now"},
-		{name: "WARNING → checkpoint", status: "WARNING", stale: false, want: "checkpoint_and_prepare_handoff"},
-		{name: "OPTIMAL not stale → continue", status: "OPTIMAL", stale: false, want: "continue"},
-		{name: "stale non-optimal → recover_dead", status: "WARNING", stale: true, want: "recover_dead_session"},
-		{name: "stale OPTIMAL → investigate", status: "OPTIMAL", stale: true, want: "investigate_stale_session"},
-		{name: "default not stale → continue", status: "unknown", stale: false, want: "continue"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := actionForStatus(tt.status, tt.stale)
-			if got != tt.want {
-				t.Errorf("actionForStatus(%q, %v) = %q, want %q", tt.status, tt.stale, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestReadinessRank(t *testing.T) {
-	tests := []struct {
-		readiness string
-		want      int
-	}{
-		{readiness: "CRITICAL", want: 0},
-		{readiness: "RED", want: 1},
-		{readiness: "AMBER", want: 2},
-		{readiness: "GREEN", want: 3},
-		{readiness: "unknown", want: 4},
-		{readiness: "  GREEN  ", want: 3},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.readiness, func(t *testing.T) {
-			got := readinessRank(tt.readiness)
-			if got != tt.want {
-				t.Errorf("readinessRank(%q) = %d, want %d", tt.readiness, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestHookMessageForStatus(t *testing.T) {
-	t.Run("handoff_now returns critical message", func(t *testing.T) {
-		status := contextSessionStatus{
-			Action:           "handoff_now",
-			UsagePercent:     0.95,
-			Readiness:        "CRITICAL",
-			RemainingPercent: 0.05,
-		}
-		got := hookMessageForStatus(status)
-		if !strings.Contains(got, "CRITICAL") {
-			t.Errorf("expected CRITICAL in message, got: %s", got)
-		}
-	})
-
-	t.Run("checkpoint returns warning message", func(t *testing.T) {
-		status := contextSessionStatus{
-			Action:           "checkpoint_and_prepare_handoff",
-			UsagePercent:     0.75,
-			Readiness:        "WARNING",
-			RemainingPercent: 0.25,
-		}
-		got := hookMessageForStatus(status)
-		if !strings.Contains(got, "WARNING") {
-			t.Errorf("expected WARNING in message, got: %s", got)
-		}
-	})
-
-	t.Run("recover_dead with restart attempt success", func(t *testing.T) {
-		status := contextSessionStatus{
-			Action:         "recover_dead_session",
-			RestartAttempt: true,
-			RestartSuccess: true,
-			TmuxSession:    "my-session",
-		}
-		got := hookMessageForStatus(status)
-		if !strings.Contains(got, "auto-restarted") {
-			t.Errorf("expected 'auto-restarted' in message, got: %s", got)
-		}
-	})
-
-	t.Run("recover_dead with restart attempt failure", func(t *testing.T) {
-		status := contextSessionStatus{
-			Action:         "recover_dead_session",
-			RestartAttempt: true,
-			RestartSuccess: false,
-			RestartMessage: "tmux not found",
-		}
-		got := hookMessageForStatus(status)
-		if !strings.Contains(got, "auto-restart failed") {
-			t.Errorf("expected 'auto-restart failed' in message, got: %s", got)
-		}
-	})
-
-	t.Run("recover_dead without restart attempt with message", func(t *testing.T) {
-		status := contextSessionStatus{
-			Action:         "recover_dead_session",
-			RestartAttempt: false,
-			RestartMessage: "session unresponsive",
-		}
-		got := hookMessageForStatus(status)
-		if !strings.Contains(got, "session unresponsive") {
-			t.Errorf("expected restart message in output, got: %s", got)
-		}
-	})
-
-	t.Run("recover_dead without restart attempt and no message", func(t *testing.T) {
-		status := contextSessionStatus{
-			Action:         "recover_dead_session",
-			RestartAttempt: false,
-		}
-		got := hookMessageForStatus(status)
-		if !strings.Contains(got, "stale") {
-			t.Errorf("expected 'stale' in message, got: %s", got)
-		}
-	})
-
-	t.Run("default with RED readiness returns hull message", func(t *testing.T) {
-		status := contextSessionStatus{
-			Action:           "continue",
-			Readiness:        "RED",
-			RemainingPercent: 0.35,
-		}
-		got := hookMessageForStatus(status)
-		if !strings.Contains(got, "RED") {
-			t.Errorf("expected RED in message, got: %s", got)
-		}
-	})
-
-	t.Run("default non-red returns empty", func(t *testing.T) {
-		status := contextSessionStatus{
-			Action:    "continue",
-			Readiness: "GREEN",
-		}
-		got := hookMessageForStatus(status)
-		if got != "" {
-			t.Errorf("expected empty message for continue+green, got: %s", got)
-		}
-	})
-}
-
-func TestDisplayOrDash(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{"empty string returns dash", "", "-"},
-		{"whitespace only returns dash", "   ", "-"},
-		{"non-empty returns trimmed value", "hello", "hello"},
-		{"leading/trailing whitespace trimmed", "  value  ", "value"},
-		{"tab whitespace returns dash", "\t", "-"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := displayOrDash(tt.input)
-			if got != tt.want {
-				t.Errorf("displayOrDash(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestNormalizeLine(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{"plain text unchanged", "hello world", "hello world"},
-		{"newlines replaced with spaces", "hello\nworld", "hello world"},
-		{"carriage returns replaced", "hello\rworld", "hello world"},
-		{"multiple spaces collapsed", "hello   world", "hello world"},
-		{"leading/trailing whitespace removed", "  hello world  ", "hello world"},
-		{"mixed newlines and spaces", "  hello\n  world  \n", "hello world"},
-		{"empty string", "", ""},
-		{"only whitespace", "   \n   ", ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := normalizeLine(tt.input)
-			if got != tt.want {
-				t.Errorf("normalizeLine(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestReadFileTail(t *testing.T) {
-	t.Run("returns error for nonexistent file", func(t *testing.T) {
-		_, err := readFileTail("/tmp/definitely-does-not-exist-xyz.txt", 1024)
-		if err == nil {
-			t.Error("expected error for nonexistent file")
-		}
-	})
-
-	t.Run("returns empty for empty file", func(t *testing.T) {
+func TestContext_SearchTeamConfig(t *testing.T) {
+	t.Run("finds member by exact name", func(t *testing.T) {
 		dir := t.TempDir()
-		path := filepath.Join(dir, "empty.txt")
-		if err := os.WriteFile(path, []byte(""), 0644); err != nil {
-			t.Fatal(err)
-		}
-		got, err := readFileTail(path, 1024)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(got) != 0 {
-			t.Errorf("expected empty result, got %d bytes", len(got))
-		}
-	})
-
-	t.Run("returns full content when smaller than maxBytes", func(t *testing.T) {
-		dir := t.TempDir()
-		path := filepath.Join(dir, "small.txt")
-		content := "hello\nworld\n"
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			t.Fatal(err)
-		}
-		got, err := readFileTail(path, 10000)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if string(got) != content {
-			t.Errorf("expected full content, got %q", string(got))
-		}
-	})
-
-	t.Run("returns tail when content exceeds maxBytes", func(t *testing.T) {
-		dir := t.TempDir()
-		path := filepath.Join(dir, "large.txt")
-		// Write 200 bytes of content
-		content := strings.Repeat("abcdefghij\n", 20) // 220 bytes
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			t.Fatal(err)
-		}
-		got, err := readFileTail(path, 50) // Only read last 50 bytes
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(got) == 0 {
-			t.Error("expected non-empty tail")
-		}
-		if len(got) >= len(content) {
-			t.Errorf("expected tail shorter than full content (%d bytes), got %d", len(content), len(got))
-		}
-	})
-}
-
-func TestFindTeamMemberByName(t *testing.T) {
-	t.Run("empty name returns false", func(t *testing.T) {
-		_, _, ok := findTeamMemberByName("")
-		if ok {
-			t.Error("expected false for empty agent name")
-		}
-	})
-
-	t.Run("finds member in team config", func(t *testing.T) {
-		dir := t.TempDir()
-		teamDir := filepath.Join(dir, ".claude", "teams", "my-team")
-		if err := os.MkdirAll(teamDir, 0755); err != nil {
-			t.Fatal(err)
-		}
-
-		config := map[string]any{
-			"members": []map[string]any{
-				{"name": "Alice", "role": "worker"},
-				{"name": "Bob", "role": "lead"},
+		cfgPath := filepath.Join(dir, "config.json")
+		config := teamConfigFile{
+			Members: []teamConfigMember{
+				{Name: "alice", AgentType: "general", TmuxPane: "sess:0.1"},
+				{Name: "bob", AgentType: "lead", TmuxPane: "sess:0.2"},
 			},
 		}
 		data, _ := json.Marshal(config)
-		if err := os.WriteFile(filepath.Join(teamDir, "config.json"), data, 0644); err != nil {
+		if err := os.WriteFile(cfgPath, data, 0644); err != nil {
 			t.Fatal(err)
 		}
 
-		t.Setenv("HOME", dir)
-
-		teamName, member, ok := findTeamMemberByName("Alice")
+		member, ok := searchTeamConfig(cfgPath, "alice")
 		if !ok {
-			t.Error("expected true for Alice")
+			t.Fatal("expected true for alice")
 		}
-		if teamName != "my-team" {
-			t.Errorf("teamName = %q, want %q", teamName, "my-team")
+		if member.Name != "alice" {
+			t.Errorf("Name = %q, want %q", member.Name, "alice")
 		}
-		if member.Name != "Alice" {
-			t.Errorf("member.Name = %q, want %q", member.Name, "Alice")
+		if member.AgentType != "general" {
+			t.Errorf("AgentType = %q, want %q", member.AgentType, "general")
+		}
+		if member.TmuxPane != "sess:0.1" {
+			t.Errorf("TmuxPane = %q, want %q", member.TmuxPane, "sess:0.1")
 		}
 	})
 
 	t.Run("case-insensitive match", func(t *testing.T) {
 		dir := t.TempDir()
-		teamDir := filepath.Join(dir, ".claude", "teams", "team-a")
-		if err := os.MkdirAll(teamDir, 0755); err != nil {
-			t.Fatal(err)
-		}
-
-		config := map[string]any{
-			"members": []map[string]any{
-				{"name": "Worker-1"},
+		cfgPath := filepath.Join(dir, "config.json")
+		config := teamConfigFile{
+			Members: []teamConfigMember{
+				{Name: "Alice"},
 			},
 		}
 		data, _ := json.Marshal(config)
-		os.WriteFile(filepath.Join(teamDir, "config.json"), data, 0644) //nolint:errcheck // test setup
-		t.Setenv("HOME", dir)
+		os.WriteFile(cfgPath, data, 0644) //nolint:errcheck
 
-		_, member, ok := findTeamMemberByName("worker-1")
+		_, ok := searchTeamConfig(cfgPath, "alice")
 		if !ok {
-			t.Error("expected case-insensitive match for worker-1")
-		}
-		if member.Name != "Worker-1" {
-			t.Errorf("member.Name = %q, want %q", member.Name, "Worker-1")
+			t.Error("expected case-insensitive match")
 		}
 	})
 
-	t.Run("nonexistent agent returns false", func(t *testing.T) {
+	t.Run("nonexistent member returns false", func(t *testing.T) {
 		dir := t.TempDir()
-		teamDir := filepath.Join(dir, ".claude", "teams", "team-b")
-		os.MkdirAll(teamDir, 0755) //nolint:errcheck // test setup
-		data, _ := json.Marshal(map[string]any{"members": []map[string]any{{"name": "Bob"}}})
-		os.WriteFile(filepath.Join(teamDir, "config.json"), data, 0644) //nolint:errcheck // test setup
-		t.Setenv("HOME", dir)
+		cfgPath := filepath.Join(dir, "config.json")
+		config := teamConfigFile{
+			Members: []teamConfigMember{{Name: "alice"}},
+		}
+		data, _ := json.Marshal(config)
+		os.WriteFile(cfgPath, data, 0644) //nolint:errcheck
 
-		_, _, ok := findTeamMemberByName("Charlie")
+		_, ok := searchTeamConfig(cfgPath, "charlie")
 		if ok {
-			t.Error("expected false for nonexistent agent")
+			t.Error("expected false for nonexistent member")
 		}
 	})
+
+	t.Run("nonexistent file returns false", func(t *testing.T) {
+		_, ok := searchTeamConfig("/nonexistent/path/config.json", "alice")
+		if ok {
+			t.Error("expected false for nonexistent file")
+		}
+	})
+
+	t.Run("invalid JSON returns false", func(t *testing.T) {
+		dir := t.TempDir()
+		cfgPath := filepath.Join(dir, "config.json")
+		os.WriteFile(cfgPath, []byte("{invalid}"), 0644) //nolint:errcheck
+
+		_, ok := searchTeamConfig(cfgPath, "alice")
+		if ok {
+			t.Error("expected false for invalid JSON")
+		}
+	})
+}
+
+// --- persistAssignment ---
+
+func TestContext_PersistAssignment(t *testing.T) {
+	t.Run("writes assignment file for non-empty assignment", func(t *testing.T) {
+		dir := t.TempDir()
+		status := contextSessionStatus{
+			SessionID: "persist-test-001",
+			AgentName: "worker-01",
+			AgentRole: "worker",
+			IssueID:   "ag-555",
+		}
+
+		if err := persistAssignment(dir, status); err != nil {
+			t.Fatalf("persistAssignment: %v", err)
+		}
+
+		// Verify file was written
+		expectedPath := filepath.Join(dir, ".agents", "ao", "context", "assignment-persist-test-001.json")
+		data, err := os.ReadFile(expectedPath)
+		if err != nil {
+			t.Fatalf("read assignment file: %v", err)
+		}
+
+		var snapshot contextAssignmentSnapshot
+		if err := json.Unmarshal(data, &snapshot); err != nil {
+			t.Fatalf("unmarshal snapshot: %v", err)
+		}
+		if snapshot.SessionID != "persist-test-001" {
+			t.Errorf("SessionID = %q, want %q", snapshot.SessionID, "persist-test-001")
+		}
+		if snapshot.AgentName != "worker-01" {
+			t.Errorf("AgentName = %q, want %q", snapshot.AgentName, "worker-01")
+		}
+		if snapshot.IssueID != "ag-555" {
+			t.Errorf("IssueID = %q, want %q", snapshot.IssueID, "ag-555")
+		}
+		if snapshot.UpdatedAt == "" {
+			t.Error("expected non-empty UpdatedAt")
+		}
+	})
+
+	t.Run("skips write for empty assignment", func(t *testing.T) {
+		dir := t.TempDir()
+		status := contextSessionStatus{
+			SessionID: "empty-assign-session",
+		}
+
+		if err := persistAssignment(dir, status); err != nil {
+			t.Fatalf("persistAssignment: %v", err)
+		}
+
+		// Verify no file was written
+		expectedPath := filepath.Join(dir, ".agents", "ao", "context", "assignment-empty-assign-session.json")
+		if _, err := os.Stat(expectedPath); !os.IsNotExist(err) {
+			t.Error("expected no assignment file for empty assignment")
+		}
+	})
+}
+
+// --- persistBudget ---
+
+func TestContext_PersistBudget(t *testing.T) {
+	t.Run("creates budget file", func(t *testing.T) {
+		dir := t.TempDir()
+		status := contextSessionStatus{
+			SessionID:      "budget-test-001",
+			MaxTokens:      contextbudget.DefaultMaxTokens,
+			EstimatedUsage: 50000,
+		}
+
+		if err := persistBudget(dir, status); err != nil {
+			t.Fatalf("persistBudget: %v", err)
+		}
+
+		expectedPath := filepath.Join(dir, ".agents", "ao", "context", "budget-budget-test-001.json")
+		data, err := os.ReadFile(expectedPath)
+		if err != nil {
+			t.Fatalf("read budget file: %v", err)
+		}
+
+		var tracker contextbudget.BudgetTracker
+		if err := json.Unmarshal(data, &tracker); err != nil {
+			t.Fatalf("unmarshal tracker: %v", err)
+		}
+		if tracker.SessionID != "budget-test-001" {
+			t.Errorf("SessionID = %q, want %q", tracker.SessionID, "budget-test-001")
+		}
+		if tracker.MaxTokens != contextbudget.DefaultMaxTokens {
+			t.Errorf("MaxTokens = %d, want %d", tracker.MaxTokens, contextbudget.DefaultMaxTokens)
+		}
+		if tracker.EstimatedUsage != 50000 {
+			t.Errorf("EstimatedUsage = %d, want 50000", tracker.EstimatedUsage)
+		}
+	})
+
+	t.Run("updates existing budget file", func(t *testing.T) {
+		dir := t.TempDir()
+		// Create initial budget
+		status1 := contextSessionStatus{
+			SessionID:      "budget-update-001",
+			MaxTokens:      contextbudget.DefaultMaxTokens,
+			EstimatedUsage: 30000,
+		}
+		if err := persistBudget(dir, status1); err != nil {
+			t.Fatal(err)
+		}
+
+		// Update
+		status2 := contextSessionStatus{
+			SessionID:      "budget-update-001",
+			MaxTokens:      contextbudget.DefaultMaxTokens,
+			EstimatedUsage: 80000,
+		}
+		if err := persistBudget(dir, status2); err != nil {
+			t.Fatalf("persistBudget update: %v", err)
+		}
+
+		tracker, err := contextbudget.Load(dir, "budget-update-001")
+		if err != nil {
+			t.Fatalf("load tracker: %v", err)
+		}
+		if tracker.EstimatedUsage != 80000 {
+			t.Errorf("EstimatedUsage = %d, want 80000", tracker.EstimatedUsage)
+		}
+	})
+}
+
+// --- persistGuardState ---
+
+func TestContext_PersistGuardState(t *testing.T) {
+	t.Run("persists both budget and assignment", func(t *testing.T) {
+		dir := t.TempDir()
+		status := contextSessionStatus{
+			SessionID:      "guard-state-001",
+			MaxTokens:      contextbudget.DefaultMaxTokens,
+			EstimatedUsage: 60000,
+			AgentName:      "worker-99",
+			IssueID:        "ag-guard",
+		}
+
+		if err := persistGuardState(dir, status); err != nil {
+			t.Fatalf("persistGuardState: %v", err)
+		}
+
+		// Verify budget file
+		budgetPath := filepath.Join(dir, ".agents", "ao", "context", "budget-guard-state-001.json")
+		if _, err := os.Stat(budgetPath); err != nil {
+			t.Errorf("budget file not created: %v", err)
+		}
+
+		// Verify assignment file
+		assignPath := filepath.Join(dir, ".agents", "ao", "context", "assignment-guard-state-001.json")
+		if _, err := os.Stat(assignPath); err != nil {
+			t.Errorf("assignment file not created: %v", err)
+		}
+	})
+
+	t.Run("skips assignment for empty assignment fields", func(t *testing.T) {
+		dir := t.TempDir()
+		status := contextSessionStatus{
+			SessionID:      "guard-no-assign",
+			MaxTokens:      contextbudget.DefaultMaxTokens,
+			EstimatedUsage: 10000,
+		}
+
+		if err := persistGuardState(dir, status); err != nil {
+			t.Fatalf("persistGuardState: %v", err)
+		}
+
+		// Budget should exist
+		budgetPath := filepath.Join(dir, ".agents", "ao", "context", "budget-guard-no-assign.json")
+		if _, err := os.Stat(budgetPath); err != nil {
+			t.Errorf("budget file should exist: %v", err)
+		}
+
+		// Assignment should not exist
+		assignPath := filepath.Join(dir, ".agents", "ao", "context", "assignment-guard-no-assign.json")
+		if _, err := os.Stat(assignPath); !os.IsNotExist(err) {
+			t.Error("assignment file should not exist for empty assignment")
+		}
+	})
+}
+
+// --- findPendingHandoffForSession ---
+
+func TestContext_FindPendingHandoffForSession(t *testing.T) {
+	t.Run("returns false when pending dir does not exist", func(t *testing.T) {
+		dir := t.TempDir()
+		_, _, found, err := findPendingHandoffForSession(dir, "any-session")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if found {
+			t.Error("expected not found for missing pending dir")
+		}
+	})
+
+	t.Run("returns false when no matching marker", func(t *testing.T) {
+		dir := t.TempDir()
+		pendingDir := filepath.Join(dir, ".agents", "handoff", "pending")
+		if err := os.MkdirAll(pendingDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		// Write a marker for a different session
+		marker := handoffMarker{
+			SessionID:   "other-session",
+			HandoffFile: "some/path.md",
+		}
+		data, _ := json.Marshal(marker)
+		os.WriteFile(filepath.Join(pendingDir, "marker.json"), data, 0644) //nolint:errcheck
+
+		_, _, found, err := findPendingHandoffForSession(dir, "my-session")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if found {
+			t.Error("expected not found for non-matching session")
+		}
+	})
+
+	t.Run("finds matching unconsumed marker", func(t *testing.T) {
+		dir := t.TempDir()
+		pendingDir := filepath.Join(dir, ".agents", "handoff", "pending")
+		if err := os.MkdirAll(pendingDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		marker := handoffMarker{
+			SessionID:   "my-session",
+			HandoffFile: ".agents/handoff/auto-test.md",
+			Consumed:    false,
+		}
+		data, _ := json.Marshal(marker)
+		markerFile := filepath.Join(pendingDir, "auto-test.json")
+		os.WriteFile(markerFile, data, 0644) //nolint:errcheck
+
+		handoff, markerPath, found, err := findPendingHandoffForSession(dir, "my-session")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !found {
+			t.Fatal("expected to find matching marker")
+		}
+		if handoff != ".agents/handoff/auto-test.md" {
+			t.Errorf("handoff = %q, want %q", handoff, ".agents/handoff/auto-test.md")
+		}
+		if markerPath == "" {
+			t.Error("expected non-empty marker path")
+		}
+	})
+
+	t.Run("skips consumed markers", func(t *testing.T) {
+		dir := t.TempDir()
+		pendingDir := filepath.Join(dir, ".agents", "handoff", "pending")
+		if err := os.MkdirAll(pendingDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		marker := handoffMarker{
+			SessionID:   "my-session",
+			HandoffFile: "some/path.md",
+			Consumed:    true,
+		}
+		data, _ := json.Marshal(marker)
+		os.WriteFile(filepath.Join(pendingDir, "consumed.json"), data, 0644) //nolint:errcheck
+
+		_, _, found, err := findPendingHandoffForSession(dir, "my-session")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if found {
+			t.Error("expected not found for consumed marker")
+		}
+	})
+
+	t.Run("skips directories and non-json files", func(t *testing.T) {
+		dir := t.TempDir()
+		pendingDir := filepath.Join(dir, ".agents", "handoff", "pending")
+		if err := os.MkdirAll(filepath.Join(pendingDir, "subdir"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		os.WriteFile(filepath.Join(pendingDir, "notes.txt"), []byte("not json"), 0644) //nolint:errcheck
+
+		_, _, found, err := findPendingHandoffForSession(dir, "any")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if found {
+			t.Error("expected not found for non-json entries")
+		}
+	})
+}
+
+// --- matchPendingHandoff ---
+
+func TestContext_MatchPendingHandoff(t *testing.T) {
+	t.Run("matches unconsumed marker for correct session", func(t *testing.T) {
+		dir := t.TempDir()
+		marker := handoffMarker{
+			SessionID:   "target-session",
+			HandoffFile: "handoff.md",
+			Consumed:    false,
+		}
+		data, _ := json.Marshal(marker)
+		path := filepath.Join(dir, "test.json")
+		os.WriteFile(path, data, 0644) //nolint:errcheck
+
+		hp, _, ok := matchPendingHandoff(path, dir, "target-session")
+		if !ok {
+			t.Fatal("expected match")
+		}
+		if hp != "handoff.md" {
+			t.Errorf("handoff path = %q, want %q", hp, "handoff.md")
+		}
+	})
+
+	t.Run("no match for wrong session", func(t *testing.T) {
+		dir := t.TempDir()
+		marker := handoffMarker{
+			SessionID:   "other-session",
+			HandoffFile: "handoff.md",
+		}
+		data, _ := json.Marshal(marker)
+		path := filepath.Join(dir, "test.json")
+		os.WriteFile(path, data, 0644) //nolint:errcheck
+
+		_, _, ok := matchPendingHandoff(path, dir, "target-session")
+		if ok {
+			t.Error("expected no match for wrong session")
+		}
+	})
+
+	t.Run("no match for consumed marker", func(t *testing.T) {
+		dir := t.TempDir()
+		marker := handoffMarker{
+			SessionID: "target-session",
+			Consumed:  true,
+		}
+		data, _ := json.Marshal(marker)
+		path := filepath.Join(dir, "test.json")
+		os.WriteFile(path, data, 0644) //nolint:errcheck
+
+		_, _, ok := matchPendingHandoff(path, dir, "target-session")
+		if ok {
+			t.Error("expected no match for consumed marker")
+		}
+	})
+
+	t.Run("no match for nonexistent file", func(t *testing.T) {
+		_, _, ok := matchPendingHandoff("/nonexistent/file.json", "/cwd", "any")
+		if ok {
+			t.Error("expected no match for nonexistent file")
+		}
+	})
+
+	t.Run("no match for invalid JSON", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "bad.json")
+		os.WriteFile(path, []byte("{bad json}"), 0644) //nolint:errcheck
+
+		_, _, ok := matchPendingHandoff(path, dir, "any")
+		if ok {
+			t.Error("expected no match for invalid JSON")
+		}
+	})
+}
+
+// --- renderHandoffMarkdown ---
+
+func TestContext_RenderHandoffMarkdown(t *testing.T) {
+	now := time.Date(2026, 2, 20, 15, 30, 0, 0, time.UTC)
+	status := contextSessionStatus{
+		SessionID:        "render-test-001",
+		Status:           string(contextbudget.StatusCritical),
+		UsagePercent:     0.92,
+		RemainingPercent: 0.08,
+		Readiness:        contextReadinessCritical,
+		Action:           "handoff_now",
+		LastTask:         "orchestrate workers",
+		EstimatedUsage:   184000,
+		MaxTokens:        contextbudget.DefaultMaxTokens,
+		Model:            "claude-opus",
+		Recommendation:   "CRITICAL: Context nearly full.",
+		AgentName:        "worker-01",
+		AgentRole:        "worker",
+		TeamName:         "team-alpha",
+		IssueID:          "ag-999",
+		TmuxTarget:       "convoy:0",
+		IsStale:          false,
+	}
+	usage := transcriptUsage{
+		InputTokens:             1000,
+		CacheCreationInputToken: 83000,
+		CacheReadInputToken:     100000,
+		Model:                   "claude-opus",
+	}
+
+	md := renderHandoffMarkdown(now, status, usage, "ag-999", []string{"file1.go", "file2.go"})
+
+	checks := []struct {
+		label    string
+		contains string
+	}{
+		{"title", "# Auto-Handoff (Context Guard)"},
+		{"timestamp", "2026-02-20T15:30:00Z"},
+		{"session id", "render-test-001"},
+		{"status", "CRITICAL (92.0%)"},
+		{"hull", "CRITICAL"},
+		{"action", "handoff_now"},
+		{"last task", "orchestrate workers"},
+		{"active bead", "ag-999"},
+		{"agent name", "worker-01"},
+		{"agent role", "worker"},
+		{"team name", "team-alpha"},
+		{"issue id", "ag-999"},
+		{"tmux target", "convoy:0"},
+		{"modified files", "file1.go"},
+		{"modified files 2", "file2.go"},
+		{"model", "claude-opus"},
+		{"input tokens", "1000"},
+		{"cache creation", "83000"},
+		{"cache read", "100000"},
+		{"estimated usage", "184000/200000"},
+		{"recommendation", "CRITICAL: Context nearly full."},
+		{"next action", "Start a fresh session"},
+		{"blockers none", "none detected"},
+	}
+
+	for _, c := range checks {
+		if !strings.Contains(md, c.contains) {
+			t.Errorf("[%s] expected markdown to contain %q", c.label, c.contains)
+		}
+	}
+}
+
+func TestContext_RenderHandoffMarkdown_StaleBlocker(t *testing.T) {
+	now := time.Now().UTC()
+	status := contextSessionStatus{
+		SessionID:        "stale-render",
+		Status:           string(contextbudget.StatusCritical),
+		UsagePercent:     0.90,
+		RemainingPercent: 0.10,
+		Readiness:        contextReadinessCritical,
+		Action:           "recover_dead_session",
+		LastTask:         "some task",
+		IsStale:          true,
+	}
+	usage := transcriptUsage{}
+
+	md := renderHandoffMarkdown(now, status, usage, "none", nil)
+
+	if !strings.Contains(md, "stale") {
+		t.Error("expected stale blocker in markdown")
+	}
+	if !strings.Contains(md, "watchdog recovery") {
+		t.Error("expected watchdog recovery in blockers section")
+	}
+}
+
+func TestContext_RenderHandoffMarkdown_NoChangedFiles(t *testing.T) {
+	now := time.Now().UTC()
+	status := contextSessionStatus{
+		SessionID: "no-files",
+		LastTask:  "task",
+	}
+	usage := transcriptUsage{}
+
+	md := renderHandoffMarkdown(now, status, usage, "none", nil)
+
+	// Should contain "none" under Modified Files
+	if !strings.Contains(md, "## Modified Files\nnone") {
+		t.Error("expected 'none' under Modified Files when no files changed")
+	}
+}
+
+func TestContext_RenderHandoffMarkdown_FallbackReadiness(t *testing.T) {
+	now := time.Now().UTC()
+	status := contextSessionStatus{
+		SessionID:    "fallback-readiness",
+		UsagePercent: 0.50,
+		Readiness:    "", // empty readiness should fall back
+		LastTask:     "task",
+	}
+	usage := transcriptUsage{}
+
+	md := renderHandoffMarkdown(now, status, usage, "none", nil)
+
+	// With 0.50 usage -> remaining 0.50 -> RED readiness (>= 0.40 remaining)
+	if !strings.Contains(md, "RED") {
+		t.Error("expected RED readiness as fallback for 50% usage (remaining 50%)")
+	}
+}
+
+func TestContext_RenderHandoffMarkdown_FallbackRemainingPercent(t *testing.T) {
+	now := time.Now().UTC()
+	status := contextSessionStatus{
+		SessionID:        "fallback-remaining",
+		UsagePercent:     0.70,
+		RemainingPercent: 0, // zero remaining should be recomputed
+		Readiness:        contextReadinessCritical,
+		LastTask:         "task",
+	}
+	usage := transcriptUsage{}
+
+	md := renderHandoffMarkdown(now, status, usage, "none", nil)
+
+	// With 0.70 usage and remaining=0 -> should recompute to 30%
+	if !strings.Contains(md, "30.0% remaining") {
+		t.Errorf("expected recomputed 30.0%% remaining in markdown, got:\n%s", md)
+	}
+}
+
+// --- collectTrackedSessionStatuses ---
+
+func TestContext_CollectTrackedSessionStatuses(t *testing.T) {
+	t.Run("no budget files returns nil", func(t *testing.T) {
+		dir := t.TempDir()
+		statuses, err := collectTrackedSessionStatuses(dir, 20*time.Minute)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if statuses != nil {
+			t.Errorf("expected nil, got %d statuses", len(statuses))
+		}
+	})
+
+	t.Run("reads budget files and produces statuses", func(t *testing.T) {
+		tmpHome := t.TempDir()
+		t.Setenv("HOME", tmpHome)
+		dir := t.TempDir()
+
+		// Create a budget file
+		contextDir := filepath.Join(dir, ".agents", "ao", "context")
+		if err := os.MkdirAll(contextDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		sessionID := "tracked-session-001"
+		tracker := contextbudget.NewBudgetTracker(sessionID)
+		tracker.MaxTokens = contextbudget.DefaultMaxTokens
+		tracker.UpdateUsage(50000)
+		data, _ := json.MarshalIndent(tracker, "", "  ")
+		if err := os.WriteFile(filepath.Join(contextDir, "budget-"+sessionID+".json"), data, 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Create a transcript for it
+		transcriptDir := filepath.Join(tmpHome, ".claude", "projects", "proj", "conversations")
+		if err := os.MkdirAll(transcriptDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		lines := []map[string]any{
+			{
+				"type":      "user",
+				"timestamp": time.Now().Add(-1 * time.Minute).UTC().Format(time.RFC3339),
+				"message": map[string]any{
+					"role":    "user",
+					"content": "test task",
+				},
+			},
+			{
+				"type":      "assistant",
+				"timestamp": time.Now().UTC().Format(time.RFC3339),
+				"message": map[string]any{
+					"role":  "assistant",
+					"model": "claude-opus",
+					"usage": map[string]any{
+						"input_tokens":                1000,
+						"cache_creation_input_tokens": 2000,
+						"cache_read_input_tokens":     3000,
+					},
+				},
+			},
+		}
+		writeTranscriptLines(t, filepath.Join(transcriptDir, sessionID+".jsonl"), lines)
+
+		statuses, err := collectTrackedSessionStatuses(dir, 20*time.Minute)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(statuses) != 1 {
+			t.Fatalf("expected 1 status, got %d", len(statuses))
+		}
+		if statuses[0].SessionID != sessionID {
+			t.Errorf("SessionID = %q, want %q", statuses[0].SessionID, sessionID)
+		}
+	})
+
+	t.Run("skips invalid budget files", func(t *testing.T) {
+		dir := t.TempDir()
+		contextDir := filepath.Join(dir, ".agents", "ao", "context")
+		if err := os.MkdirAll(contextDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		// Write invalid JSON as a budget file
+		if err := os.WriteFile(filepath.Join(contextDir, "budget-invalid.json"), []byte("{bad}"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		statuses, err := collectTrackedSessionStatuses(dir, 20*time.Minute)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(statuses) != 0 {
+			t.Errorf("expected 0 statuses for invalid budget, got %d", len(statuses))
+		}
+	})
+}
+
+// --- collectOneTrackedStatus ---
+
+func TestContext_CollectOneTrackedStatus(t *testing.T) {
+	t.Run("returns false for unreadable file", func(t *testing.T) {
+		_, ok := collectOneTrackedStatus("/tmp", "/nonexistent/budget.json", 20*time.Minute)
+		if ok {
+			t.Error("expected false for unreadable file")
+		}
+	})
+
+	t.Run("returns false for invalid JSON", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "budget-bad.json")
+		os.WriteFile(path, []byte("not json"), 0644) //nolint:errcheck
+
+		_, ok := collectOneTrackedStatus(dir, path, 20*time.Minute)
+		if ok {
+			t.Error("expected false for invalid JSON")
+		}
+	})
+
+	t.Run("returns false for empty session ID", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "budget-empty.json")
+		tracker := contextbudget.BudgetTracker{SessionID: ""}
+		data, _ := json.Marshal(tracker)
+		os.WriteFile(path, data, 0644) //nolint:errcheck
+
+		_, ok := collectOneTrackedStatus(dir, path, 20*time.Minute)
+		if ok {
+			t.Error("expected false for empty session ID")
+		}
+	})
+
+	t.Run("falls back to staleBudgetFallbackStatus on transcript error", func(t *testing.T) {
+		tmpHome := t.TempDir()
+		t.Setenv("HOME", tmpHome)
+		dir := t.TempDir()
+
+		path := filepath.Join(dir, "budget-fallback.json")
+		tracker := contextbudget.BudgetTracker{
+			SessionID:      "fallback-session",
+			MaxTokens:      contextbudget.DefaultMaxTokens,
+			EstimatedUsage: 100000,
+			LastUpdated:    time.Now().Add(-2 * time.Hour),
+		}
+		data, _ := json.Marshal(tracker)
+		os.WriteFile(path, data, 0644) //nolint:errcheck
+
+		// No transcript exists, so collectSessionStatus will fail and fallback kicks in
+		status, ok := collectOneTrackedStatus(dir, path, 20*time.Minute)
+		if !ok {
+			t.Fatal("expected true for fallback status")
+		}
+		if status.SessionID != "fallback-session" {
+			t.Errorf("SessionID = %q, want %q", status.SessionID, "fallback-session")
+		}
+		// Should be marked stale since LastUpdated is 2 hours ago and watchdog is 20 min
+		if !status.IsStale {
+			t.Error("expected stale status for old budget with no transcript")
+		}
+	})
+}
+
+// --- maybeAutoRestartStaleSession edge cases ---
+
+func TestContext_MaybeAutoRestartStaleSession_NonRecoverAction(t *testing.T) {
+	status := contextSessionStatus{
+		Action:     "continue",
+		TmuxTarget: "some-target:0",
+	}
+	updated := maybeAutoRestartStaleSession(status)
+	// Should return unchanged
+	if updated.RestartAttempt {
+		t.Error("should not attempt restart for non-recover action")
+	}
+}
+
+func TestContext_MaybeAutoRestartStaleSession_MissingTarget(t *testing.T) {
+	status := contextSessionStatus{
+		Action:     "recover_dead_session",
+		TmuxTarget: "",
+	}
+	updated := maybeAutoRestartStaleSession(status)
+	if updated.RestartMessage != "missing tmux target mapping" {
+		t.Errorf("RestartMessage = %q, want %q", updated.RestartMessage, "missing tmux target mapping")
+	}
+}
+
+func TestContext_MaybeAutoRestartStaleSession_WhitespaceTarget(t *testing.T) {
+	status := contextSessionStatus{
+		Action:     "recover_dead_session",
+		TmuxTarget: "   ",
+	}
+	updated := maybeAutoRestartStaleSession(status)
+	if updated.RestartMessage != "missing tmux target mapping" {
+		t.Errorf("RestartMessage = %q, want %q", updated.RestartMessage, "missing tmux target mapping")
+	}
 }
