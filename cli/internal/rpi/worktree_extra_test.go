@@ -1,6 +1,7 @@
 package rpi
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -432,5 +433,199 @@ func TestGetCurrentBranch_DetachedHEAD(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "detached HEAD") {
 		t.Errorf("expected 'detached HEAD' error, got: %v", err)
+	}
+}
+
+func TestRemoveWorktree_EmptyRunIDNonMatchingPath(t *testing.T) {
+	repo := initGitRepo(t)
+	// A path that doesn't match the rpi pattern at all
+	err := RemoveWorktree(repo, "/some/random/path", "", 30*time.Second)
+	if err == nil {
+		t.Fatal("expected error for non-matching path with empty runID")
+	}
+	if !strings.Contains(err.Error(), "invalid run id") {
+		t.Errorf("expected 'invalid run id' error, got: %v", err)
+	}
+}
+
+func TestRemoveWorktree_PathMismatch(t *testing.T) {
+	repo := initGitRepo(t)
+	// Provide a runID but a path that doesn't match the expected pattern
+	wrongPath := filepath.Join(filepath.Dir(repo), "wrong-dir")
+	if err := os.MkdirAll(wrongPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(wrongPath)
+
+	err := RemoveWorktree(repo, wrongPath, "abc123def456", 30*time.Second)
+	if err == nil {
+		t.Fatal("expected error for path mismatch")
+	}
+	if !strings.Contains(err.Error(), "refusing to remove") || !strings.Contains(err.Error(), "path validation failed") {
+		t.Errorf("expected path validation error, got: %v", err)
+	}
+}
+
+func TestMergeWorktree_DirtyRepoRetryVerbose(t *testing.T) {
+	repo := initGitRepo(t)
+
+	// Make the repo dirty
+	dirtyFile := filepath.Join(repo, "dirty.txt")
+	if err := os.WriteFile(dirtyFile, []byte("dirty\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "dirty.txt")
+
+	// Use verbose logging to exercise the retry verbose path
+	var verboseOutput []string
+	verbosef := func(f string, a ...interface{}) {
+		verboseOutput = append(verboseOutput, fmt.Sprintf(f, a...))
+	}
+
+	err := MergeWorktree(repo, "/fake/worktree", "fakerun", 500*time.Millisecond, verbosef)
+	if err == nil {
+		t.Fatal("expected error for dirty repo")
+	}
+	// Should have logged retry messages
+	if len(verboseOutput) == 0 {
+		t.Error("expected verbose retry messages for dirty repo")
+	}
+}
+
+func TestEnsureAttachedBranch_NonDetachedHEADError(t *testing.T) {
+	// Use a nonexistent directory to trigger a non-detached-HEAD error from GetCurrentBranch
+	_, _, err := EnsureAttachedBranch("/nonexistent/repo", 5*time.Second, "test")
+	if err == nil {
+		t.Fatal("expected error for nonexistent repo")
+	}
+	// Should propagate the non-detached-HEAD error
+	if strings.Contains(err.Error(), "detached HEAD") {
+		t.Errorf("should NOT be detached HEAD error, got: %v", err)
+	}
+}
+
+func TestGetRepoRoot_EmptyStringDir(t *testing.T) {
+	// Empty dir string should use current directory (we're in a git repo so this should work)
+	root, err := GetRepoRoot("", 30*time.Second)
+	if err != nil {
+		// If running outside a git repo context this may fail, but that's fine
+		t.Skipf("Skipping - not running inside a git repo: %v", err)
+	}
+	if root == "" {
+		t.Error("expected non-empty root for empty dir string")
+	}
+}
+
+func TestCreateWorktree_WithVerbosef(t *testing.T) {
+	repo := initGitRepo(t)
+
+	var verboseOutput []string
+	verbosef := func(f string, a ...interface{}) {
+		verboseOutput = append(verboseOutput, fmt.Sprintf(f, a...))
+	}
+
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, verbosef)
+	if err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	defer func() {
+		_ = RemoveWorktree(repo, worktreePath, runID, 30*time.Second)
+	}()
+
+	// Should have logged the branch info
+	if len(verboseOutput) == 0 {
+		t.Error("expected verbose output about branch creation")
+	}
+	found := false
+	for _, msg := range verboseOutput {
+		if strings.Contains(msg, "Creating detached worktree from current branch") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected verbose message about branch, got: %v", verboseOutput)
+	}
+}
+
+func TestMergeWorktree_WithRunIDChangesMessage(t *testing.T) {
+	repo := initGitRepo(t)
+
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, nil)
+	if err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	defer func() {
+		_ = RemoveWorktree(repo, worktreePath, runID, 30*time.Second)
+	}()
+
+	// Add a file in worktree and commit
+	newFile := filepath.Join(worktreePath, "merge-msg-test.txt")
+	if err := os.WriteFile(newFile, []byte("testing merge message\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, worktreePath, "add", "merge-msg-test.txt")
+	runGit(t, worktreePath, "commit", "-m", "commit for merge message test")
+
+	// Checkout a branch in the original repo
+	branch := strings.TrimSpace(runGitOutput(t, repo, "branch", "--show-current"))
+	if branch == "" {
+		branches := listBranches(t, repo, "*")
+		if len(branches) > 0 {
+			runGit(t, repo, "checkout", branches[0])
+		}
+	}
+
+	// Merge with a specific runID -- exercises the "Merge <runID>" message path
+	err = MergeWorktree(repo, worktreePath, runID, 30*time.Second, nil)
+	if err != nil {
+		t.Fatalf("MergeWorktree: %v", err)
+	}
+
+	// Verify merge commit message includes runID
+	lastCommitMsg := strings.TrimSpace(runGitOutput(t, repo, "log", "-1", "--format=%s"))
+	if !strings.Contains(lastCommitMsg, runID) {
+		t.Errorf("merge commit message should contain runID %q, got: %q", runID, lastCommitMsg)
+	}
+}
+
+func TestMergeWorktree_EmptyRunIDUsesDefaultMessage(t *testing.T) {
+	repo := initGitRepo(t)
+
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, nil)
+	if err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	defer func() {
+		_ = RemoveWorktree(repo, worktreePath, runID, 30*time.Second)
+	}()
+
+	// Add a file in worktree and commit
+	newFile := filepath.Join(worktreePath, "empty-runid-test.txt")
+	if err := os.WriteFile(newFile, []byte("testing empty runID\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, worktreePath, "add", "empty-runid-test.txt")
+	runGit(t, worktreePath, "commit", "-m", "commit for empty runid test")
+
+	// Checkout a branch in the original repo
+	branch := strings.TrimSpace(runGitOutput(t, repo, "branch", "--show-current"))
+	if branch == "" {
+		branches := listBranches(t, repo, "*")
+		if len(branches) > 0 {
+			runGit(t, repo, "checkout", branches[0])
+		}
+	}
+
+	// Merge with empty runID -- exercises the default message path
+	err = MergeWorktree(repo, worktreePath, "", 30*time.Second, nil)
+	if err != nil {
+		t.Fatalf("MergeWorktree with empty runID: %v", err)
+	}
+
+	// Verify merge commit message uses default
+	lastCommitMsg := strings.TrimSpace(runGitOutput(t, repo, "log", "-1", "--format=%s"))
+	if !strings.Contains(lastCommitMsg, "detached checkout") {
+		t.Errorf("merge commit message should contain 'detached checkout', got: %q", lastCommitMsg)
 	}
 }

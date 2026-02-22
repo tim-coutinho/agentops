@@ -240,3 +240,70 @@ func TestResolveToolchain_EmptyCommandNormalization(t *testing.T) {
 		t.Errorf("AOCommand = %q, want %q (default)", tc.AOCommand, DefaultAOCommand)
 	}
 }
+
+func TestNormalizeCommand(t *testing.T) {
+	cases := []struct {
+		name     string
+		value    string
+		fallback string
+		want     string
+	}{
+		{"empty returns fallback", "", "default-cmd", "default-cmd"},
+		{"whitespace returns fallback", "   ", "default-cmd", "default-cmd"},
+		{"non-empty returns trimmed value", "  my-cmd  ", "default-cmd", "my-cmd"},
+		{"normal value", "ao", "default-cmd", "ao"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalizeCommand(tc.value, tc.fallback)
+			if got != tc.want {
+				t.Errorf("normalizeCommand(%q, %q) = %q, want %q", tc.value, tc.fallback, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveToolchain_WhitespaceOnlyFlagValues(t *testing.T) {
+	// Whitespace-only flag values should be normalized to defaults
+	tc, err := ResolveToolchain(ResolveToolchainOptions{
+		FlagValues: Toolchain{
+			RuntimeCommand: "   ",
+			AOCommand:      "   ",
+			BDCommand:      "   ",
+			TmuxCommand:    "   ",
+		},
+		FlagSet: ToolchainFlagSet{
+			RuntimeCommand: true,
+			AOCommand:      true,
+			BDCommand:      true,
+			TmuxCommand:    true,
+		},
+		EnvLookup: func(string) string { return "" },
+	})
+	if err != nil {
+		t.Fatalf("ResolveToolchain() error = %v", err)
+	}
+	if tc.RuntimeCommand != DefaultRuntimeCommand {
+		t.Errorf("RuntimeCommand = %q, want %q", tc.RuntimeCommand, DefaultRuntimeCommand)
+	}
+	if tc.AOCommand != DefaultAOCommand {
+		t.Errorf("AOCommand = %q, want %q", tc.AOCommand, DefaultAOCommand)
+	}
+	if tc.BDCommand != DefaultBDCommand {
+		t.Errorf("BDCommand = %q, want %q", tc.BDCommand, DefaultBDCommand)
+	}
+	if tc.TmuxCommand != DefaultTmuxCommand {
+		t.Errorf("TmuxCommand = %q, want %q", tc.TmuxCommand, DefaultTmuxCommand)
+	}
+}
+
+func TestResolveToolchain_NilEnvLookupUsesOsGetenv(t *testing.T) {
+	// nil EnvLookup should use os.Getenv (just verify no panic)
+	tc, err := ResolveToolchain(ResolveToolchainOptions{})
+	if err != nil {
+		t.Fatalf("ResolveToolchain() with nil EnvLookup: %v", err)
+	}
+	if tc.RuntimeMode != DefaultRuntimeMode {
+		t.Errorf("RuntimeMode = %q, want %q", tc.RuntimeMode, DefaultRuntimeMode)
+	}
+}
