@@ -721,3 +721,61 @@ func writeFile(t *testing.T, path, content string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+// --- Benchmarks ---
+
+func benchPopulateDir(b *testing.B, dir string, numFiles int) {
+	b.Helper()
+	for i := 0; i < numFiles; i++ {
+		content := "Mutex pattern for concurrent access and Go routines with channels\n"
+		content += "OAuth authentication tokens for secure API access\n"
+		content += "Database migration strategy and schema versioning\n"
+		path := filepath.Join(dir, filepath.Base(dir)+"-session-"+string(rune('a'+i%26))+".md")
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			b.Fatalf("write: %v", err)
+		}
+	}
+}
+
+func BenchmarkBuildIndex(b *testing.B) {
+	dir := b.TempDir()
+	benchPopulateDir(b, dir, 20)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = BuildIndex(dir)
+	}
+}
+
+func BenchmarkSearch(b *testing.B) {
+	dir := b.TempDir()
+	benchPopulateDir(b, dir, 20)
+
+	idx, err := BuildIndex(dir)
+	if err != nil {
+		b.Fatalf("build: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = Search(idx, "mutex concurrent access", 10)
+	}
+}
+
+func BenchmarkSaveAndLoadIndex(b *testing.B) {
+	dir := b.TempDir()
+	benchPopulateDir(b, dir, 20)
+
+	idx, err := BuildIndex(dir)
+	if err != nil {
+		b.Fatalf("build: %v", err)
+	}
+
+	indexPath := filepath.Join(dir, "index.jsonl")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = SaveIndex(idx, indexPath)
+		_, _ = LoadIndex(indexPath)
+	}
+}
