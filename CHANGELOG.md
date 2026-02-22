@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Fork classification corrected** — Removed `context: fork` from evolve, crank, and post-mortem (orchestrators that were invisibly forking). Added `context: fork` to codex-team (worker spawner that should fork). Council retains `context: fork` (correct).
 - **Go modernized to 1.23 idioms** — Replaced `sort.Slice` with `slices.SortFunc`, `interface{}` with `any` (280+ occurrences), `strings.HasPrefix`+slice with `strings.CutPrefix`, added `cmp.Or` for defaults, range-over-int for counting loops.
+- **Top 5 cmd/ao complexity reduced 82.7%** — Extracted helpers from the 5 highest-complexity functions: `runRPILoop` (37→9), `spawnRuntimePhaseWithStream` (32→3), `resolveLoopSupervisorConfig` (32→5), `executeRPICleanup` (28→4), `runBatchFeedback` (27→6). Aggregate 156→27.
 - **Goals pruned 83 to 25** — Removed stale/redundant goals, added trust-and-prove track specs.
 - **RPI loop supervisor hardened** — Failure policy, cycle retries, lease-based locking, stale worktree auto-cleanup, landing policy controls.
 
