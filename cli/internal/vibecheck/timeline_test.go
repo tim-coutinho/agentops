@@ -164,3 +164,18 @@ func TestParseGitLog_InvalidTimestamp(t *testing.T) {
 		t.Fatal("expected error for invalid timestamp")
 	}
 }
+
+func TestParseGitLog_MalformedNumstat(t *testing.T) {
+	// A line that is neither a header nor a valid 3-field numstat should be ignored.
+	raw := "abc111|||2025-01-15T10:00:00Z|||Alice|||feat: test\nnot-a-numstat-line\n\n"
+	events, err := parseGitLog(raw, "|||")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].FilesChanged != 0 {
+		t.Errorf("expected 0 files changed (malformed numstat ignored), got %d", events[0].FilesChanged)
+	}
+}
