@@ -223,8 +223,8 @@ func TestMergeWorktree_MissingBothPathAndRunID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when both worktreePath and runID are empty")
 	}
-	if !strings.Contains(err.Error(), "missing worktree path and run ID") {
-		t.Errorf("unexpected error message: %v", err)
+	if !errors.Is(err, ErrMergeSourceUnavailable) {
+		t.Errorf("expected ErrMergeSourceUnavailable, got: %v", err)
 	}
 }
 
@@ -982,8 +982,8 @@ func TestEnsureAttachedBranch_SwitchFailsCorruptedBranch(t *testing.T) {
 		t.Log("EnsureAttachedBranch succeeded despite lock file (git version dependent)")
 		return
 	}
-	if !strings.Contains(err.Error(), "detached HEAD self-heal failed") {
-		t.Errorf("expected 'self-heal failed' error, got: %v", err)
+	if !errors.Is(err, ErrDetachedSelfHealFailed) {
+		t.Errorf("expected ErrDetachedSelfHealFailed, got: %v", err)
 	}
 }
 

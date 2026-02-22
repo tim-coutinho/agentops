@@ -762,8 +762,8 @@ func TestChainSaveNoPath(t *testing.T) {
 	if err == nil {
 		t.Error("expected error when saving chain with no path")
 	}
-	if !strings.Contains(err.Error(), "no path set") {
-		t.Errorf("expected 'no path set' error, got: %v", err)
+	if !errors.Is(err, ErrChainNoPath) {
+		t.Errorf("expected ErrChainNoPath, got: %v", err)
 	}
 }
 
@@ -776,8 +776,8 @@ func TestChainAppendNoPath(t *testing.T) {
 	if err == nil {
 		t.Error("expected error when appending to chain with no path")
 	}
-	if !strings.Contains(err.Error(), "no path set") {
-		t.Errorf("expected 'no path set' error, got: %v", err)
+	if !errors.Is(err, ErrChainNoPath) {
+		t.Errorf("expected ErrChainNoPath, got: %v", err)
 	}
 }
 
@@ -930,8 +930,8 @@ func TestChain_Save_NoPath(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when saving chain with no path")
 	}
-	if !strings.Contains(err.Error(), "no path set") {
-		t.Errorf("expected 'no path set' error, got: %v", err)
+	if !errors.Is(err, ErrChainNoPath) {
+		t.Errorf("expected ErrChainNoPath, got: %v", err)
 	}
 }
 
@@ -941,8 +941,8 @@ func TestChain_Append_NoPath(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when appending to chain with no path")
 	}
-	if !strings.Contains(err.Error(), "no path set") {
-		t.Errorf("expected 'no path set' error, got: %v", err)
+	if !errors.Is(err, ErrChainNoPath) {
+		t.Errorf("expected ErrChainNoPath, got: %v", err)
 	}
 }
 

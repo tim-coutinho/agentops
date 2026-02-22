@@ -264,8 +264,8 @@ func TestPoolPromoteRequiresStagedStatus(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected promote from pending to fail")
 	}
-	if !strings.Contains(err.Error(), "must be staged before promotion") {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, ErrNotStaged) {
+		t.Fatalf("expected ErrNotStaged, got: %v", err)
 	}
 }
 
