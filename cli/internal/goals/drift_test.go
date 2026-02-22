@@ -140,7 +140,7 @@ func TestComputeDrift_EmptySnapshots(t *testing.T) {
 	baseline := makeSnap([]Measurement{})
 	current := makeSnap([]Measurement{})
 	results := ComputeDrift(baseline, current)
-	if results != nil && len(results) != 0 {
+	if len(results) != 0 {
 		t.Errorf("expected empty results for empty snapshots, got %d", len(results))
 	}
 }

@@ -181,9 +181,7 @@ func listBranches(t *testing.T, cwd string, pattern string) []string {
 		if line == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "* ") {
-			line = strings.TrimPrefix(line, "* ")
-		}
+		line = strings.TrimPrefix(line, "* ")
 		branches = append(branches, line)
 	}
 	return branches

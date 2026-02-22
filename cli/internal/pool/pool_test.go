@@ -2172,7 +2172,6 @@ func TestAtomicMoveRenameError(t *testing.T) {
 func TestAtomicMoveSourceRemoveWarning(t *testing.T) {
 	tmpDir := t.TempDir()
 	srcPath := filepath.Join(tmpDir, "source.json")
-	destPath := filepath.Join(tmpDir, "dest.json")
 
 	content := []byte(`{"test": true}`)
 	if err := os.WriteFile(srcPath, content, 0600); err != nil {
@@ -2192,7 +2191,7 @@ func TestAtomicMoveSourceRemoveWarning(t *testing.T) {
 	// Since dest is also in tmpDir (now read-only), this would fail too.
 	// Instead, use a different writable dir for dest.
 	destDir := t.TempDir()
-	destPath = filepath.Join(destDir, "dest.json")
+	destPath := filepath.Join(destDir, "dest.json")
 
 	err := atomicMove(srcPath, destPath)
 	// Should succeed (source removal warning is non-fatal)
