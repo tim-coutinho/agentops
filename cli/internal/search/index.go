@@ -37,26 +37,22 @@ func NewIndex() *Index {
 	return &Index{Terms: make(map[string]map[string]bool)}
 }
 
+// isIndexableFile returns true for file extensions we include in the search index.
+func isIndexableFile(path string) bool {
+	ext := filepath.Ext(path)
+	return ext == ".md" || ext == ".jsonl"
+}
+
 // BuildIndex scans all .md and .jsonl files under dir (recursively) and
 // builds an inverted index from their content.
 func BuildIndex(dir string) (*Index, error) {
 	idx := NewIndex()
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // skip unreadable entries
-		}
-		if info.IsDir() {
+		if err != nil || info.IsDir() || !isIndexableFile(path) {
 			return nil
 		}
-		ext := filepath.Ext(path)
-		if ext != ".md" && ext != ".jsonl" {
-			return nil
-		}
-		if err := indexFile(idx, path); err != nil {
-			// Non-fatal: skip files we cannot read
-			return nil
-		}
+		_ = indexFile(idx, path) // non-fatal: skip unreadable files
 		return nil
 	})
 	if err != nil {

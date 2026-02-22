@@ -110,6 +110,14 @@ func DetectTestsLie(events []TimelineEvent) []Finding {
 	return findings
 }
 
+// filesRelated returns true if two events share files or both have empty file lists.
+func filesRelated(a, b []string) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	return hasFileOverlap(a, b)
+}
+
 // findContradictingFix scans subsequent events for a fix that contradicts the claimed success.
 func findContradictingFix(claim TimelineEvent, following []TimelineEvent) (Finding, bool) {
 	for _, next := range following {
@@ -120,9 +128,7 @@ func findContradictingFix(claim TimelineEvent, following []TimelineEvent) (Findi
 		if !isFixMessage(next.Message) {
 			continue
 		}
-		overlap := hasFileOverlap(claim.Files, next.Files)
-		bothEmpty := len(claim.Files) == 0 && len(next.Files) == 0
-		if overlap || bothEmpty {
+		if filesRelated(claim.Files, next.Files) {
 			return Finding{
 				Severity: "critical",
 				Category: "tests-passing-lie",

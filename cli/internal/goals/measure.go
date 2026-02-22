@@ -19,13 +19,43 @@ type Measurement struct {
 	Weight    int      `json:"weight"`
 }
 
+// classifyResult maps command exit status to a result string.
+func classifyResult(ctxErr, cmdErr error) string {
+	switch {
+	case ctxErr == context.DeadlineExceeded:
+		return "skip"
+	case cmdErr != nil:
+		return "fail"
+	default:
+		return "pass"
+	}
+}
+
+// truncateOutput limits output to 500 characters and trims whitespace.
+func truncateOutput(raw []byte) string {
+	s := string(raw)
+	if len(s) > 500 {
+		s = s[:500]
+	}
+	return strings.TrimSpace(s)
+}
+
+// applyContinuousMetric parses a numeric value from output for continuous goals.
+func applyContinuousMetric(m *Measurement, goal Goal) {
+	if goal.Continuous == nil || m.Output == "" {
+		return
+	}
+	if v, err := strconv.ParseFloat(strings.TrimSpace(m.Output), 64); err == nil {
+		m.Value = &v
+		t := goal.Continuous.Threshold
+		m.Threshold = &t
+	}
+}
+
 // MeasureOne runs a single goal's check command and returns a Measurement.
 // Exit 0 = pass, non-zero = fail, context deadline exceeded = skip.
 func MeasureOne(goal Goal, timeout time.Duration) Measurement {
-	m := Measurement{
-		GoalID: goal.ID,
-		Weight: goal.Weight,
-	}
+	m := Measurement{GoalID: goal.ID, Weight: goal.Weight}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -34,32 +64,9 @@ func MeasureOne(goal Goal, timeout time.Duration) Measurement {
 	cmd := exec.CommandContext(ctx, "bash", "-c", goal.Check)
 	out, err := cmd.CombinedOutput()
 	m.Duration = time.Since(start).Seconds()
-
-	// Truncate output to 500 chars.
-	output := string(out)
-	if len(output) > 500 {
-		output = output[:500]
-	}
-	m.Output = strings.TrimSpace(output)
-
-	switch {
-	case ctx.Err() == context.DeadlineExceeded:
-		m.Result = "skip"
-	case err != nil:
-		m.Result = "fail"
-	default:
-		m.Result = "pass"
-	}
-
-	// For continuous metrics, try to parse a numeric value from output.
-	if goal.Continuous != nil && m.Output != "" {
-		if v, parseErr := strconv.ParseFloat(strings.TrimSpace(m.Output), 64); parseErr == nil {
-			m.Value = &v
-			t := goal.Continuous.Threshold
-			m.Threshold = &t
-		}
-	}
-
+	m.Output = truncateOutput(out)
+	m.Result = classifyResult(ctx.Err(), err)
+	applyContinuousMetric(&m, goal)
 	return m
 }
 

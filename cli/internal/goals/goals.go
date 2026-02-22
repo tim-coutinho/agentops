@@ -65,6 +65,15 @@ var ValidTypes = map[GoalType]bool{
 	GoalTypeMeta:         true,
 }
 
+// defaultGoalTypes sets the default Type to GoalTypeHealth for any goal that has none.
+func defaultGoalTypes(goals []Goal) {
+	for i := range goals {
+		if goals[i].Type == "" {
+			goals[i].Type = GoalTypeHealth
+		}
+	}
+}
+
 // LoadGoals reads and parses a goals YAML file.
 // Accepts version 2 or 3. Defaults Goal.Type to "health" if empty.
 func LoadGoals(path string) (*GoalFile, error) {
@@ -82,12 +91,7 @@ func LoadGoals(path string) (*GoalFile, error) {
 		return nil, fmt.Errorf("unsupported version %d (expected 2 or 3)", gf.Version)
 	}
 
-	for i := range gf.Goals {
-		if gf.Goals[i].Type == "" {
-			gf.Goals[i].Type = GoalTypeHealth
-		}
-	}
-
+	defaultGoalTypes(gf.Goals)
 	return &gf, nil
 }
 
