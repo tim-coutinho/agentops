@@ -1130,6 +1130,37 @@ func TestAppendJSONL_OpenFileError(t *testing.T) {
 	}
 }
 
+func TestAppendJSONL_MarshalError(t *testing.T) {
+	tmpDir := t.TempDir()
+	fs := NewFileStorage(WithBaseDir(tmpDir))
+
+	// Channels cannot be marshaled to JSON
+	unmarshalable := make(chan int)
+	err := fs.appendJSONL(filepath.Join(tmpDir, "test.jsonl"), unmarshalable)
+	if err == nil {
+		t.Error("expected error when marshaling unmarshalable value")
+	}
+	if !strings.Contains(err.Error(), "marshal json") {
+		t.Errorf("expected 'marshal json' error, got: %v", err)
+	}
+}
+
+func TestAppendJSONL_WriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+	fs := NewFileStorage(WithBaseDir(tmpDir))
+
+	// Replace the target file path with a directory so OpenFile fails with EISDIR
+	targetPath := filepath.Join(tmpDir, "blocked.jsonl")
+	if err := os.MkdirAll(targetPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := fs.appendJSONL(targetPath, map[string]string{"key": "value"})
+	if err == nil {
+		t.Error("expected error when target path is a directory")
+	}
+}
+
 // contains is a test helper for substring matching.
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr))

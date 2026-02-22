@@ -836,6 +836,30 @@ func TestParser_ParseChannel_SkipMalformed(t *testing.T) {
 	}
 }
 
+func TestParser_ParseChannel_EmptyLines(t *testing.T) {
+	// Input with empty lines interspersed should be skipped
+	jsonl := `{"type":"user","sessionId":"test","timestamp":"2026-01-24T10:00:00.000Z","uuid":"1","message":{"role":"user","content":"One"}}
+
+{"type":"user","sessionId":"test","timestamp":"2026-01-24T10:00:10.000Z","uuid":"2","message":{"role":"user","content":"Two"}}
+
+`
+	p := NewParser()
+	msgCh, errCh := p.ParseChannel(strings.NewReader(jsonl))
+
+	count := 0
+	for range msgCh {
+		count++
+	}
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("ParseChannel error: %v", err)
+	}
+
+	if count != 2 {
+		t.Errorf("Message count = %d, want 2 (empty lines should be skipped)", count)
+	}
+}
+
 func TestExtractor_Extract_EmptyContent(t *testing.T) {
 	e := NewExtractor()
 	msg := types.TranscriptMessage{Content: ""}

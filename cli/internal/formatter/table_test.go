@@ -84,6 +84,45 @@ func TestTable_MissingValues(t *testing.T) {
 	}
 }
 
+func TestTable_TruncateMaxLessThanThree(t *testing.T) {
+	var buf bytes.Buffer
+	tbl := NewTable(&buf, "ID", "VALUE")
+	tbl.SetMaxWidth(0, 2) // max <= 3 triggers raw slice without "..."
+	tbl.AddRow("abcdef", "ok")
+	if err := tbl.Render(); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	out := buf.String()
+	// With max=2, "abcdef" should be truncated to "ab" (no "..." suffix)
+	if !strings.Contains(out, "ab") {
+		t.Errorf("expected truncated 'ab' in output:\n%s", out)
+	}
+	// Should NOT contain ellipsis since max <= 3
+	if strings.Contains(out, "...") {
+		t.Errorf("max <= 3 should not add '...' suffix:\n%s", out)
+	}
+	// Should NOT contain the full string
+	if strings.Contains(out, "abcdef") {
+		t.Errorf("ID should have been truncated:\n%s", out)
+	}
+}
+
+func TestTable_TruncateExactlyAtMax(t *testing.T) {
+	var buf bytes.Buffer
+	tbl := NewTable(&buf, "ID", "VALUE")
+	tbl.SetMaxWidth(0, 5)
+	tbl.AddRow("abcde", "ok") // len == max, should NOT truncate
+	if err := tbl.Render(); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "abcde") {
+		t.Errorf("string at exactly max should not be truncated:\n%s", out)
+	}
+}
+
 func TestTable_SeparatorMatchesHeaderLength(t *testing.T) {
 	var buf bytes.Buffer
 	tbl := NewTable(&buf, "SHORT", "LONGHEADER")

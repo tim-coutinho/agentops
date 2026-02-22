@@ -587,6 +587,63 @@ func TestSaveIndex_EmptyTermsSkipped(t *testing.T) {
 	}
 }
 
+func TestLoadIndex_ScannerError(t *testing.T) {
+	tmpDir := t.TempDir()
+	indexPath := filepath.Join(tmpDir, "index.jsonl")
+
+	// Create a file with a line longer than the scanner's 1MB max buffer
+	// (set at line 183 of index.go: scanner.Buffer(buf, 1024*1024))
+	// This triggers scanner.Err() returning bufio.ErrTooLong
+	hugeLine := make([]byte, 1100*1024) // 1.1MB, exceeds 1MB limit
+	for i := range hugeLine {
+		hugeLine[i] = 'x'
+	}
+	content := `{"term":"valid","paths":["file.md"]}` + "\n" + string(hugeLine) + "\n"
+	if err := os.WriteFile(indexPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadIndex(indexPath)
+	if err == nil {
+		t.Error("expected error for line exceeding scanner buffer")
+	}
+}
+
+func TestSaveIndex_ReadOnlySubDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	idx := NewIndex()
+	idx.Terms["hello"] = map[string]bool{"file.md": true}
+
+	err := SaveIndex(idx, filepath.Join(readOnly, "sub", "index.jsonl"))
+	if err == nil {
+		t.Error("expected error when saving to read-only directory")
+	}
+}
+
+func TestSaveIndex_TargetIsDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a directory where the file should be, so os.Create fails
+	filePath := filepath.Join(tmpDir, "index.jsonl")
+	if err := os.MkdirAll(filePath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	idx := NewIndex()
+	idx.Terms["hello"] = map[string]bool{"file.md": true}
+
+	err := SaveIndex(idx, filePath)
+	if err == nil {
+		t.Error("expected error when target path is a directory")
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
