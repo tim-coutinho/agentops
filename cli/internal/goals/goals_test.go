@@ -255,3 +255,36 @@ func TestValidateGoals_InvalidIDFormat(t *testing.T) {
 		t.Error("expected kebab-case id validation error, not found")
 	}
 }
+
+// --- Benchmarks ---
+
+func BenchmarkLoadGoals(b *testing.B) {
+	dir := b.TempDir()
+	path := dir + "/GOALS.yaml"
+	content := `version: 3
+goals:
+  - id: test-coverage
+    description: Achieve 95%+ test coverage
+    check: go test -cover
+    weight: 3
+    type: quality
+  - id: complexity-budget
+    description: Keep complexity under 15
+    check: gocyclo -over 15
+    weight: 2
+    type: health
+  - id: lint-clean
+    description: Zero staticcheck findings
+    check: staticcheck ./...
+    weight: 1
+    type: quality
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		b.Fatalf("write: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = LoadGoals(path)
+	}
+}
