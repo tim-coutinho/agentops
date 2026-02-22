@@ -2,6 +2,7 @@ package context
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -620,5 +621,75 @@ func TestGenerateResumptionContextAllBranches(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBudgetTracker_Save_ReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	bt := NewBudgetTracker("test-session")
+	err := bt.Save(readOnly)
+	if err == nil {
+		t.Error("expected error when saving to read-only directory")
+	}
+}
+
+func TestBudgetTracker_Load_MalformedJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	dir := filepath.Join(tmpDir, ".agents", "ao", "context")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a malformed JSON file
+	path := filepath.Join(dir, "budget-bad-session.json")
+	if err := os.WriteFile(path, []byte("{invalid json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(tmpDir, "bad-session")
+	if err == nil {
+		t.Error("expected error when loading malformed JSON budget file")
+	}
+}
+
+func TestSummarizer_SaveState_ReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	bt := NewBudgetTracker("test-session")
+	s := NewSummarizer(bt)
+	state := SummarizeState{SessionID: "test-session"}
+	err := s.SaveState(readOnly, state)
+	if err == nil {
+		t.Error("expected error when saving state to read-only directory")
+	}
+}
+
+func TestLoadState_MalformedJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	dir := filepath.Join(tmpDir, ".agents", "ao", "context")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a malformed JSON state file
+	path := filepath.Join(dir, "state-bad-session.json")
+	if err := os.WriteFile(path, []byte("{invalid json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadState(tmpDir, "bad-session")
+	if err == nil {
+		t.Error("expected error when loading malformed JSON state file")
 	}
 }

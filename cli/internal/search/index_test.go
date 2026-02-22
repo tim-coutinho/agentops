@@ -476,6 +476,117 @@ func TestUpdateIndex_UnreadableFile(t *testing.T) {
 	}
 }
 
+func TestSaveIndex_ReadOnlySubdir(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	idx := NewIndex()
+	idx.Terms["test"] = map[string]bool{"file.md": true}
+
+	// Try to save into a read-only directory's subdirectory
+	err := SaveIndex(idx, filepath.Join(readOnly, "subdir", "index.jsonl"))
+	if err == nil {
+		t.Error("expected error when saving index to read-only directory")
+	}
+}
+
+func TestSaveIndex_FilePermissionError(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a file where the index should go, make it read-only directory
+	indexPath := filepath.Join(tmpDir, "index.jsonl")
+	// Create it as a directory to make os.Create fail
+	if err := os.MkdirAll(indexPath, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	idx := NewIndex()
+	idx.Terms["test"] = map[string]bool{"file.md": true}
+
+	err := SaveIndex(idx, indexPath)
+	if err == nil {
+		t.Error("expected error when index path is a directory")
+	}
+}
+
+func TestLoadIndex_NonexistentFile(t *testing.T) {
+	_, err := LoadIndex("/nonexistent/index.jsonl")
+	if err == nil {
+		t.Error("expected error when loading nonexistent index")
+	}
+}
+
+func TestLoadIndex_MalformedLines(t *testing.T) {
+	tmpDir := t.TempDir()
+	indexPath := filepath.Join(tmpDir, "index.jsonl")
+
+	// Write a file with valid, malformed, and empty lines
+	content := `{"term":"valid","paths":["a.md","b.md"]}
+{invalid json line
+` + "\n" + `{"term":"also-valid","paths":["c.md"]}
+`
+	if err := os.WriteFile(indexPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	idx, err := LoadIndex(indexPath)
+	if err != nil {
+		t.Fatalf("LoadIndex: %v", err)
+	}
+
+	// Should have two valid terms (skipping malformed and empty lines)
+	if _, ok := idx.Terms["valid"]; !ok {
+		t.Error("expected 'valid' term in loaded index")
+	}
+	if _, ok := idx.Terms["also-valid"]; !ok {
+		t.Error("expected 'also-valid' term in loaded index")
+	}
+}
+
+func TestBuildIndex_NonexistentPath(t *testing.T) {
+	// BuildIndex skips errors in the walk callback, so a nonexistent
+	// directory produces an empty index rather than an error.
+	idx, err := BuildIndex("/nonexistent/directory")
+	if err != nil {
+		// If it does error, that's also acceptable
+		return
+	}
+	if len(idx.Terms) != 0 {
+		t.Errorf("expected 0 terms for nonexistent dir, got %d", len(idx.Terms))
+	}
+}
+
+func TestSaveIndex_EmptyTermsSkipped(t *testing.T) {
+	tmpDir := t.TempDir()
+	indexPath := filepath.Join(tmpDir, "index.jsonl")
+
+	idx := NewIndex()
+	// Add a term with empty docs (should be skipped)
+	idx.Terms["empty"] = map[string]bool{}
+	// Add a term with docs
+	idx.Terms["valid"] = map[string]bool{"file.md": true}
+
+	if err := SaveIndex(idx, indexPath); err != nil {
+		t.Fatalf("SaveIndex: %v", err)
+	}
+
+	// Load and verify
+	loaded, err := LoadIndex(indexPath)
+	if err != nil {
+		t.Fatalf("LoadIndex: %v", err)
+	}
+	if _, ok := loaded.Terms["empty"]; ok {
+		t.Error("empty term should not be saved")
+	}
+	if _, ok := loaded.Terms["valid"]; !ok {
+		t.Error("expected 'valid' term in loaded index")
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
