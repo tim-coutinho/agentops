@@ -811,3 +811,64 @@ func TestLoadChainNonexistent(t *testing.T) {
 		t.Errorf("expected 0 entries, got %d", len(chain.Entries))
 	}
 }
+
+func TestChainAppendReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	chain := &Chain{
+		ID:      "append-readonly",
+		Started: time.Now(),
+	}
+	chain.SetPath(filepath.Join(readOnly, "sub", "chain.jsonl"))
+	err := chain.Append(ChainEntry{Step: StepResearch})
+	if err == nil {
+		t.Error("expected error when appending to chain in read-only directory")
+	}
+}
+
+func TestLoadJSONLChainFileNotExist(t *testing.T) {
+	_, err := loadJSONLChain("/nonexistent/chain.jsonl")
+	if err == nil {
+		t.Error("expected error for nonexistent JSONL chain file")
+	}
+}
+
+func TestLegacyChainBadYAML(t *testing.T) {
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, ".agents"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Write invalid YAML to legacy chain
+	writeLegacyChain(t, tmp, ":::invalid yaml[[[")
+
+	// LoadChain should fall through to creating a new chain
+	chain, err := LoadChain(tmp)
+	if err != nil {
+		t.Fatalf("LoadChain should not error for bad legacy YAML: %v", err)
+	}
+	// Should have created a new chain (not legacy), with no entries
+	if len(chain.Entries) != 0 {
+		t.Errorf("expected 0 entries for bad legacy YAML, got %d", len(chain.Entries))
+	}
+}
+
+func TestMigrateChainBadLegacyYAML(t *testing.T) {
+	tmp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(tmp, ".agents"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeLegacyChain(t, tmp, ":::bad yaml content[[[")
+
+	err := MigrateChain(tmp)
+	if err == nil {
+		t.Error("expected error when migrating bad YAML chain")
+	}
+	if !strings.Contains(err.Error(), "load legacy chain") {
+		t.Errorf("expected 'load legacy chain' error, got: %v", err)
+	}
+}

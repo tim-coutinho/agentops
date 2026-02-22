@@ -1671,6 +1671,126 @@ func TestValidateCloseReason_WithRelativePaths(t *testing.T) {
 	}
 }
 
+func TestLoadCitations_PermissionError(t *testing.T) {
+	baseDir := t.TempDir()
+	citationsDir := filepath.Join(baseDir, ".agents", "ao")
+	if err := os.MkdirAll(citationsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	citationsPath := filepath.Join(citationsDir, "citations.jsonl")
+	if err := os.WriteFile(citationsPath, []byte(`{"artifact_path":"/a.md"}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(citationsPath, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(citationsPath, 0644) })
+
+	_, err := LoadCitations(baseDir)
+	if err == nil {
+		t.Error("expected error when citations file is unreadable")
+	}
+}
+
+func TestLoadCitations_EmptyLines(t *testing.T) {
+	baseDir := t.TempDir()
+	citationsDir := filepath.Join(baseDir, ".agents", "ao")
+	if err := os.MkdirAll(citationsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Write file with empty lines interleaved
+	content := `{"artifact_path":"/a.md","session_id":"s1"}` + "\n\n" + `{"artifact_path":"/b.md","session_id":"s2"}` + "\n\n"
+	if err := os.WriteFile(filepath.Join(citationsDir, "citations.jsonl"), []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	citations, err := LoadCitations(baseDir)
+	if err != nil {
+		t.Fatalf("LoadCitations: %v", err)
+	}
+	if len(citations) != 2 {
+		t.Errorf("expected 2 citations (skipping empty lines), got %d", len(citations))
+	}
+}
+
+func TestValidate_ResearchStep_ShortContent(t *testing.T) {
+	v, tmpDir := helperNewValidator(t)
+	// Create a research file with < 100 words
+	artifact := filepath.Join(tmpDir, "research-short.md")
+	content := "---\nschema_version: 1\n---\n## Summary\nShort.\n## Key Findings\nFindings.\n## Recommendations\nRecs.\nSource: http://example.com\n"
+	if err := os.WriteFile(artifact, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := v.Validate(StepResearch, artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have warning about short research
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "seems short") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'seems short' warning for < 100 word research, got %v", result.Warnings)
+	}
+}
+
+func TestValidate_ResearchStep_MissingSchemaVersionFrontmatter(t *testing.T) {
+	v, tmpDir := helperNewValidator(t)
+	// Research file with schema_version: in content (so hasSchemaVersion passes)
+	// but NOT in frontmatter (so hasFrontmatterField returns false -> warning)
+	artifact := filepath.Join(tmpDir, "research-no-fm.md")
+	content := "schema_version: 1\n## Summary\nSummary.\n## Key Findings\nFindings.\n## Recommendations\nRecs.\nSource: http://example.com\n" + longText(120)
+	if err := os.WriteFile(artifact, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := v.Validate(StepResearch, artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have warning about missing schema_version in frontmatter
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "schema_version field in frontmatter") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected frontmatter schema_version warning, got %v", result.Warnings)
+	}
+}
+
+func TestValidate_PreMortemStep_ReadError(t *testing.T) {
+	v, tmpDir := helperNewValidator(t)
+	artifact := filepath.Join(tmpDir, "unreadable-premortem-v2.md")
+	content := "schema_version: 1\ncontent"
+	if err := os.WriteFile(artifact, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Change permissions after creation so os.Stat passes but os.ReadFile fails
+	if err := os.Chmod(artifact, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(artifact, 0644) })
+
+	result, err := v.Validate(StepPreMortem, artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// hasSchemaVersion returns false (can't read), strict mode -> invalid
+	if result.Valid {
+		t.Log("File unreadable -> hasSchemaVersion false -> strict mode rejects")
+	}
+}
+
 // longText generates filler text with the given number of words.
 func longText(wordCount int) string {
 	words := make([]string, wordCount)

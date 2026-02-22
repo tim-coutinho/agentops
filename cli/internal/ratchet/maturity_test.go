@@ -751,6 +751,142 @@ func TestGetMaturityDistribution_EmptyDir(t *testing.T) {
 	}
 }
 
+func TestStringFromData_RequireNonEmptyFallback(t *testing.T) {
+	data := map[string]interface{}{
+		"field": "",
+	}
+	// requireNonEmpty=true with empty value should return default
+	got := stringFromData(data, "field", "default-val", true)
+	if got != "default-val" {
+		t.Errorf("expected default-val for empty string with requireNonEmpty, got %q", got)
+	}
+
+	// requireNonEmpty=false with empty value should return ""
+	got = stringFromData(data, "field", "default-val", false)
+	if got != "" {
+		t.Errorf("expected empty string with requireNonEmpty=false, got %q", got)
+	}
+
+	// Non-string value should return default
+	data2 := map[string]interface{}{
+		"field": 42,
+	}
+	got = stringFromData(data2, "field", "default-val", false)
+	if got != "default-val" {
+		t.Errorf("expected default-val for non-string value, got %q", got)
+	}
+}
+
+func TestApplyMaturityTransition_ReadOnlyFile(t *testing.T) {
+	dir := t.TempDir()
+	path := writeLearning(t, dir, "readonly.jsonl", map[string]interface{}{
+		"id":           "readonly-test",
+		"maturity":     "provisional",
+		"utility":      0.8,
+		"reward_count": 4.0,
+	})
+	// Make file read-only so write-back fails
+	if err := os.Chmod(path, 0400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0644) })
+
+	_, err := ApplyMaturityTransition(path)
+	if err == nil {
+		t.Error("expected error when writing to read-only learning file")
+	}
+}
+
+func TestGetEstablishedLearnings_UnreadableFile(t *testing.T) {
+	dir := t.TempDir()
+	// Write a valid established file
+	writeLearning(t, dir, "est.jsonl", map[string]interface{}{
+		"maturity": "established",
+	})
+	// Write an unreadable file
+	unreadable := filepath.Join(dir, "unreadable.jsonl")
+	if err := os.WriteFile(unreadable, []byte(`{"maturity":"established"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(unreadable, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(unreadable, 0644) })
+
+	results, err := GetEstablishedLearnings(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Should only find the readable one
+	if len(results) != 1 {
+		t.Errorf("expected 1 established learning (skipping unreadable), got %d", len(results))
+	}
+}
+
+func TestGetAntiPatterns_UnreadableFile(t *testing.T) {
+	dir := t.TempDir()
+	writeLearning(t, dir, "anti.jsonl", map[string]interface{}{
+		"maturity": "anti-pattern",
+	})
+	unreadable := filepath.Join(dir, "unreadable.jsonl")
+	if err := os.WriteFile(unreadable, []byte(`{"maturity":"anti-pattern"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(unreadable, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(unreadable, 0644) })
+
+	results, err := GetAntiPatterns(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 anti-pattern (skipping unreadable), got %d", len(results))
+	}
+}
+
+func TestGetMaturityDistribution_UnreadableFile(t *testing.T) {
+	dir := t.TempDir()
+	writeLearning(t, dir, "prov.jsonl", map[string]interface{}{
+		"maturity": "provisional",
+	})
+	unreadable := filepath.Join(dir, "unreadable.jsonl")
+	if err := os.WriteFile(unreadable, []byte(`{"maturity":"provisional"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(unreadable, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(unreadable, 0644) })
+
+	dist, err := GetMaturityDistribution(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Only the readable file should be counted
+	if dist.Total != 1 {
+		t.Errorf("Total = %d, want 1 (skipping unreadable)", dist.Total)
+	}
+}
+
+func TestGetMaturityDistribution_EmptyMaturityField(t *testing.T) {
+	dir := t.TempDir()
+	writeLearning(t, dir, "empty-mat.jsonl", map[string]interface{}{
+		"id":       "test",
+		"maturity": "",
+	})
+
+	dist, err := GetMaturityDistribution(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Empty maturity should default to provisional
+	if dist.Provisional != 1 {
+		t.Errorf("Provisional = %d, want 1 (default for empty maturity)", dist.Provisional)
+	}
+}
+
 // contains is a test helper for substring matching.
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))

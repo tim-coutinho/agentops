@@ -365,3 +365,65 @@ func TestResolveArtifactPath(t *testing.T) {
 		t.Error("expected error for nonexistent artifact")
 	}
 }
+
+func TestResolveArtifactPath_AbsoluteNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	loc, err := NewLocator(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = loc.ResolveArtifactPath("/nonexistent/absolute/path.md")
+	if err == nil {
+		t.Error("expected error for nonexistent absolute path")
+	}
+}
+
+func TestSearchLocation_UnknownLocationType(t *testing.T) {
+	tmpDir := t.TempDir()
+	loc, err := NewLocator(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = loc.searchLocation(LocationType("bogus"), "*.md")
+	if err == nil {
+		t.Error("expected error for unknown location type")
+	}
+}
+
+func TestFindFirst_NotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Create .agents so crew search doesn't fail entirely
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".agents"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	loc, err := NewLocator(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = loc.FindFirst("nonexistent-pattern-*.md")
+	if err == nil {
+		t.Error("expected error when no artifact matches pattern")
+	}
+}
+
+func TestGetLocationPaths_NoPluginsNoRig(t *testing.T) {
+	// No .beads, no crew, no plugins dir
+	tmpDir := t.TempDir()
+	loc, err := NewLocator(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	paths := loc.GetLocationPaths()
+	// Should always have crew and town
+	if _, ok := paths[LocationCrew]; !ok {
+		t.Error("expected crew path")
+	}
+	if _, ok := paths[LocationTown]; !ok {
+		t.Error("expected town path")
+	}
+}
