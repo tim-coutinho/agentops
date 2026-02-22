@@ -14,69 +14,77 @@ const amnesiaMinEdits = 3
 
 // DetectContextAmnesia detects files that are modified repeatedly within a
 // short timeframe, suggesting the agent lost context and re-did work.
+// fileEdit records a single edit to a file.
+type fileEdit struct {
+	ts  time.Time
+	sha string
+	msg string
+}
+
 func DetectContextAmnesia(events []TimelineEvent) []Finding {
 	if len(events) < amnesiaMinEdits {
 		return nil
 	}
 
-	// Sort oldest first.
 	sorted := make([]TimelineEvent, len(events))
 	copy(sorted, events)
 	sortOldestFirst(sorted)
 
-	// Build a map of file -> list of commit timestamps+SHAs.
-	type fileEdit struct {
-		ts  time.Time
-		sha string
-		msg string
-	}
-	fileEdits := make(map[string][]fileEdit)
+	fileEdits := buildFileEdits(sorted)
 
-	for _, ev := range sorted {
+	var findings []Finding
+	for file, edits := range fileEdits {
+		if f, ok := detectAmnesiaInFile(file, edits); ok {
+			findings = append(findings, f)
+		}
+	}
+	return findings
+}
+
+// buildFileEdits groups events by file into timestamped edit lists.
+func buildFileEdits(events []TimelineEvent) map[string][]fileEdit {
+	result := make(map[string][]fileEdit)
+	for _, ev := range events {
 		for _, f := range ev.Files {
-			fileEdits[f] = append(fileEdits[f], fileEdit{
+			result[f] = append(result[f], fileEdit{
 				ts:  ev.Timestamp,
 				sha: ev.SHA,
 				msg: ev.Message,
 			})
 		}
 	}
+	return result
+}
 
-	var findings []Finding
-
-	for file, edits := range fileEdits {
-		if len(edits) < amnesiaMinEdits {
-			continue
-		}
-
-		// Sort edits by time.
-		sort.Slice(edits, func(i, j int) bool {
-			return edits[i].ts.Before(edits[j].ts)
-		})
-
-		// Sliding window: check for amnesiaMinEdits edits within amnesiaWindow.
-		for i := 0; i <= len(edits)-amnesiaMinEdits; i++ {
-			windowEnd := edits[i].ts.Add(amnesiaWindow)
-			count := 0
-			for j := i; j < len(edits); j++ {
-				if edits[j].ts.After(windowEnd) {
-					break
-				}
-				count++
-			}
-			if count >= amnesiaMinEdits {
-				findings = append(findings, Finding{
-					Severity: "warning",
-					Category: "context-amnesia",
-					Message:  file + " modified " + itoa(count) + " times within 1 hour, suggesting lost context",
-					File:     file,
-				})
-				break // One finding per file.
-			}
-		}
+// detectAmnesiaInFile checks if a file was edited amnesiaMinEdits+ times within amnesiaWindow.
+func detectAmnesiaInFile(file string, edits []fileEdit) (Finding, bool) {
+	if len(edits) < amnesiaMinEdits {
+		return Finding{}, false
 	}
 
-	return findings
+	sort.Slice(edits, func(i, j int) bool {
+		return edits[i].ts.Before(edits[j].ts)
+	})
+
+	for i := 0; i <= len(edits)-amnesiaMinEdits; i++ {
+		windowEnd := edits[i].ts.Add(amnesiaWindow)
+		count := 0
+		for j := i; j < len(edits); j++ {
+			if edits[j].ts.After(windowEnd) {
+				break
+			}
+			count++
+		}
+		if count >= amnesiaMinEdits {
+			return Finding{
+				Severity: "warning",
+				Category: "context-amnesia",
+				Message:  file + " modified " + itoa(count) + " times within 1 hour, suggesting lost context",
+				File:     file,
+			}, true
+		}
+	}
+	return Finding{}, false
 }
 
 // itoa converts an int to a string without importing strconv in this file.

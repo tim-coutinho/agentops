@@ -52,7 +52,6 @@ func parseGitLog(raw string, delim string) ([]TimelineEvent, error) {
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// Blank line: separator between commits (or trailing).
 		if strings.TrimSpace(line) == "" {
 			if current != nil {
 				events = append(events, *current)
@@ -61,50 +60,61 @@ func parseGitLog(raw string, delim string) ([]TimelineEvent, error) {
 			continue
 		}
 
-		// Try to parse as a header line.
-		if parts := strings.SplitN(line, delim, 4); len(parts) == 4 {
-			// Flush any pending event without a trailing blank line.
+		if ev, err := tryParseHeader(line, delim); ev != nil {
 			if current != nil {
 				events = append(events, *current)
 			}
-
-			ts, err := time.Parse(time.RFC3339, parts[1])
-			if err != nil {
-				return nil, fmt.Errorf("parsing timestamp %q: %w", parts[1], err)
-			}
-
-			current = &TimelineEvent{
-				SHA:       parts[0],
-				Timestamp: ts,
-				Author:    parts[2],
-				Message:   parts[3],
-			}
+			current = ev
 			continue
+		} else if err != nil {
+			return nil, err
 		}
 
-		// Otherwise treat as a numstat line: <insertions>\t<deletions>\t<file>
 		if current != nil {
-			fields := strings.SplitN(line, "\t", 3)
-			if len(fields) == 3 {
-				ins, _ := strconv.Atoi(fields[0])
-				del, _ := strconv.Atoi(fields[1])
-				current.Insertions += ins
-				current.Deletions += del
-				current.FilesChanged++
-				current.Files = append(current.Files, fields[2])
-			}
+			parseNumstat(line, current)
 		}
 	}
 
-	// Flush last event if the output didn't end with a blank line.
 	if current != nil {
 		events = append(events, *current)
 	}
 
-	// Sort newest first.
 	sort.Slice(events, func(i, j int) bool {
 		return events[i].Timestamp.After(events[j].Timestamp)
 	})
 
 	return events, nil
+}
+
+// tryParseHeader attempts to parse a git log header line. Returns (event, nil) on success,
+// (nil, nil) if not a header, or (nil, error) on parse failure.
+func tryParseHeader(line, delim string) (*TimelineEvent, error) {
+	parts := strings.SplitN(line, delim, 4)
+	if len(parts) != 4 {
+		return nil, nil
+	}
+	ts, err := time.Parse(time.RFC3339, parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("parsing timestamp %q: %w", parts[1], err)
+	}
+	return &TimelineEvent{
+		SHA:       parts[0],
+		Timestamp: ts,
+		Author:    parts[2],
+		Message:   parts[3],
+	}, nil
+}
+
+// parseNumstat parses a numstat line and adds file stats to the event.
+func parseNumstat(line string, event *TimelineEvent) {
+	fields := strings.SplitN(line, "\t", 3)
+	if len(fields) != 3 {
+		return
+	}
+	ins, _ := strconv.Atoi(fields[0])
+	del, _ := strconv.Atoi(fields[1])
+	event.Insertions += ins
+	event.Deletions += del
+	event.FilesChanged++
+	event.Files = append(event.Files, fields[2])
 }

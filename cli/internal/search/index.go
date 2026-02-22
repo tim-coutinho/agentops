@@ -84,7 +84,16 @@ func Search(idx *Index, query string, limit int) []IndexResult {
 		return nil
 	}
 
-	// Count how many query terms each document matches
+	scores := scoreDocuments(idx, queryTerms)
+	if len(scores) == 0 {
+		return nil
+	}
+
+	return rankResults(scores, limit)
+}
+
+// scoreDocuments counts how many query terms each document matches.
+func scoreDocuments(idx *Index, queryTerms []string) map[string]int {
 	scores := make(map[string]int)
 	for _, term := range queryTerms {
 		if docs, ok := idx.Terms[term]; ok {
@@ -93,11 +102,11 @@ func Search(idx *Index, query string, limit int) []IndexResult {
 			}
 		}
 	}
+	return scores
+}
 
-	if len(scores) == 0 {
-		return nil
-	}
-
+// rankResults converts scores to sorted results, applying a limit.
+func rankResults(scores map[string]int, limit int) []IndexResult {
 	results := make([]IndexResult, 0, len(scores))
 	for path, score := range scores {
 		results = append(results, IndexResult{Path: path, Score: score})
@@ -113,7 +122,6 @@ func Search(idx *Index, query string, limit int) []IndexResult {
 	if limit > 0 && len(results) > limit {
 		results = results[:limit]
 	}
-
 	return results
 }
 
@@ -132,8 +140,14 @@ func SaveIndex(idx *Index, path string) error {
 	}()
 
 	w := bufio.NewWriter(f)
+	if err := writeIndexTerms(w, idx); err != nil {
+		return err
+	}
+	return w.Flush()
+}
 
-	// Sort terms for deterministic output
+// writeIndexTerms serializes all index terms to the writer in sorted order.
+func writeIndexTerms(w *bufio.Writer, idx *Index) error {
 	terms := make([]string, 0, len(idx.Terms))
 	for term := range idx.Terms {
 		terms = append(terms, term)
@@ -145,26 +159,30 @@ func SaveIndex(idx *Index, path string) error {
 		if len(docs) == 0 {
 			continue
 		}
-		paths := make([]string, 0, len(docs))
-		for p := range docs {
-			paths = append(paths, p)
-		}
-		sort.Strings(paths)
-
-		entry := IndexEntry{Term: term, Paths: paths}
-		data, err := json.Marshal(entry)
-		if err != nil {
-			return fmt.Errorf("marshal term %q: %w", term, err)
-		}
-		if _, err := w.Write(data); err != nil {
-			return err
-		}
-		if _, err := w.WriteString("\n"); err != nil {
+		if err := writeTermEntry(w, term, docs); err != nil {
 			return err
 		}
 	}
+	return nil
+}
 
-	return w.Flush()
+// writeTermEntry serializes a single term and its document set.
+func writeTermEntry(w *bufio.Writer, term string, docs map[string]bool) error {
+	paths := make([]string, 0, len(docs))
+	for p := range docs {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+
+	data, err := json.Marshal(IndexEntry{Term: term, Paths: paths})
+	if err != nil {
+		return fmt.Errorf("marshal term %q: %w", term, err)
+	}
+	if _, err := w.Write(data); err != nil {
+		return err
+	}
+	_, err = w.WriteString("\n")
+	return err
 }
 
 // LoadIndex reads an index from a JSONL file.
