@@ -1707,3 +1707,376 @@ func TestPoolListPendingReviewFiltersReviewed(t *testing.T) {
 		t.Errorf("expected review-pending, got %s", pending[0].Candidate.ID)
 	}
 }
+
+func TestRecordEventChainOpenError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make pool directory read-only so OpenFile fails
+	if err := os.Chmod(p.PoolPath, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(p.PoolPath, 0700) })
+
+	err := p.recordEvent(ChainEvent{
+		Operation:   "test",
+		CandidateID: "test-id",
+	})
+	if err == nil {
+		t.Error("expected error when chain file cannot be opened for writing")
+	}
+}
+
+func TestWriteEntryPermissionError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make pending directory read-only so WriteFile fails
+	pendingDir := filepath.Join(p.PoolPath, PendingDir)
+	if err := os.Chmod(pendingDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(pendingDir, 0700) })
+
+	entry := &PoolEntry{}
+	entry.Candidate = types.Candidate{ID: "write-test", Content: "test"}
+	err := p.writeEntry(filepath.Join(pendingDir, "write-test.json"), entry)
+	if err == nil {
+		t.Error("expected error when writing to read-only directory")
+	}
+}
+
+func TestStageAtomicMoveError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	candidate := types.Candidate{
+		ID:      "stage-move-err",
+		Tier:    types.TierSilver,
+		Content: "Content to stage",
+	}
+	if err := p.Add(candidate, types.Scoring{}); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	// Make staged directory read-only so atomicMove fails (can't create temp file)
+	stagedDir := filepath.Join(p.PoolPath, StagedDir)
+	if err := os.Chmod(stagedDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(stagedDir, 0700) })
+
+	err := p.Stage("stage-move-err", types.TierBronze)
+	if err == nil {
+		t.Error("expected error when staged directory is read-only")
+	}
+	if !strings.Contains(err.Error(), "move to staged") {
+		t.Errorf("expected 'move to staged' error, got: %v", err)
+	}
+}
+
+func TestRejectAtomicMoveError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	candidate := types.Candidate{
+		ID:      "reject-move-err",
+		Tier:    types.TierBronze,
+		Content: "Content to reject",
+	}
+	if err := p.Add(candidate, types.Scoring{}); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	// Make rejected directory read-only so atomicMove fails
+	rejectedDir := filepath.Join(p.PoolPath, RejectedDir)
+	if err := os.Chmod(rejectedDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(rejectedDir, 0700) })
+
+	err := p.Reject("reject-move-err", "reason", "reviewer")
+	if err == nil {
+		t.Error("expected error when rejected directory is read-only")
+	}
+	if !strings.Contains(err.Error(), "move to rejected") {
+		t.Errorf("expected 'move to rejected' error, got: %v", err)
+	}
+}
+
+func TestPromoteMkdirAllError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	candidate := types.Candidate{
+		ID:      "promote-mkdir-err",
+		Tier:    types.TierSilver,
+		Type:    types.KnowledgeTypeLearning,
+		Content: "Content",
+	}
+	if err := p.Add(candidate, types.Scoring{}); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+	if err := p.Stage("promote-mkdir-err", types.TierBronze); err != nil {
+		t.Fatalf("Stage failed: %v", err)
+	}
+
+	// Make .agents read-only so MkdirAll for learnings/ fails
+	agentsDir := filepath.Join(tmpDir, ".agents")
+	if err := os.Chmod(agentsDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(agentsDir, 0700) })
+
+	_, err := p.Promote("promote-mkdir-err")
+	if err == nil {
+		t.Error("expected error when destination directory creation fails")
+	}
+	if !strings.Contains(err.Error(), "create destination") {
+		t.Errorf("expected 'create destination' error, got: %v", err)
+	}
+}
+
+func TestAddAtWriteEntryError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make pending directory read-only so writeEntry fails
+	pendingDir := filepath.Join(p.PoolPath, PendingDir)
+	if err := os.Chmod(pendingDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(pendingDir, 0700) })
+
+	candidate := types.Candidate{ID: "write-err", Content: "test"}
+	err := p.AddAt(candidate, types.Scoring{}, time.Now())
+	if err == nil {
+		t.Error("expected error when writeEntry fails in AddAt")
+	}
+	if !strings.Contains(err.Error(), "write entry") {
+		t.Errorf("expected 'write entry' error, got: %v", err)
+	}
+}
+
+func TestPromoteWriteArtifactError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	candidate := types.Candidate{
+		ID:      "promote-write-err",
+		Tier:    types.TierSilver,
+		Type:    types.KnowledgeTypeLearning,
+		Content: "Content",
+	}
+	if err := p.Add(candidate, types.Scoring{}); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+	if err := p.Stage("promote-write-err", types.TierBronze); err != nil {
+		t.Fatalf("Stage failed: %v", err)
+	}
+
+	// Create learnings dir and make it read-only so writeArtifact (WriteFile) fails
+	learningsDir := filepath.Join(tmpDir, ".agents", "learnings")
+	if err := os.MkdirAll(learningsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(learningsDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(learningsDir, 0700) })
+
+	_, err := p.Promote("promote-write-err")
+	if err == nil {
+		t.Error("expected error when writeArtifact fails")
+	}
+	if !strings.Contains(err.Error(), "write artifact") {
+		t.Errorf("expected 'write artifact' error, got: %v", err)
+	}
+}
+
+func TestApproveWriteEntryError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	candidate := types.Candidate{
+		ID:      "approve-write-err",
+		Tier:    types.TierBronze,
+		Content: "Content",
+	}
+	if err := p.Add(candidate, types.Scoring{GateRequired: true}); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	// Make the entry file itself read-only so WriteFile fails
+	entryPath := filepath.Join(p.PoolPath, PendingDir, "approve-write-err.json")
+	if err := os.Chmod(entryPath, 0400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(entryPath, 0600) })
+
+	err := p.Approve("approve-write-err", "looks good", "reviewer")
+	if err == nil {
+		t.Fatal("expected error when writeEntry fails in Approve")
+	}
+	if !strings.Contains(err.Error(), "write approved entry") {
+		t.Errorf("expected 'write approved entry' error, got: %v", err)
+	}
+}
+
+func TestRejectInvalidIDLength(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reject with empty ID (triggers validateCandidateID in Get)
+	err := p.Reject("", "reason", "reviewer")
+	if err == nil {
+		t.Error("expected error for empty candidate ID")
+	}
+}
+
+func TestStageInvalidID(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	err := p.Stage("", types.TierBronze)
+	if err == nil {
+		t.Error("expected error for empty candidate ID in Stage")
+	}
+}
+
+func TestPromoteInvalidID(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := p.Promote("")
+	if err == nil {
+		t.Error("expected error for empty candidate ID in Promote")
+	}
+}
+
+func TestApproveInvalidID(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	err := p.Approve("", "note", "reviewer")
+	if err == nil {
+		t.Error("expected error for empty candidate ID in Approve")
+	}
+}
+
+func TestBulkApproveSkipsAlreadyReviewed(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	// Add two silver candidates with old timestamps
+	for _, id := range []string{"already-approved", "should-approve"} {
+		candidate := types.Candidate{
+			ID:      id,
+			Tier:    types.TierSilver,
+			Content: "Old silver content",
+		}
+		pastTime := time.Now().Add(-3 * time.Hour)
+		if err := p.AddAt(candidate, types.Scoring{}, pastTime); err != nil {
+			t.Fatalf("AddAt failed: %v", err)
+		}
+	}
+
+	// Pre-approve one so BulkApprove hits the "already reviewed" error
+	if err := p.Approve("already-approved", "pre-approved", "first-reviewer"); err != nil {
+		t.Fatalf("Pre-approve failed: %v", err)
+	}
+
+	// BulkApprove should succeed, approving the one that hasn't been reviewed
+	// and silently skipping the already-reviewed one (warning to stderr)
+	approved, err := p.BulkApprove(2*time.Hour, "bulk-reviewer", false)
+	if err != nil {
+		t.Fatalf("BulkApprove failed: %v", err)
+	}
+	// Only "should-approve" should be in the approved list;
+	// "already-approved" triggers the error path and is skipped
+	if len(approved) != 1 {
+		t.Errorf("expected 1 approved (skipping already-reviewed), got %d", len(approved))
+	}
+	if len(approved) > 0 && approved[0] != "should-approve" {
+		t.Errorf("expected should-approve, got %s", approved[0])
+	}
+}
+
+func TestStageWriteEntryError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	candidate := types.Candidate{
+		ID:      "stage-write-err",
+		Tier:    types.TierSilver,
+		Content: "Content to stage",
+	}
+	if err := p.Add(candidate, types.Scoring{}); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	// Stage successfully first
+	if err := p.Stage("stage-write-err", types.TierBronze); err != nil {
+		t.Fatalf("Stage failed: %v", err)
+	}
+
+	// Verify the file is in the staged directory
+	stagedFile := filepath.Join(p.PoolPath, StagedDir, "stage-write-err.json")
+	if _, err := os.Stat(stagedFile); os.IsNotExist(err) {
+		t.Fatal("staged file should exist")
+	}
+}
+
+func TestRejectWriteEntryError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	candidate := types.Candidate{
+		ID:      "reject-write-test",
+		Tier:    types.TierBronze,
+		Content: "Content",
+	}
+	if err := p.Add(candidate, types.Scoring{}); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	// Reject successfully and verify status
+	if err := p.Reject("reject-write-test", "bad quality", "reviewer"); err != nil {
+		t.Fatalf("Reject failed: %v", err)
+	}
+
+	entry, err := p.Get("reject-write-test")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if entry.HumanReview == nil {
+		t.Fatal("expected HumanReview to be set")
+	}
+	if entry.HumanReview.Reviewer != "reviewer" {
+		t.Errorf("expected reviewer 'reviewer', got %s", entry.HumanReview.Reviewer)
+	}
+	if entry.HumanReview.Notes != "bad quality" {
+		t.Errorf("expected notes 'bad quality', got %s", entry.HumanReview.Notes)
+	}
+}
