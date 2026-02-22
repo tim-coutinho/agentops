@@ -190,39 +190,40 @@ func (s *Summarizer) summarizeItem(item ContextItem, maxTokens int) ContextItem 
 
 // ClassifyItem determines the priority of a context item.
 func (s *Summarizer) ClassifyItem(itemType, content string) SummaryPriority {
+	base := baseItemPriority(itemType)
+	if base == PriorityHigh && s.shouldPreserve(itemType) {
+		return PriorityCritical
+	}
+	return base
+}
+
+// baseItemPriority returns the default priority for an item type (without config overrides).
+func baseItemPriority(itemType string) SummaryPriority {
 	switch itemType {
-	case "failing_test":
-		if s.Config.PreserveFailingTests {
-			return PriorityCritical
-		}
+	case "failing_test", "file_change", "critical_finding":
 		return PriorityHigh
-
-	case "file_change":
-		if s.Config.PreserveFileChanges {
-			return PriorityCritical
-		}
-		return PriorityHigh
-
-	case "critical_finding":
-		if s.Config.PreserveCriticalFindings {
-			return PriorityCritical
-		}
-		return PriorityHigh
-
 	case "high_finding":
 		return PriorityHigh
-
 	case "medium_finding":
 		return PriorityMedium
-
-	case "low_finding":
+	case "low_finding", "context", "exploration":
 		return PriorityLow
-
-	case "context", "exploration":
-		return PriorityLow
-
 	default:
 		return PriorityMedium
+	}
+}
+
+// shouldPreserve checks whether the summarizer config escalates the given item type to critical.
+func (s *Summarizer) shouldPreserve(itemType string) bool {
+	switch itemType {
+	case "failing_test":
+		return s.Config.PreserveFailingTests
+	case "file_change":
+		return s.Config.PreserveFileChanges
+	case "critical_finding":
+		return s.Config.PreserveCriticalFindings
+	default:
+		return false
 	}
 }
 
@@ -302,56 +303,70 @@ func LoadState(baseDir, sessionID string) (*SummarizeState, error) {
 
 // GenerateResumptionContext creates context for resuming work.
 func (s *Summarizer) GenerateResumptionContext(state SummarizeState) string {
-	var builder strings.Builder
+	var b strings.Builder
+	b.WriteString("# Session Resumption Context\n\n")
+	writeFilesSection(&b, state.FilesChanged)
+	writeTestSection(&b, state.TestStatus, state.FailingTests)
+	writeBulletSection(&b, "## Critical Findings", state.CriticalFindings)
+	if state.CurrentTask != "" {
+		b.WriteString("## Current Task\n")
+		b.WriteString(fmt.Sprintf("%s\n\n", state.CurrentTask))
+	}
+	writeChecklistSection(&b, "## Completed Tasks", state.CompletedTasks)
+	if state.Notes != "" {
+		b.WriteString("## Notes\n")
+		b.WriteString(state.Notes)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
 
-	builder.WriteString("# Session Resumption Context\n\n")
-
-	builder.WriteString("## Files Changed\n")
-	if len(state.FilesChanged) > 0 {
-		for _, f := range state.FilesChanged {
-			builder.WriteString(fmt.Sprintf("- %s\n", f))
+// writeFilesSection writes the files-changed section.
+func writeFilesSection(b *strings.Builder, files []string) {
+	b.WriteString("## Files Changed\n")
+	if len(files) > 0 {
+		for _, f := range files {
+			b.WriteString(fmt.Sprintf("- %s\n", f))
 		}
 	} else {
-		builder.WriteString("No files changed yet.\n")
+		b.WriteString("No files changed yet.\n")
 	}
-	builder.WriteString("\n")
+	b.WriteString("\n")
+}
 
-	builder.WriteString("## Test Status\n")
-	builder.WriteString(fmt.Sprintf("%s\n", state.TestStatus))
-	if len(state.FailingTests) > 0 {
-		builder.WriteString("\nFailing tests:\n")
-		for _, t := range state.FailingTests {
-			builder.WriteString(fmt.Sprintf("- %s\n", t))
+// writeTestSection writes the test-status section including any failing tests.
+func writeTestSection(b *strings.Builder, status string, failing []string) {
+	b.WriteString("## Test Status\n")
+	b.WriteString(fmt.Sprintf("%s\n", status))
+	if len(failing) > 0 {
+		b.WriteString("\nFailing tests:\n")
+		for _, t := range failing {
+			b.WriteString(fmt.Sprintf("- %s\n", t))
 		}
 	}
-	builder.WriteString("\n")
+	b.WriteString("\n")
+}
 
-	if len(state.CriticalFindings) > 0 {
-		builder.WriteString("## Critical Findings\n")
-		for _, f := range state.CriticalFindings {
-			builder.WriteString(fmt.Sprintf("- %s\n", f))
-		}
-		builder.WriteString("\n")
+// writeBulletSection writes an optional section with bullet items.
+func writeBulletSection(b *strings.Builder, heading string, items []string) {
+	if len(items) == 0 {
+		return
 	}
-
-	if state.CurrentTask != "" {
-		builder.WriteString("## Current Task\n")
-		builder.WriteString(fmt.Sprintf("%s\n\n", state.CurrentTask))
+	b.WriteString(heading + "\n")
+	for _, item := range items {
+		b.WriteString(fmt.Sprintf("- %s\n", item))
 	}
+	b.WriteString("\n")
+}
 
-	if len(state.CompletedTasks) > 0 {
-		builder.WriteString("## Completed Tasks\n")
-		for _, t := range state.CompletedTasks {
-			builder.WriteString(fmt.Sprintf("- [x] %s\n", t))
-		}
-		builder.WriteString("\n")
+// writeChecklistSection writes an optional section with checklist items.
+func writeChecklistSection(b *strings.Builder, heading string, items []string) {
+	if len(items) == 0 {
+		return
 	}
-
-	if state.Notes != "" {
-		builder.WriteString("## Notes\n")
-		builder.WriteString(state.Notes)
-		builder.WriteString("\n")
+	b.WriteString(heading + "\n")
+	for _, item := range items {
+		b.WriteString(fmt.Sprintf("- [x] %s\n", item))
 	}
-
-	return builder.String()
+	b.WriteString("\n")
 }
