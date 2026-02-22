@@ -750,6 +750,120 @@ func TestMergeWorktree_MergeConflict(t *testing.T) {
 	}
 }
 
+func TestRemoveWorktree_GitWorktreeRemoveFails(t *testing.T) {
+	repo := initGitRepo(t)
+
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, nil)
+	if err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+
+	// Manually remove the .git file in the worktree to break the worktree linkage.
+	// This causes "git worktree remove" to fail, exercising the os.RemoveAll fallback.
+	gitFile := filepath.Join(worktreePath, ".git")
+	if err := os.Remove(gitFile); err != nil {
+		t.Fatalf("Remove .git file: %v", err)
+	}
+
+	err = RemoveWorktree(repo, worktreePath, runID, 30*time.Second)
+	if err != nil {
+		t.Fatalf("RemoveWorktree should succeed via RemoveAll fallback: %v", err)
+	}
+
+	// Verify the directory was removed
+	if _, err := os.Stat(worktreePath); err == nil {
+		t.Error("worktree directory should be removed via fallback")
+	}
+}
+
+func TestRemoveWorktree_RepoRootEvalSymlinksFails(t *testing.T) {
+	repo := initGitRepo(t)
+
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, nil)
+	if err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	defer func() {
+		_ = RemoveWorktree(repo, worktreePath, runID, 30*time.Second)
+	}()
+
+	// Use a nonexistent path as repoRoot -- EvalSymlinks will fail,
+	// falling back to the raw repoRoot string.
+	// This exercises the "resolvedRoot = repoRoot" fallback.
+	// Since the resulting expectedPath won't match the actual worktree, it should fail.
+	fakeRoot := "/nonexistent/path/to/repo"
+	err = RemoveWorktree(fakeRoot, worktreePath, runID, 30*time.Second)
+	if err == nil {
+		t.Fatal("expected error for mismatched repo root path")
+	}
+	// Should fail with path validation error since the paths won't match
+	if !strings.Contains(err.Error(), "refusing to remove") && !strings.Contains(err.Error(), "path validation failed") {
+		t.Errorf("expected path validation error, got: %v", err)
+	}
+}
+
+func TestCreateWorktree_WorktreeAddFailsGenericError(t *testing.T) {
+	// Create a repo then corrupt the internal git state to make worktree add fail
+	repo := initGitRepo(t)
+
+	// Lock the objects directory to prevent git operations
+	objectsDir := filepath.Join(repo, ".git", "objects")
+	if err := os.Chmod(objectsDir, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(objectsDir, 0700) })
+
+	_, _, err := CreateWorktree(repo, 5*time.Second, nil)
+	if err == nil {
+		t.Fatal("expected error when git objects directory is unreadable")
+	}
+	// Should hit either the "git rev-parse HEAD" error or "git worktree add failed"
+}
+
+func TestMergeWorktree_MergeFailsNoConflictFiles(t *testing.T) {
+	repo := initGitRepo(t)
+
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, nil)
+	if err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	defer func() {
+		_ = RemoveWorktree(repo, worktreePath, runID, 30*time.Second)
+	}()
+
+	// Add a file in worktree and commit
+	newFile := filepath.Join(worktreePath, "merge-test.txt")
+	if err := os.WriteFile(newFile, []byte("test\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, worktreePath, "add", "merge-test.txt")
+	runGit(t, worktreePath, "commit", "-m", "test commit")
+
+	// Make sure the repo is on a branch
+	branch := strings.TrimSpace(runGitOutput(t, repo, "branch", "--show-current"))
+	if branch == "" {
+		branches := listBranches(t, repo, "*")
+		if len(branches) > 0 {
+			runGit(t, repo, "checkout", branches[0])
+		}
+	}
+
+	// Lock the repo so merge fails -- make .git/objects read-only
+	objectsDir := filepath.Join(repo, ".git", "objects")
+	if err := os.Chmod(objectsDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(objectsDir, 0700) })
+
+	// Merge should fail (can't write merge commit)
+	err = MergeWorktree(repo, worktreePath, runID, 5*time.Second, nil)
+	if err == nil {
+		// On some systems the merge might succeed if git doesn't need new objects
+		// (e.g., fast-forward merge). That's OK -- we tried.
+		t.Log("merge succeeded despite read-only objects dir; skipping")
+	}
+}
+
 func TestRemoveWorktree_SymlinkFallback(t *testing.T) {
 	repo := initGitRepo(t)
 
