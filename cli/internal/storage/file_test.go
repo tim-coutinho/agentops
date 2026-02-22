@@ -1266,3 +1266,68 @@ func containsAt(s, substr string) bool {
 	}
 	return false
 }
+
+// --- Benchmarks ---
+
+func benchSession(id string) *Session {
+	return &Session{
+		ID:      id,
+		Date:    time.Now(),
+		Summary: "Benchmark session for performance testing",
+		Decisions: []string{
+			"Decided to use context.WithCancel for graceful shutdown",
+			"Chose JSONL over SQLite for simplicity",
+		},
+		Knowledge: []string{
+			"Go maps are not ordered, so iteration order is non-deterministic",
+			"bufio.Scanner has a default 64KB buffer limit",
+		},
+		FilesChanged: []string{
+			"internal/pool/pool.go",
+			"internal/storage/file.go",
+		},
+	}
+}
+
+func BenchmarkWriteSession(b *testing.B) {
+	tmpDir := b.TempDir()
+	fs := NewFileStorage(WithBaseDir(tmpDir), WithFormatters(&jsonlFormatter{}))
+	if err := fs.Init(); err != nil {
+		b.Fatalf("Init: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s := benchSession(fmt.Sprintf("bench-%d", i))
+		_, _ = fs.WriteSession(s)
+	}
+}
+
+func BenchmarkListSessions(b *testing.B) {
+	tmpDir := b.TempDir()
+	fs := NewFileStorage(WithBaseDir(tmpDir), WithFormatters(&jsonlFormatter{}))
+	if err := fs.Init(); err != nil {
+		b.Fatalf("Init: %v", err)
+	}
+
+	// Seed 20 sessions
+	for i := 0; i < 20; i++ {
+		s := benchSession(fmt.Sprintf("bench-list-%d", i))
+		if _, err := fs.WriteSession(s); err != nil {
+			b.Fatalf("setup WriteSession: %v", err)
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = fs.ListSessions()
+	}
+}
+
+func BenchmarkGenerateSlug(b *testing.B) {
+	text := "This is a long summary about implementing the knowledge flywheel correctly"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		generateSlug(text)
+	}
+}
