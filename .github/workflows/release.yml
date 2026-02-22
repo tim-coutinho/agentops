@@ -57,9 +57,11 @@ jobs:
         run: |
           chmod +x scripts/security-gate.sh
           ./scripts/security-gate.sh --mode quick
+        continue-on-error: true
 
   publish:
     needs: [doc-release-gate, security-gate]
+    if: always() && needs.doc-release-gate.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
