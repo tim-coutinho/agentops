@@ -2743,3 +2743,53 @@ func BenchmarkPoolListPaginated(b *testing.B) {
 		_, _ = p.ListPaginated(opts)
 	}
 }
+
+func TestWriteTempFile_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	tempPath := filepath.Join(tmpDir, "test.tmp")
+	data := []byte("hello world")
+
+	if err := writeTempFile(tempPath, data); err != nil {
+		t.Fatalf("writeTempFile: %v", err)
+	}
+
+	got, err := os.ReadFile(tempPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(got) != string(data) {
+		t.Errorf("file content = %q, want %q", got, data)
+	}
+}
+
+func TestWriteTempFile_ReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	roDir := filepath.Join(tmpDir, "readonly")
+	if err := os.Mkdir(roDir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(roDir, 0755) })
+
+	err := writeTempFile(filepath.Join(roDir, "test.tmp"), []byte("data"))
+	if err == nil {
+		t.Fatal("expected error writing to read-only directory")
+	}
+	if !strings.Contains(err.Error(), "create temp file") {
+		t.Errorf("error = %q, want 'create temp file' prefix", err)
+	}
+}
+
+func TestWriteTempFile_ExistingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	tempPath := filepath.Join(tmpDir, "existing.tmp")
+	// Create the file first so O_EXCL fails
+	os.WriteFile(tempPath, []byte("existing"), 0600)
+
+	err := writeTempFile(tempPath, []byte("new data"))
+	if err == nil {
+		t.Fatal("expected error when temp file already exists")
+	}
+	if !strings.Contains(err.Error(), "create temp file") {
+		t.Errorf("error = %q, want 'create temp file' prefix", err)
+	}
+}

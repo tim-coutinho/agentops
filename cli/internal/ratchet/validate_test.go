@@ -2226,3 +2226,101 @@ func longText(wordCount int) string {
 	}
 	return "\n" + strings.Join(words, " ") + "\n"
 }
+
+func TestReadArtifactText_FileNotFound(t *testing.T) {
+	v := &Validator{}
+	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	text := v.readArtifactText("/nonexistent/path/file.md", result)
+
+	if text != "" {
+		t.Error("expected empty text for missing file")
+	}
+	if result.Valid {
+		t.Error("expected result.Valid to be false for missing file")
+	}
+	if len(result.Issues) == 0 {
+		t.Error("expected at least one issue for missing file")
+	}
+}
+
+func TestReadArtifactText_MissingSchemaVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "artifact.md")
+	os.WriteFile(path, []byte("# No frontmatter\nSome content"), 0644)
+
+	v := &Validator{}
+	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	text := v.readArtifactText(path, result)
+
+	if text == "" {
+		t.Error("expected non-empty text for existing file")
+	}
+	if len(result.Warnings) == 0 {
+		t.Error("expected warning for missing schema_version")
+	}
+}
+
+func TestReadArtifactText_WithSchemaVersion(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "artifact.md")
+	content := "---\nschema_version: 1\n---\n# Content"
+	os.WriteFile(path, []byte(content), 0644)
+
+	v := &Validator{}
+	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	text := v.readArtifactText(path, result)
+
+	if text != content {
+		t.Errorf("text = %q, want %q", text, content)
+	}
+	if len(result.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", result.Warnings)
+	}
+}
+
+func TestCheckSectionAny_Found(t *testing.T) {
+	result := &ValidationResult{Warnings: []string{}}
+	checkSectionAny("## Summary\nSome text", []string{"## Summary", "## Overview"}, "missing section", result)
+
+	if len(result.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", result.Warnings)
+	}
+}
+
+func TestCheckSectionAny_NotFound(t *testing.T) {
+	result := &ValidationResult{Warnings: []string{}}
+	checkSectionAny("No matching headers", []string{"## Summary", "## Overview"}, "missing section", result)
+
+	if len(result.Warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d", len(result.Warnings))
+	}
+	if result.Warnings[0] != "missing section" {
+		t.Errorf("warning = %q, want %q", result.Warnings[0], "missing section")
+	}
+}
+
+func TestCheckSectionAny_SecondMarkerFound(t *testing.T) {
+	result := &ValidationResult{Warnings: []string{}}
+	checkSectionAny("## Overview\nDetails", []string{"## Summary", "## Overview"}, "missing section", result)
+
+	if len(result.Warnings) != 0 {
+		t.Errorf("unexpected warnings when second marker matches: %v", result.Warnings)
+	}
+}
+
+func TestCheckTierRequirements_TierCore(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "artifact.md")
+	os.WriteFile(path, []byte("content"), 0644)
+
+	v := &Validator{}
+	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	v.checkTierRequirements(path, TierCore, result)
+
+	if !result.Valid {
+		t.Error("TierCore should not invalidate result")
+	}
+	if len(result.Warnings) == 0 {
+		t.Error("TierCore should add a manual review warning")
+	}
+}
