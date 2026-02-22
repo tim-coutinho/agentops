@@ -308,3 +308,246 @@ func TestFormatMetricsSummary(t *testing.T) {
 		t.Error("expected non-empty summary")
 	}
 }
+
+func TestComputeOverallRating_NonStandardMetricCount(t *testing.T) {
+	// Use only 3 metrics instead of 5 to exercise the normalization path
+	metrics := map[string]Metric{
+		"velocity": {Name: "velocity", Value: 5, Threshold: 3, Passed: true},
+		"trust":    {Name: "trust", Value: 0.5, Threshold: 0.3, Passed: true},
+		"flow":     {Name: "flow", Value: 80, Threshold: 50, Passed: true},
+	}
+	score, grade := ComputeOverallRating(metrics)
+	if score != 100 {
+		t.Errorf("expected score 100 for all-passing metrics, got %f", score)
+	}
+	if grade != "A" {
+		t.Errorf("expected grade A, got %s", grade)
+	}
+}
+
+func TestMetricPartialCredit_ReworkHighValue(t *testing.T) {
+	// Rework with value > threshold (100%) -- ratio should be negative, clamped to 0
+	m := Metric{Name: "rework", Value: 100, Threshold: 30, Passed: false}
+	credit := metricPartialCredit(m)
+	if credit != 0 {
+		t.Errorf("expected 0 credit for 100%% rework, got %f", credit)
+	}
+}
+
+func TestMetricPartialCredit_ReworkModerateValue(t *testing.T) {
+	// Rework at 50% with threshold 30%: ratio = (100-50)/(100-30) = 50/70 = ~0.714
+	m := Metric{Name: "rework", Value: 50, Threshold: 30, Passed: false}
+	credit := metricPartialCredit(m)
+	expected := 50.0 / 70.0 * 20
+	if credit < expected-0.1 || credit > expected+0.1 {
+		t.Errorf("expected credit ~%.1f, got %f", expected, credit)
+	}
+}
+
+func TestMetricPartialCredit_ReworkBelowThreshold(t *testing.T) {
+	// Rework below threshold should get full 20 points
+	m := Metric{Name: "rework", Value: 10, Threshold: 30, Passed: false}
+	credit := metricPartialCredit(m)
+	if credit != 20 {
+		t.Errorf("expected 20 credit for rework below threshold, got %f", credit)
+	}
+}
+
+func TestMetricPartialCredit_VelocityPartial(t *testing.T) {
+	// Velocity halfway to threshold: value=1.5, threshold=3 -> ratio 0.5 -> credit 10
+	m := Metric{Name: "velocity", Value: 1.5, Threshold: 3, Passed: false}
+	credit := metricPartialCredit(m)
+	if credit != 10 {
+		t.Errorf("expected 10 credit for velocity at half threshold, got %f", credit)
+	}
+}
+
+func TestMetricPartialCredit_VelocityAboveThreshold(t *testing.T) {
+	// Value > threshold but somehow not passed: ratio clamped to 1
+	m := Metric{Name: "velocity", Value: 5, Threshold: 3, Passed: false}
+	credit := metricPartialCredit(m)
+	if credit != 20 {
+		t.Errorf("expected 20 credit (clamped), got %f", credit)
+	}
+}
+
+func TestMetricPartialCredit_ZeroThreshold(t *testing.T) {
+	// Zero threshold (like spirals) -- if not passed, value>0, so no credit
+	m := Metric{Name: "spirals", Value: 2, Threshold: 0, Passed: false}
+	credit := metricPartialCredit(m)
+	if credit != 0 {
+		t.Errorf("expected 0 credit for zero threshold, got %f", credit)
+	}
+}
+
+func TestMetricPartialCredit_UnknownMetric(t *testing.T) {
+	m := Metric{Name: "unknown-metric", Value: 5, Threshold: 10, Passed: false}
+	credit := metricPartialCredit(m)
+	if credit != 0 {
+		t.Errorf("expected 0 credit for unknown metric, got %f", credit)
+	}
+}
+
+func TestMetricPartialCredit_TrustAndFlow(t *testing.T) {
+	// Trust partial credit
+	m := Metric{Name: "trust", Value: 0.15, Threshold: 0.3, Passed: false}
+	credit := metricPartialCredit(m)
+	expected := 0.15 / 0.3 * 20 // = 10
+	if credit < expected-0.1 || credit > expected+0.1 {
+		t.Errorf("expected trust credit ~%.1f, got %f", expected, credit)
+	}
+
+	// Flow partial credit
+	m = Metric{Name: "flow", Value: 25, Threshold: 50, Passed: false}
+	credit = metricPartialCredit(m)
+	expected = 25.0 / 50.0 * 20 // = 10
+	if credit < expected-0.1 || credit > expected+0.1 {
+		t.Errorf("expected flow credit ~%.1f, got %f", expected, credit)
+	}
+}
+
+func TestScoreToGrade(t *testing.T) {
+	tests := []struct {
+		score float64
+		want  string
+	}{
+		{100, "A"},
+		{80, "A"},
+		{79, "B"},
+		{60, "B"},
+		{59, "C"},
+		{40, "C"},
+		{39, "D"},
+		{20, "D"},
+		{19, "F"},
+		{0, "F"},
+	}
+	for _, tt := range tests {
+		got := scoreToGrade(tt.score)
+		if got != tt.want {
+			t.Errorf("scoreToGrade(%f) = %s, want %s", tt.score, got, tt.want)
+		}
+	}
+}
+
+func TestCountSpirals_DifferentComponents(t *testing.T) {
+	base := baseTime()
+	// Fix commits on different components should NOT form a spiral
+	events := []TimelineEvent{
+		makeTestEvent("a1", "fix(auth): token issue", base),
+		makeTestEvent("a2", "fix(db): connection pool", base.Add(10*time.Minute)),
+		makeTestEvent("a3", "fix(auth): another auth issue", base.Add(20*time.Minute)),
+	}
+	count := countSpirals(events)
+	if count != 0 {
+		t.Errorf("expected 0 spirals for different components, got %d", count)
+	}
+}
+
+func TestCountSpirals_ChainBrokenByFeat(t *testing.T) {
+	base := baseTime()
+	// 3 fix commits interrupted by feat
+	events := []TimelineEvent{
+		makeTestEvent("a1", "fix(auth): issue 1", base),
+		makeTestEvent("a2", "fix(auth): issue 2", base.Add(10*time.Minute)),
+		makeTestEvent("a3", "feat: new feature", base.Add(20*time.Minute)),
+		makeTestEvent("a4", "fix(auth): issue 3", base.Add(30*time.Minute)),
+	}
+	count := countSpirals(events)
+	if count != 0 {
+		t.Errorf("expected 0 spirals (chain broken by feat), got %d", count)
+	}
+}
+
+func TestCountSpirals_ExactlyThree(t *testing.T) {
+	base := baseTime()
+	// Exactly 3 fix commits on same component followed by non-fix
+	events := []TimelineEvent{
+		makeTestEvent("a1", "fix(auth): issue 1", base),
+		makeTestEvent("a2", "fix(auth): issue 2", base.Add(10*time.Minute)),
+		makeTestEvent("a3", "fix(auth): issue 3", base.Add(20*time.Minute)),
+		makeTestEvent("a4", "feat: done", base.Add(30*time.Minute)),
+	}
+	count := countSpirals(events)
+	if count != 1 {
+		t.Errorf("expected 1 spiral for exactly 3 fix commits, got %d", count)
+	}
+}
+
+func TestCountSpirals_EndOfEventsFlush(t *testing.T) {
+	base := baseTime()
+	// 3 fix commits at end of events should flush as spiral
+	events := []TimelineEvent{
+		makeTestEvent("a1", "fix(auth): issue 1", base),
+		makeTestEvent("a2", "fix(auth): issue 2", base.Add(10*time.Minute)),
+		makeTestEvent("a3", "fix(auth): issue 3", base.Add(20*time.Minute)),
+	}
+	count := countSpirals(events)
+	if count != 1 {
+		t.Errorf("expected 1 spiral at end of events, got %d", count)
+	}
+}
+
+func TestCountSpirals_ComponentSwitchFlush(t *testing.T) {
+	base := baseTime()
+	// 3 fix on auth, then switch to db (should flush auth spiral)
+	events := []TimelineEvent{
+		makeTestEvent("a1", "fix(auth): issue 1", base),
+		makeTestEvent("a2", "fix(auth): issue 2", base.Add(10*time.Minute)),
+		makeTestEvent("a3", "fix(auth): issue 3", base.Add(20*time.Minute)),
+		makeTestEvent("a4", "fix(db): different component", base.Add(30*time.Minute)),
+	}
+	count := countSpirals(events)
+	if count != 1 {
+		t.Errorf("expected 1 spiral (flushed on component switch), got %d", count)
+	}
+}
+
+func TestExtractComponent_Variations(t *testing.T) {
+	tests := []struct {
+		msg  string
+		want string
+	}{
+		{"fix(auth): token issue", "auth"},
+		{"fix: broken login page", "broken"},
+		{"fix typo in readme", "typo"},
+		{"fix(): empty scope", "fix()"},
+		{"fix a b c", "unknown"}, // all short words
+	}
+	for _, tt := range tests {
+		got := extractComponent(tt.msg)
+		if got != tt.want {
+			t.Errorf("extractComponent(%q) = %q, want %q", tt.msg, got, tt.want)
+		}
+	}
+}
+
+func TestItoa(t *testing.T) {
+	tests := []struct {
+		n    int
+		want string
+	}{
+		{0, "0"},
+		{1, "1"},
+		{42, "42"},
+		{-5, "-5"},
+		{100, "100"},
+	}
+	for _, tt := range tests {
+		got := itoa(tt.n)
+		if got != tt.want {
+			t.Errorf("itoa(%d) = %q, want %q", tt.n, got, tt.want)
+		}
+	}
+}
+
+func TestFormatMetricsSummary_MissingMetric(t *testing.T) {
+	// Should handle missing metrics gracefully (just skip them)
+	metrics := map[string]Metric{
+		"velocity": {Name: "velocity", Value: 5, Threshold: 3, Passed: true},
+	}
+	summary := FormatMetricsSummary(metrics, 20, "D")
+	if summary == "" {
+		t.Error("expected non-empty summary")
+	}
+}
