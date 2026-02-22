@@ -1102,3 +1102,40 @@ func BenchmarkExtractBest(b *testing.B) {
 		e.ExtractBest(msg)
 	}
 }
+
+func TestClassifyBlock_TextMissingTextField(t *testing.T) {
+	// Exercise the path where type is "text" but the "text" field is not a string.
+	p := NewParser()
+	block := map[string]any{"type": "text", "text": 42} // not a string
+	text, tool := p.classifyBlock(block)
+	if text != "" {
+		t.Errorf("expected empty text, got %q", text)
+	}
+	if tool != nil {
+		t.Error("expected nil tool")
+	}
+}
+
+func TestClassifyBlock_UnknownType(t *testing.T) {
+	p := NewParser()
+	block := map[string]any{"type": "unknown_type"}
+	text, tool := p.classifyBlock(block)
+	if text != "" {
+		t.Errorf("expected empty text, got %q", text)
+	}
+	if tool != nil {
+		t.Error("expected nil tool")
+	}
+}
+
+func TestClassifyBlock_NoType(t *testing.T) {
+	p := NewParser()
+	block := map[string]any{"foo": "bar"}
+	text, tool := p.classifyBlock(block)
+	if text != "" {
+		t.Errorf("expected empty text, got %q", text)
+	}
+	if tool != nil {
+		t.Error("expected nil tool")
+	}
+}
