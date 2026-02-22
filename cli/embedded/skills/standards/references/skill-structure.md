@@ -78,7 +78,7 @@ Skills follow a two-tier execution model: **orchestrators stay in the main conte
 | Orchestrator | Do NOT set | Skills that loop, gate phases, or report progress (evolve, rpi, crank, vibe, post-mortem, etc.) |
 | Worker spawner | Set `context: fork` | Skills that fan out parallel workers and merge results (council, codex-team) |
 
-Add `execution_mode: orchestrator` or `execution_mode: worker` to the `metadata` block for documentation:
+Optionally add `execution_mode` to the `metadata` block for documentation (informational only — no tooling reads this field):
 
 ```yaml
 metadata:
@@ -86,7 +86,7 @@ metadata:
   execution_mode: orchestrator  # informational — stays in main context
 ```
 
-See `SKILL-TIERS.md` for the full classification table.
+See `SKILL-TIERS.md` for the full classification table and the two-tier rule.
 
 ### Invocation Control Matrix
 

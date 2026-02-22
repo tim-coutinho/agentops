@@ -411,6 +411,39 @@ func init() {
 }
 
 func runBatchFeedback(cmd *cobra.Command, args []string) error {
+	if err := validateBatchFeedbackFlags(); err != nil {
+		return err
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get working directory: %w", err)
+	}
+
+	sessionCitations, sessionLatestCitation, err := discoverUnprocessedSessions(cwd)
+	if err != nil {
+		return err
+	}
+	if len(sessionCitations) == 0 {
+		fmt.Println("No unprocessed sessions found")
+		return nil
+	}
+
+	sessionIDs := sortAndCapSessions(sessionCitations, sessionLatestCitation)
+	candidateCount := len(sessionCitations)
+
+	if GetDryRun() {
+		reportBatchFeedbackDryRun(sessionIDs, candidateCount, sessionCitations)
+		return nil
+	}
+
+	processed := executeBatchFeedbackSessions(cmd, sessionIDs)
+	fmt.Printf("\nProcessed %d/%d sessions (candidates: %d)\n", processed, len(sessionIDs), candidateCount)
+	return nil
+}
+
+// validateBatchFeedbackFlags checks the batch-feedback command flags.
+func validateBatchFeedbackFlags() error {
 	if batchFeedbackMaxSessions < 0 {
 		return fmt.Errorf("--max-sessions must be >= 0")
 	}
@@ -420,34 +453,19 @@ func runBatchFeedback(cmd *cobra.Command, args []string) error {
 	if batchFeedbackMaxRuntime < 0 {
 		return fmt.Errorf("--max-runtime must be >= 0")
 	}
+	return nil
+}
 
-	startedAt := time.Now()
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get working directory: %w", err)
-	}
-
-	// Load all citations
+// discoverUnprocessedSessions finds sessions with citations but no feedback.
+func discoverUnprocessedSessions(cwd string) (map[string][]types.CitationEvent, map[string]time.Time, error) {
 	citations, err := ratchet.LoadCitations(cwd)
 	if err != nil {
-		return fmt.Errorf("load citations: %w", err)
+		return nil, nil, fmt.Errorf("load citations: %w", err)
 	}
 
-	// Load existing feedback
-	existingFeedback, err := loadFeedbackEvents(cwd)
-	if err != nil && !os.IsNotExist(err) {
-		VerbosePrintf("Warning: failed to load feedback: %v\n", err)
-	}
-
-	// Build set of sessions that already have feedback
-	processedSessions := make(map[string]bool)
-	for _, f := range existingFeedback {
-		processedSessions[canonicalSessionID(f.SessionID)] = true
-	}
-
-	// Find sessions with citations but no feedback
+	processedSessions := buildProcessedSessionSet(cwd)
 	since := time.Now().AddDate(0, 0, -batchFeedbackDays)
+
 	sessionCitations := make(map[string][]types.CitationEvent)
 	sessionLatestCitation := make(map[string]time.Time)
 
@@ -466,11 +484,26 @@ func runBatchFeedback(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if len(sessionCitations) == 0 {
-		fmt.Println("No unprocessed sessions found")
-		return nil
-	}
+	return sessionCitations, sessionLatestCitation, nil
+}
 
+// buildProcessedSessionSet loads existing feedback and returns a set of session
+// IDs that already have feedback.
+func buildProcessedSessionSet(cwd string) map[string]bool {
+	existingFeedback, err := loadFeedbackEvents(cwd)
+	if err != nil && !os.IsNotExist(err) {
+		VerbosePrintf("Warning: failed to load feedback: %v\n", err)
+	}
+	processed := make(map[string]bool, len(existingFeedback))
+	for _, f := range existingFeedback {
+		processed[canonicalSessionID(f.SessionID)] = true
+	}
+	return processed
+}
+
+// sortAndCapSessions sorts session IDs by latest citation (newest first) and
+// caps the list by batchFeedbackMaxSessions.
+func sortAndCapSessions(sessionCitations map[string][]types.CitationEvent, sessionLatestCitation map[string]time.Time) []string {
 	sessionIDs := make([]string, 0, len(sessionCitations))
 	for sessionID := range sessionCitations {
 		sessionIDs = append(sessionIDs, sessionID)
@@ -483,22 +516,25 @@ func runBatchFeedback(cmd *cobra.Command, args []string) error {
 		}
 		return cmp.Compare(a, b)
 	})
-
-	candidateCount := len(sessionIDs)
 	if batchFeedbackMaxSessions > 0 && len(sessionIDs) > batchFeedbackMaxSessions {
 		sessionIDs = sessionIDs[:batchFeedbackMaxSessions]
 	}
+	return sessionIDs
+}
 
-	if GetDryRun() {
-		fmt.Printf("[dry-run] Would process %d/%d sessions:\n", len(sessionIDs), candidateCount)
-		for _, sessionID := range sessionIDs {
-			citations := sessionCitations[sessionID]
-			fmt.Printf("  - %s (%d citations)\n", sessionID, len(citations))
-		}
-		return nil
+// reportBatchFeedbackDryRun prints what would be processed without making changes.
+func reportBatchFeedbackDryRun(sessionIDs []string, candidateCount int, sessionCitations map[string][]types.CitationEvent) {
+	fmt.Printf("[dry-run] Would process %d/%d sessions:\n", len(sessionIDs), candidateCount)
+	for _, sessionID := range sessionIDs {
+		citations := sessionCitations[sessionID]
+		fmt.Printf("  - %s (%d citations)\n", sessionID, len(citations))
 	}
+}
 
-	// Process each session
+// executeBatchFeedbackSessions processes each session's feedback loop, respecting
+// the runtime budget. Returns the count of successfully processed sessions.
+func executeBatchFeedbackSessions(cmd *cobra.Command, sessionIDs []string) int {
+	startedAt := time.Now()
 	processed := 0
 	for _, sessionID := range sessionIDs {
 		if batchFeedbackMaxRuntime > 0 && time.Since(startedAt) >= batchFeedbackMaxRuntime {
@@ -506,7 +542,6 @@ func runBatchFeedback(cmd *cobra.Command, args []string) error {
 			break
 		}
 
-		// Set flags and run feedback loop
 		feedbackLoopSessionID = sessionID
 		feedbackLoopReward = batchFeedbackReward
 		feedbackLoopTranscript = ""
@@ -518,9 +553,7 @@ func runBatchFeedback(cmd *cobra.Command, args []string) error {
 		}
 		processed++
 	}
-
-	fmt.Printf("\nProcessed %d/%d sessions (candidates: %d)\n", processed, len(sessionIDs), candidateCount)
-	return nil
+	return processed
 }
 
 // loadFeedbackEvents reads all feedback events from the log.
