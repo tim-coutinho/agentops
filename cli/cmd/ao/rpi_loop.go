@@ -183,6 +183,10 @@ const (
 	loopReturn
 )
 
+// errKillSwitchActivated is a sentinel returned when the kill switch fires
+// during cycle retries, signaling a clean early exit without queue mutation.
+var errKillSwitchActivated = fmt.Errorf("kill switch activated")
+
 // executeLoopCycles runs the main RPI loop consuming from the next-work queue.
 func executeLoopCycles(cwd, explicitGoal, nextWorkPath string, cfg rpiLoopSupervisorConfig) error {
 	cycle := 0
@@ -286,6 +290,11 @@ func runCycleWithRetries(cwd, goal string, cycle, executedCycles int, nextWorkPa
 	cycleErr := executeCycleAttempts(cwd, goal, cycle, executedCycles, cfg)
 	elapsed := time.Since(start).Round(time.Second)
 
+	// Kill switch fired mid-retry: clean exit without queue mutation.
+	if cycleErr == errKillSwitchActivated {
+		return loopBreak, nil
+	}
+
 	if cycleErr != nil {
 		return handleCycleFailure(cycleErr, cycle, elapsed, nextWorkPath, sel, explicitGoal, cfg)
 	}
@@ -301,7 +310,8 @@ func runCycleWithRetries(cwd, goal string, cycle, executedCycles int, nextWorkPa
 }
 
 // executeCycleAttempts runs the phased engine with retry attempts, checking
-// the kill switch before each attempt.
+// the kill switch before each attempt. Returns errKillSwitchActivated when
+// the kill switch fires mid-retry (clean exit, no queue mutation).
 func executeCycleAttempts(cwd, goal string, cycle, executedCycles int, cfg rpiLoopSupervisorConfig) error {
 	maxAttempts := cfg.MaxCycleAttempts()
 	var cycleErr error
@@ -313,7 +323,7 @@ func executeCycleAttempts(cwd, goal string, cycle, executedCycles int, cfg rpiLo
 		if killSwitchSet {
 			fmt.Printf("Kill switch detected (%s). Stopping loop before cycle execution.\n", cfg.KillSwitchPath)
 			fmt.Printf("\nRPI loop finished after %d cycle(s).\n", executedCycles)
-			return nil
+			return errKillSwitchActivated
 		}
 		cycleErr = runRPISupervisedCycleFn(cwd, goal, cycle, attempt, cfg)
 		if cycleErr == nil {

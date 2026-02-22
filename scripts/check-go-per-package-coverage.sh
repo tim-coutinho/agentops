@@ -39,7 +39,7 @@ while IFS= read -r line; do
   # Match lines like: ok  github.com/boshu2/agentops/cli/internal/config  0.5s  coverage: 98.5% of statements
   if [[ "$line" =~ coverage:\ ([0-9]+(\.[0-9]+)?)% ]]; then
     COV="${BASH_REMATCH[1]}"
-    PKG=$(echo "$line" | awk '{print $2}')
+    PKG=$(echo "$line" | awk -F'\t' '{print $2}' | sed 's/^ *//;s/ *$//')
     # Compare using awk for float comparison
     BELOW=$(awk -v cov="$COV" -v floor="$FLOOR" 'BEGIN { print (cov < floor) ? "1" : "0" }')
     if [[ "$BELOW" == "1" ]]; then
@@ -49,7 +49,7 @@ while IFS= read -r line; do
   fi
   # Also catch packages with [no test files]
   if [[ "$line" =~ \[no\ test\ files\] ]]; then
-    PKG=$(echo "$line" | awk '{print $2}')
+    PKG=$(echo "$line" | awk -F'\t' '{print $2}' | sed 's/^ *//;s/ *$//')
     echo "WARN: $PKG has no test files (counted as 0% coverage)"
     # Don't fail on no-test-files packages for now — just warn
   fi
