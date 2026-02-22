@@ -37,6 +37,28 @@ func ComputeDrift(baseline, current *Snapshot) []DriftResult {
 	return results
 }
 
+// classifyDelta determines the drift direction between two results.
+func classifyDelta(before, after string) string {
+	switch {
+	case before == "fail" && after == "pass":
+		return "improved"
+	case before == "pass" && after == "fail":
+		return "regressed"
+	default:
+		return "unchanged"
+	}
+}
+
+// computeValueDelta returns a pointer to the numeric difference between two
+// optional values, or nil if either is nil.
+func computeValueDelta(baseVal, curVal *float64) *float64 {
+	if baseVal != nil && curVal != nil {
+		vd := *curVal - *baseVal
+		return &vd
+	}
+	return nil
+}
+
 // computeGoalDrift computes the drift result for a single goal measurement.
 func computeGoalDrift(cur Measurement, baseMap map[string]Measurement) DriftResult {
 	dr := DriftResult{
@@ -53,18 +75,8 @@ func computeGoalDrift(cur Measurement, baseMap map[string]Measurement) DriftResu
 	}
 
 	dr.Before = base.Result
-	switch {
-	case base.Result == "fail" && cur.Result == "pass":
-		dr.Delta = "improved"
-	case base.Result == "pass" && cur.Result == "fail":
-		dr.Delta = "regressed"
-	default:
-		dr.Delta = "unchanged"
-	}
-	if base.Value != nil && cur.Value != nil {
-		vd := *cur.Value - *base.Value
-		dr.ValueDelta = &vd
-	}
+	dr.Delta = classifyDelta(base.Result, cur.Result)
+	dr.ValueDelta = computeValueDelta(base.Value, cur.Value)
 	return dr
 }
 

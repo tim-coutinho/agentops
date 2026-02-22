@@ -438,10 +438,8 @@ func ValidateMemRLPolicyContract(contract MemRLPolicyContract) error {
 }
 
 // validateContractFields checks the top-level scalar fields and non-empty collection invariants.
-func validateContractFields(contract MemRLPolicyContract) error {
-	if contract.SchemaVersion < 1 {
-		return ErrSchemaVersionInvalid
-	}
+// validateContractEnums checks that mode and action enum fields have valid values.
+func validateContractEnums(contract MemRLPolicyContract) error {
 	if !isValidMemRLMode(contract.DefaultMode) {
 		return fmt.Errorf("invalid default_mode: %q", contract.DefaultMode)
 	}
@@ -450,6 +448,16 @@ func validateContractFields(contract MemRLPolicyContract) error {
 	}
 	if !isValidMemRLAction(contract.MissingMetadataAction) {
 		return fmt.Errorf("invalid missing_metadata_action: %q", contract.MissingMetadataAction)
+	}
+	return nil
+}
+
+func validateContractFields(contract MemRLPolicyContract) error {
+	if contract.SchemaVersion < 1 {
+		return ErrSchemaVersionInvalid
+	}
+	if err := validateContractEnums(contract); err != nil {
+		return err
 	}
 	if len(contract.TieBreakRules) == 0 {
 		return ErrTieBreakRulesEmpty
