@@ -1,6 +1,7 @@
 package vibecheck
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -719,5 +720,41 @@ func TestMetricPartialCredit_VelocityNegativeThreshold(t *testing.T) {
 	credit := metricPartialCredit(m)
 	if credit != 0 {
 		t.Errorf("expected 0 partial credit for negative threshold, got %f", credit)
+	}
+}
+
+// --- Benchmarks ---
+
+func benchEvents(n int) []TimelineEvent {
+	events := make([]TimelineEvent, n)
+	base := time.Now().Add(-time.Duration(n) * time.Hour)
+	for i := 0; i < n; i++ {
+		events[i] = TimelineEvent{
+			Timestamp:    base.Add(time.Duration(i) * time.Hour),
+			SHA:          fmt.Sprintf("abc%04d", i),
+			Author:       "bench",
+			Message:      fmt.Sprintf("commit %d: refactor module", i),
+			FilesChanged: 3,
+			Insertions:   50,
+			Deletions:    20,
+		}
+	}
+	return events
+}
+
+func BenchmarkComputeMetrics(b *testing.B) {
+	events := benchEvents(100)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ComputeMetrics(events)
+	}
+}
+
+func BenchmarkComputeOverallRating(b *testing.B) {
+	events := benchEvents(100)
+	metrics := ComputeMetrics(events)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ComputeOverallRating(metrics)
 	}
 }
