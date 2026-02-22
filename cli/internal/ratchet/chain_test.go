@@ -944,3 +944,71 @@ func TestChain_Append_NoPath(t *testing.T) {
 		t.Errorf("expected 'no path set' error, got: %v", err)
 	}
 }
+
+func TestLoadJSONLChain_ScannerError(t *testing.T) {
+	tmpDir := t.TempDir()
+	chainPath := filepath.Join(tmpDir, "chain.jsonl")
+
+	// First line is valid chain metadata, second line exceeds scanner buffer
+	meta := `{"id":"test","started":"2026-01-01T00:00:00Z"}`
+	hugeLine := make([]byte, 1100*1024) // 1.1MB exceeds default 1MB scanner buffer
+	for i := range hugeLine {
+		hugeLine[i] = 'x'
+	}
+	content := meta + "\n" + string(hugeLine) + "\n"
+	if err := os.WriteFile(chainPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := loadJSONLChain(chainPath)
+	if err == nil {
+		t.Error("expected scanner error for huge line")
+	}
+	if !strings.Contains(err.Error(), "read chain") {
+		t.Errorf("expected 'read chain' error, got: %v", err)
+	}
+}
+
+func TestLoadLegacyYAMLChain_NonExistentFile(t *testing.T) {
+	_, err := loadLegacyYAMLChain("/nonexistent/chain.yaml")
+	if err == nil {
+		t.Error("expected error for nonexistent file")
+	}
+}
+
+func TestLoadLegacyYAMLChain_InvalidYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "chain.yaml")
+	if err := os.WriteFile(path, []byte("not: [valid: yaml: content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := loadLegacyYAMLChain(path)
+	if err == nil {
+		t.Error("expected error for invalid YAML")
+	}
+}
+
+func TestLoadJSONLChain_CloseErrorExposed(t *testing.T) {
+	tmpDir := t.TempDir()
+	chainPath := filepath.Join(tmpDir, "chain.jsonl")
+
+	// Write valid chain data
+	content := `{"id":"test","started":"2026-01-01T00:00:00Z"}` + "\n" +
+		`{"step":"research","output":"test.md","timestamp":"2026-01-01T00:00:00Z"}` + "\n"
+	if err := os.WriteFile(chainPath, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load should succeed
+	chain, err := loadJSONLChain(chainPath)
+	if err != nil {
+		t.Fatalf("loadJSONLChain: %v", err)
+	}
+	if chain.ID != "test" {
+		t.Errorf("chain ID = %q, want test", chain.ID)
+	}
+	if len(chain.Entries) != 1 {
+		t.Errorf("expected 1 entry, got %d", len(chain.Entries))
+	}
+}

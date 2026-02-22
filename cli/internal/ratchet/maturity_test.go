@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/boshu2/agentops/cli/internal/types"
@@ -884,6 +885,134 @@ func TestGetMaturityDistribution_EmptyMaturityField(t *testing.T) {
 	// Empty maturity should default to provisional
 	if dist.Provisional != 1 {
 		t.Errorf("Provisional = %d, want 1 (default for empty maturity)", dist.Provisional)
+	}
+}
+
+func TestApplyMaturityTransition_PromoteProvisionalToCandidate(t *testing.T) {
+	tmpDir := t.TempDir()
+	learningPath := filepath.Join(tmpDir, "learn-test.jsonl")
+
+	// Create learning that meets promotion criteria:
+	// utility >= 0.7, reward_count >= 3
+	learning := `{"id":"L1","maturity":"provisional","utility":0.8,"reward_count":5,"confidence":0.9}`
+	if err := os.WriteFile(learningPath, []byte(learning+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ApplyMaturityTransition(learningPath)
+	if err != nil {
+		t.Fatalf("ApplyMaturityTransition: %v", err)
+	}
+	if !result.Transitioned {
+		t.Error("expected transition from provisional to candidate")
+	}
+	if result.NewMaturity != types.MaturityCandidate {
+		t.Errorf("NewMaturity = %s, want candidate", result.NewMaturity)
+	}
+
+	// Verify file was updated
+	content, err := os.ReadFile(learningPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), `"candidate"`) {
+		t.Errorf("expected file to contain 'candidate' maturity, got: %s", content)
+	}
+}
+
+func TestApplyMaturityTransition_WriteError(t *testing.T) {
+	tmpDir := t.TempDir()
+	learningPath := filepath.Join(tmpDir, "learn-test.jsonl")
+
+	// Create learning that meets promotion criteria
+	learning := `{"id":"L1","maturity":"provisional","utility":0.8,"reward_count":5,"confidence":0.9}`
+	if err := os.WriteFile(learningPath, []byte(learning+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make file read-only so WriteFile fails
+	if err := os.Chmod(learningPath, 0400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(learningPath, 0600) })
+
+	_, err := ApplyMaturityTransition(learningPath)
+	if err == nil {
+		t.Error("expected error when writing to read-only file")
+	}
+	if !strings.Contains(err.Error(), "write updated learning") {
+		t.Errorf("expected 'write updated learning' error, got: %v", err)
+	}
+}
+
+func TestApplyMaturityTransition_NoTransition(t *testing.T) {
+	tmpDir := t.TempDir()
+	learningPath := filepath.Join(tmpDir, "learn-test.jsonl")
+
+	// Create learning that does NOT meet transition criteria
+	learning := `{"id":"L1","maturity":"provisional","utility":0.3,"reward_count":0,"confidence":0.5}`
+	if err := os.WriteFile(learningPath, []byte(learning+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := ApplyMaturityTransition(learningPath)
+	if err != nil {
+		t.Fatalf("ApplyMaturityTransition: %v", err)
+	}
+	if result.Transitioned {
+		t.Error("expected no transition for low-utility learning")
+	}
+}
+
+func TestScanForMaturityTransitions_NonExistentDir(t *testing.T) {
+	// Non-existent dir should return empty results (glob returns nil for no matches)
+	results, err := ScanForMaturityTransitions("/nonexistent/dir")
+	if err != nil {
+		t.Fatalf("ScanForMaturityTransitions: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for nonexistent dir, got %d", len(results))
+	}
+}
+
+func TestGetAntiPatterns_NonExistentDir(t *testing.T) {
+	results, err := GetAntiPatterns("/nonexistent/dir")
+	if err != nil {
+		t.Fatalf("GetAntiPatterns: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for nonexistent dir, got %d", len(results))
+	}
+}
+
+func TestGetEstablishedLearnings_NonExistentDir(t *testing.T) {
+	results, err := GetEstablishedLearnings("/nonexistent/dir")
+	if err != nil {
+		t.Fatalf("GetEstablishedLearnings: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for nonexistent dir, got %d", len(results))
+	}
+}
+
+func TestGetEstablishedLearnings_MalformedJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Write a malformed JSONL file
+	if err := os.WriteFile(filepath.Join(tmpDir, "bad.jsonl"), []byte("{bad json\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Write a valid established learning
+	if err := os.WriteFile(filepath.Join(tmpDir, "good.jsonl"), []byte(`{"id":"L1","maturity":"established"}`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := GetEstablishedLearnings(tmpDir)
+	if err != nil {
+		t.Fatalf("GetEstablishedLearnings: %v", err)
+	}
+	// Should get the good one, skip the bad one
+	if len(results) != 1 {
+		t.Errorf("expected 1 established learning (skip malformed), got %d", len(results))
 	}
 }
 
