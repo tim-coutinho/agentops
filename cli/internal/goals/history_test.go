@@ -292,3 +292,29 @@ func TestLoadHistory_EmptyLines(t *testing.T) {
 		t.Errorf("expected 2 entries (skipping empty line), got %d", len(entries))
 	}
 }
+
+func TestLoadHistory_ScannerError(t *testing.T) {
+	// Exercise the scanner.Err() error path (line 65-67).
+	// Create a file with a line exceeding the default 64KB scanner buffer.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "history.jsonl")
+
+	// Write a valid entry first
+	validEntry := `{"timestamp":"2026-01-01T10:00:00Z","goal_id":"G1","delta":0.1,"score":0.8}`
+
+	// Create a line that exceeds 64KB (default scanner buffer)
+	hugeLine := make([]byte, 70*1024)
+	for i := range hugeLine {
+		hugeLine[i] = 'x'
+	}
+
+	content := validEntry + "\n" + string(hugeLine) + "\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadHistory(path)
+	if err == nil {
+		t.Error("expected scanner error for line exceeding buffer")
+	}
+}

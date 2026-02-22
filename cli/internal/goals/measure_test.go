@@ -1,6 +1,7 @@
 package goals
 
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -189,5 +190,27 @@ func TestMeasure_EmptyGoals(t *testing.T) {
 	}
 	if snap.Timestamp == "" {
 		t.Error("Timestamp should not be empty")
+	}
+}
+
+func TestGitSHA_OutsideGitRepo(t *testing.T) {
+	// Exercise the gitSHA error path (line 120-122).
+	// Change to a temp dir that is NOT a git repo, call gitSHA, then restore.
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = os.Chdir(origDir) //nolint:errcheck // best effort restore
+	}()
+
+	sha := gitSHA()
+	if sha != "" {
+		t.Errorf("expected empty SHA outside git repo, got %q", sha)
 	}
 }
