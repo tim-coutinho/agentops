@@ -237,6 +237,22 @@ func ApplyMaturityTransition(learningPath string) (*MaturityTransitionResult, er
 	return result, nil
 }
 
+// mergeJSONData unmarshals firstLine as JSON, merges updates into it, and returns re-marshaled JSON.
+func mergeJSONData(firstLine string, updates map[string]any) ([]byte, error) {
+	var data map[string]any
+	if err := json.Unmarshal([]byte(firstLine), &data); err != nil {
+		return nil, fmt.Errorf("parse learning for update: %w", err)
+	}
+	for k, v := range updates {
+		data[k] = v
+	}
+	newJSON, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("marshal updated learning: %w", err)
+	}
+	return newJSON, nil
+}
+
 // updateJSONLFirstLine reads a JSONL file, merges fields into the first
 // JSON line, and writes the file back.
 func updateJSONLFirstLine(path string, updates map[string]any) error {
@@ -250,18 +266,9 @@ func updateJSONLFirstLine(path string, updates map[string]any) error {
 		return ErrEmptyFile
 	}
 
-	var data map[string]any
-	if err := json.Unmarshal([]byte(lines[0]), &data); err != nil {
-		return fmt.Errorf("parse learning for update: %w", err)
-	}
-
-	for k, v := range updates {
-		data[k] = v
-	}
-
-	newJSON, err := json.Marshal(data)
+	newJSON, err := mergeJSONData(lines[0], updates)
 	if err != nil {
-		return fmt.Errorf("marshal updated learning: %w", err)
+		return err
 	}
 
 	lines[0] = string(newJSON)

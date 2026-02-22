@@ -381,15 +381,24 @@ func RemoveWorktree(repoRoot, worktreePath, runID string, timeout time.Duration)
 	return nil
 }
 
-// resolveRemovePaths validates and resolves the absolute worktree path, repo root,
-// and run ID for a safe worktree removal.
-func resolveRemovePaths(repoRoot, worktreePath, runID string) (absPath, resolvedRoot, resolvedRunID string, err error) {
-	absPath, err = filepath.EvalSymlinks(worktreePath)
+// resolveAbsPath resolves worktreePath to an absolute path, preferring EvalSymlinks.
+func resolveAbsPath(worktreePath string) (string, error) {
+	absPath, err := filepath.EvalSymlinks(worktreePath)
 	if err != nil {
 		absPath, err = filepath.Abs(worktreePath)
 		if err != nil {
-			return "", "", "", fmt.Errorf("invalid worktree path: %w", err)
+			return "", fmt.Errorf("invalid worktree path: %w", err)
 		}
+	}
+	return absPath, nil
+}
+
+// resolveRemovePaths validates and resolves the absolute worktree path, repo root,
+// and run ID for a safe worktree removal.
+func resolveRemovePaths(repoRoot, worktreePath, runID string) (absPath, resolvedRoot, resolvedRunID string, err error) {
+	absPath, err = resolveAbsPath(worktreePath)
+	if err != nil {
+		return "", "", "", err
 	}
 	resolvedRoot, err = filepath.EvalSymlinks(repoRoot)
 	if err != nil {

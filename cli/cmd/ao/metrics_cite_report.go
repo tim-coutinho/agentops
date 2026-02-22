@@ -119,30 +119,12 @@ func buildCiteReport(baseDir string, filtered []types.CitationEvent, all []types
 		Staleness:      make(map[string]int),
 	}
 
-	// Unique artifacts and sessions
-	artifactCounts := make(map[string]int)
-	sessions := make(map[string]bool)
-	// Track which sessions cite each artifact (for hit rate)
-	artifactSessions := make(map[string]map[string]bool)
-
-	for _, c := range filtered {
-		canonicalPath := canonicalArtifactPath(baseDir, c.ArtifactPath)
-		artifactCounts[canonicalPath]++
-		sessions[c.SessionID] = true
-		if artifactSessions[canonicalPath] == nil {
-			artifactSessions[canonicalPath] = make(map[string]bool)
-		}
-		artifactSessions[canonicalPath][c.SessionID] = true
-
-		report.FeedbackTotal++
-		if c.FeedbackGiven {
-			report.FeedbackGiven++
-		}
-	}
+	artifactCounts, sessions, artifactSessions, feedbackTotal, feedbackGiven := buildCiteArtifactStats(filtered, baseDir)
 	report.UniqueArtifacts = len(artifactCounts)
 	report.UniqueSessions = len(sessions)
+	report.FeedbackTotal = feedbackTotal
+	report.FeedbackGiven = feedbackGiven
 
-	// Hit rate: artifacts cited in 2+ distinct sessions
 	for _, sessMap := range artifactSessions {
 		if len(sessMap) >= 2 {
 			report.HitCount++
@@ -151,13 +133,45 @@ func buildCiteReport(baseDir string, filtered []types.CitationEvent, all []types
 	if report.UniqueArtifacts > 0 {
 		report.HitRate = float64(report.HitCount) / float64(report.UniqueArtifacts)
 	}
-
-	// Feedback closure rate
 	if report.FeedbackTotal > 0 {
 		report.FeedbackRate = float64(report.FeedbackGiven) / float64(report.FeedbackTotal)
 	}
 
-	// Top-10 most-cited
+	report.TopArtifacts = buildTopCiteArtifacts(artifactCounts)
+	report.UncitedLearnings = collectUncitedLearnings(baseDir, all)
+	report.Staleness = computeCiteStaleness(baseDir, all)
+
+	return report
+}
+
+// buildCiteArtifactStats counts per-artifact citations, sessions, and feedback from filtered events.
+func buildCiteArtifactStats(filtered []types.CitationEvent, baseDir string) (
+	artifactCounts map[string]int,
+	sessions map[string]bool,
+	artifactSessions map[string]map[string]bool,
+	feedbackTotal, feedbackGiven int,
+) {
+	artifactCounts = make(map[string]int)
+	sessions = make(map[string]bool)
+	artifactSessions = make(map[string]map[string]bool)
+	for _, c := range filtered {
+		canonicalPath := canonicalArtifactPath(baseDir, c.ArtifactPath)
+		artifactCounts[canonicalPath]++
+		sessions[c.SessionID] = true
+		if artifactSessions[canonicalPath] == nil {
+			artifactSessions[canonicalPath] = make(map[string]bool)
+		}
+		artifactSessions[canonicalPath][c.SessionID] = true
+		feedbackTotal++
+		if c.FeedbackGiven {
+			feedbackGiven++
+		}
+	}
+	return
+}
+
+// buildTopCiteArtifacts returns the top 10 most-cited artifacts sorted by count descending.
+func buildTopCiteArtifacts(artifactCounts map[string]int) []artifactCount {
 	type kv struct {
 		path  string
 		count int
@@ -173,27 +187,35 @@ func buildCiteReport(baseDir string, filtered []types.CitationEvent, all []types
 	if len(sorted) < limit {
 		limit = len(sorted)
 	}
+	result := make([]artifactCount, 0, limit)
 	for _, s := range sorted[:limit] {
-		report.TopArtifacts = append(report.TopArtifacts, artifactCount{Path: s.path, Count: s.count})
+		result = append(result, artifactCount{Path: s.path, Count: s.count})
 	}
+	return result
+}
 
-	// Uncited learnings
+// collectUncitedLearnings returns learning files that have never been cited.
+func collectUncitedLearnings(baseDir string, all []types.CitationEvent) []string {
 	learningsDir := filepath.Join(baseDir, ".agents", "learnings")
-	if _, err := os.Stat(learningsDir); err == nil {
-		files, _ := filepath.Glob(filepath.Join(learningsDir, "*.md"))
-		citedSet := make(map[string]bool)
-		for _, c := range all {
-			citedSet[canonicalArtifactPath(baseDir, c.ArtifactPath)] = true
-		}
-		for _, f := range files {
-			if !citedSet[canonicalArtifactPath(baseDir, f)] {
-				report.UncitedLearnings = append(report.UncitedLearnings, f)
-			}
+	if _, err := os.Stat(learningsDir); err != nil {
+		return nil
+	}
+	files, _ := filepath.Glob(filepath.Join(learningsDir, "*.md"))
+	citedSet := make(map[string]bool)
+	for _, c := range all {
+		citedSet[canonicalArtifactPath(baseDir, c.ArtifactPath)] = true
+	}
+	var uncited []string
+	for _, f := range files {
+		if !citedSet[canonicalArtifactPath(baseDir, f)] {
+			uncited = append(uncited, f)
 		}
 	}
+	return uncited
+}
 
-	// Staleness candidates from ALL citations
-	now := time.Now()
+// computeCiteStaleness returns counts of artifacts not cited within 30/60/90 days.
+func computeCiteStaleness(baseDir string, all []types.CitationEvent) map[string]int {
 	lastCited := make(map[string]time.Time)
 	for _, c := range all {
 		canonicalPath := canonicalArtifactPath(baseDir, c.ArtifactPath)
@@ -201,6 +223,8 @@ func buildCiteReport(baseDir string, filtered []types.CitationEvent, all []types
 			lastCited[canonicalPath] = c.CitedAt
 		}
 	}
+	now := time.Now()
+	staleness := make(map[string]int)
 	for _, threshold := range []int{30, 60, 90} {
 		cutoff := now.AddDate(0, 0, -threshold)
 		count := 0
@@ -209,10 +233,9 @@ func buildCiteReport(baseDir string, filtered []types.CitationEvent, all []types
 				count++
 			}
 		}
-		report.Staleness[fmt.Sprintf("%dd", threshold)] = count
+		staleness[fmt.Sprintf("%dd", threshold)] = count
 	}
-
-	return report
+	return staleness
 }
 
 func printCiteReport(w io.Writer, r citeReportData) {

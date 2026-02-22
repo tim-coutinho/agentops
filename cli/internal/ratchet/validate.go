@@ -417,6 +417,19 @@ func (v *Validator) requireSkillFormat(artifactPath string, result *ValidationRe
 	}
 }
 
+// makeCitationWalkFn returns a WalkFunc that counts .md files referencing baseName.
+func (v *Validator) makeCitationWalkFn(artifactPath, baseName string, count *int) filepath.WalkFunc {
+	return func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || path == artifactPath {
+			return nil
+		}
+		if strings.HasSuffix(path, ".md") && v.fileContains(path, baseName) {
+			*count++
+		}
+		return nil
+	}
+}
+
 // countCitations counts how many times an artifact is referenced.
 func (v *Validator) countCitations(artifactPath string) int {
 	// This would search for references to this artifact in other files
@@ -425,17 +438,7 @@ func (v *Validator) countCitations(artifactPath string) int {
 	dir := filepath.Dir(artifactPath)
 
 	count := 0
-	if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || path == artifactPath {
-			return nil
-		}
-		if strings.HasSuffix(path, ".md") {
-			if v.fileContains(path, baseName) {
-				count++
-			}
-		}
-		return nil
-	}); err != nil {
+	if err := filepath.Walk(dir, v.makeCitationWalkFn(artifactPath, baseName, &count)); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to walk %s: %v\n", dir, err)
 	}
 
@@ -982,6 +985,18 @@ func RewardToTier(reward float64) Tier {
 	}
 }
 
+// tierFromCounts selects a Tier based on issue and warning counts.
+func tierFromCounts(issueCount, warningCount int) Tier {
+	switch {
+	case issueCount == 0 && warningCount == 0:
+		return TierPattern
+	case issueCount == 0 && warningCount <= 2:
+		return TierLearning
+	default:
+		return TierObservation
+	}
+}
+
 // TierFromValidation derives a tier from validation results.
 // Combines issues, warnings, and explicit tier assignment.
 func TierFromValidation(result *ValidationResult) Tier {
@@ -995,17 +1010,7 @@ func TierFromValidation(result *ValidationResult) Tier {
 		return TierObservation
 	}
 
-	issueCount := len(result.Issues)
-	warningCount := len(result.Warnings)
-
-	switch {
-	case issueCount == 0 && warningCount == 0:
-		return TierPattern
-	case issueCount == 0 && warningCount <= 2:
-		return TierLearning
-	default:
-		return TierObservation
-	}
+	return tierFromCounts(len(result.Issues), len(result.Warnings))
 }
 
 // GetCitationsForSession returns citations for a specific session.
