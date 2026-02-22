@@ -364,44 +364,39 @@ func (v *Validator) ValidateForPromotion(artifactPath string, targetTier Tier) (
 		return result, nil
 	}
 
-	// Tier-specific promotion requirements
-	switch targetTier {
-	case TierLearning:
-		// Promotion to T1 requires: 2+ citations
-		citations := v.countCitations(artifactPath)
-		if citations < 2 {
-			result.Valid = false
-			result.Issues = append(result.Issues,
-				"Promotion to learning tier requires 2+ citations (found: %d)")
-		}
-
-	case TierPattern:
-		// Promotion to T2 requires: 3+ sessions
-		sessions := v.countSessionRefs(artifactPath)
-		if sessions < 3 {
-			result.Valid = false
-			result.Issues = append(result.Issues,
-				"Promotion to pattern tier requires references in 3+ sessions")
-		}
-
-	case TierSkill:
-		// Promotion to T3 requires: SKILL.md format
-		if !v.hasSkillFormat(artifactPath) {
-			result.Valid = false
-			result.Issues = append(result.Issues,
-				"Promotion to skill tier requires SKILL.md format")
-		}
-
-	case TierCore:
-		// Promotion to T4 requires: 10+ uses across sessions
-		result.Warnings = append(result.Warnings,
-			"Core tier promotion requires manual review (10+ documented uses)")
-	}
+	v.checkTierRequirements(artifactPath, targetTier, result)
 
 	currentTier := v.assessTier(result)
 	result.Tier = &currentTier
 
 	return result, nil
+}
+
+// checkTierRequirements applies tier-specific promotion checks.
+func (v *Validator) checkTierRequirements(artifactPath string, targetTier Tier, result *ValidationResult) {
+	switch targetTier {
+	case TierLearning:
+		if v.countCitations(artifactPath) < 2 {
+			result.Valid = false
+			result.Issues = append(result.Issues,
+				"Promotion to learning tier requires 2+ citations (found: %d)")
+		}
+	case TierPattern:
+		if v.countSessionRefs(artifactPath) < 3 {
+			result.Valid = false
+			result.Issues = append(result.Issues,
+				"Promotion to pattern tier requires references in 3+ sessions")
+		}
+	case TierSkill:
+		if !v.hasSkillFormat(artifactPath) {
+			result.Valid = false
+			result.Issues = append(result.Issues,
+				"Promotion to skill tier requires SKILL.md format")
+		}
+	case TierCore:
+		result.Warnings = append(result.Warnings,
+			"Core tier promotion requires manual review (10+ documented uses)")
+	}
 }
 
 // countCitations counts how many times an artifact is referenced.
