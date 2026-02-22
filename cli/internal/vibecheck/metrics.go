@@ -55,6 +55,7 @@ func clampScore(total float64, count int) float64 {
 	return total
 }
 
+// ComputeOverallRating computes a 0-100 score and letter grade from metric results.
 func ComputeOverallRating(metrics map[string]Metric) (float64, string) {
 	if len(metrics) == 0 {
 		return 0, "F"

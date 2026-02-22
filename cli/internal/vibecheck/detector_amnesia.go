@@ -21,6 +21,7 @@ type fileEdit struct {
 	msg string
 }
 
+// DetectContextAmnesia finds repeated rapid edits to the same file, indicating the agent lost context.
 func DetectContextAmnesia(events []TimelineEvent) []Finding {
 	if len(events) < amnesiaMinEdits {
 		return nil

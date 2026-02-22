@@ -849,6 +849,7 @@ func parseCitationLine(line []byte, baseDir string) (types.CitationEvent, bool) 
 	return event, true
 }
 
+// LoadCitations reads all citation events from the citations JSONL log.
 func LoadCitations(baseDir string) ([]types.CitationEvent, error) {
 	citationsPath := filepath.Join(baseDir, CitationsFilePath)
 
