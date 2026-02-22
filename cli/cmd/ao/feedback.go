@@ -285,36 +285,25 @@ func updateLearningUtility(path string, reward, alpha float64) (oldUtility, newU
 	return updateMarkdownUtility(path, reward, alpha)
 }
 
-// updateJSONLUtility updates utility in a JSONL file.
-// Also tracks helpful_count and harmful_count for CASS maturity transitions.
-func updateJSONLUtility(path string, reward, alpha float64) (oldUtility, newUtility float64, err error) {
-	// Read the file
+// parseJSONLFirstLine reads a file and parses the first line as a JSON object.
+func parseJSONLFirstLine(path string) ([]string, map[string]any, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return 0, 0, err
+		return nil, nil, err
 	}
-
-	// Parse first line as JSON
 	lines := strings.Split(string(content), "\n")
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
-		return 0, 0, fmt.Errorf("empty JSONL file")
+		return nil, nil, fmt.Errorf("empty JSONL file")
 	}
-
 	var data map[string]any
 	if err := json.Unmarshal([]byte(lines[0]), &data); err != nil {
-		return 0, 0, fmt.Errorf("parse JSONL: %w", err)
+		return nil, nil, fmt.Errorf("parse JSONL: %w", err)
 	}
+	return lines, data, nil
+}
 
-	// Get current utility (default to InitialUtility)
-	oldUtility = types.InitialUtility
-	if u, ok := data["utility"].(float64); ok && u > 0 {
-		oldUtility = u
-	}
-
-	// Apply EMA update: u_{t+1} = (1 - α) × u_t + α × r
-	newUtility = (1-alpha)*oldUtility + alpha*reward
-
-	// Update fields
+// applyJSONLRewardFields updates utility, reward, count, confidence, and CASS counters in data.
+func applyJSONLRewardFields(data map[string]any, oldUtility, newUtility, reward float64) {
 	data["utility"] = newUtility
 	data["last_reward"] = reward
 	rewardCount := 0
@@ -325,7 +314,6 @@ func updateJSONLUtility(path string, reward, alpha float64) (oldUtility, newUtil
 	data["last_reward_at"] = time.Now().Format(time.RFC3339)
 
 	// CASS: Track helpful_count and harmful_count.
-	// Explicit CLI labels take precedence; otherwise infer coarse signal from reward bands.
 	incrementHelpful, incrementHarmful := counterDirectionFromFeedback(reward, feedbackHelpful, feedbackHarmful)
 	if incrementHelpful {
 		helpfulCount := 0
@@ -341,20 +329,37 @@ func updateJSONLUtility(path string, reward, alpha float64) (oldUtility, newUtil
 		data["harmful_count"] = harmfulCount + 1
 	}
 
-	// Update confidence based on feedback count
 	// Confidence increases with more feedback: 1 - e^(-rewardCount/5)
 	newRewardCount := rewardCount + 1
 	confidence := 1.0 - (1.0 / (1.0 + float64(newRewardCount)/5.0))
 	data["confidence"] = confidence
 	data["last_decay_at"] = time.Now().Format(time.RFC3339)
+}
+
+// updateJSONLUtility updates utility in a JSONL file.
+// Also tracks helpful_count and harmful_count for CASS maturity transitions.
+func updateJSONLUtility(path string, reward, alpha float64) (oldUtility, newUtility float64, err error) {
+	lines, data, err := parseJSONLFirstLine(path)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	// Get current utility (default to InitialUtility)
+	oldUtility = types.InitialUtility
+	if u, ok := data["utility"].(float64); ok && u > 0 {
+		oldUtility = u
+	}
+
+	// Apply EMA update: u_{t+1} = (1 - alpha) * u_t + alpha * r
+	newUtility = (1-alpha)*oldUtility + alpha*reward
+
+	applyJSONLRewardFields(data, oldUtility, newUtility, reward)
 
 	// Write back
 	newJSON, err := json.Marshal(data)
 	if err != nil {
 		return 0, 0, err
 	}
-
-	// Replace first line, keep the rest
 	lines[0] = string(newJSON)
 	return oldUtility, newUtility, os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644)
 }
@@ -375,6 +380,38 @@ func counterDirectionFromFeedback(reward float64, explicitHelpful, explicitHarmf
 	return false, false
 }
 
+// parseFrontMatterUtility scans front matter lines for the utility value.
+func parseFrontMatterUtility(lines []string) (endIdx int, utility float64, err error) {
+	utility = types.InitialUtility
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			return i, utility, nil
+		}
+		if strings.HasPrefix(lines[i], "utility:") {
+			_, _ = fmt.Sscanf(lines[i], "utility: %f", &utility) //nolint:errcheck // best effort parse
+		}
+	}
+	return -1, 0, fmt.Errorf("malformed front matter: no closing ---")
+}
+
+// rebuildWithFrontMatter reconstructs a file with updated front matter fields and body lines.
+func rebuildWithFrontMatter(updatedFM []string, bodyLines []string) string {
+	var sb strings.Builder
+	sb.WriteString("---\n")
+	for _, line := range updatedFM {
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
+	sb.WriteString("---\n")
+	for i, line := range bodyLines {
+		sb.WriteString(line)
+		if i < len(bodyLines)-1 {
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
 // updateMarkdownUtility updates utility in a markdown file with front matter.
 func updateMarkdownUtility(path string, reward, alpha float64) (oldUtility, newUtility float64, err error) {
 	content, err := os.ReadFile(path)
@@ -385,33 +422,16 @@ func updateMarkdownUtility(path string, reward, alpha float64) (oldUtility, newU
 	text := string(content)
 	lines := strings.Split(text, "\n")
 
-	// Check for front matter
 	hasFrontMatter := len(lines) > 0 && strings.TrimSpace(lines[0]) == "---"
 
-	oldUtility = types.InitialUtility
-
 	if hasFrontMatter {
-		// Find end of front matter
-		endIdx := -1
-		for i := 1; i < len(lines); i++ {
-			if strings.TrimSpace(lines[i]) == "---" {
-				endIdx = i
-				break
-			}
-			// Parse existing utility
-			if strings.HasPrefix(lines[i], "utility:") {
-				_, _ = fmt.Sscanf(lines[i], "utility: %f", &oldUtility) //nolint:errcheck // best effort parse
-			}
+		endIdx, oldU, fmErr := parseFrontMatterUtility(lines)
+		if fmErr != nil {
+			return 0, 0, fmErr
 		}
-
-		if endIdx == -1 {
-			return 0, 0, fmt.Errorf("malformed front matter: no closing ---")
-		}
-
-		// Apply EMA update
+		oldUtility = oldU
 		newUtility = (1-alpha)*oldUtility + alpha*reward
 
-		// Update or add fields in front matter
 		updatedFM := updateFrontMatterFields(lines[1:endIdx], map[string]string{
 			"utility":        fmt.Sprintf("%.4f", newUtility),
 			"last_reward":    fmt.Sprintf("%.2f", reward),
@@ -419,25 +439,12 @@ func updateMarkdownUtility(path string, reward, alpha float64) (oldUtility, newU
 			"last_reward_at": time.Now().Format(time.RFC3339),
 		})
 
-		// Reconstruct file
-		var sb strings.Builder
-		sb.WriteString("---\n")
-		for _, line := range updatedFM {
-			sb.WriteString(line)
-			sb.WriteString("\n")
-		}
-		sb.WriteString("---\n")
-		for i := endIdx + 1; i < len(lines); i++ {
-			sb.WriteString(lines[i])
-			if i < len(lines)-1 {
-				sb.WriteString("\n")
-			}
-		}
-
-		return oldUtility, newUtility, os.WriteFile(path, []byte(sb.String()), 0644)
+		rebuilt := rebuildWithFrontMatter(updatedFM, lines[endIdx+1:])
+		return oldUtility, newUtility, os.WriteFile(path, []byte(rebuilt), 0644)
 	}
 
 	// No front matter - add it
+	oldUtility = types.InitialUtility
 	newUtility = (1-alpha)*oldUtility + alpha*reward
 
 	var sb strings.Builder
@@ -514,6 +521,33 @@ func init() {
 	rootCmd.AddCommand(migrateCmd)
 }
 
+// migrateJSONLFiles processes a list of JSONL files, migrating those that lack the utility field.
+// Returns the number of files migrated and skipped.
+func migrateJSONLFiles(files []string, dryRun bool) (migrated, skipped int) {
+	for _, file := range files {
+		needsMigration, err := needsUtilityMigration(file)
+		if err != nil {
+			VerbosePrintf("Warning: check %s: %v\n", filepath.Base(file), err)
+			continue
+		}
+		if !needsMigration {
+			skipped++
+			continue
+		}
+		if dryRun {
+			fmt.Printf("[dry-run] Would migrate: %s\n", filepath.Base(file))
+			migrated++
+			continue
+		}
+		if err := addUtilityField(file); err != nil {
+			VerbosePrintf("Warning: migrate %s: %v\n", filepath.Base(file), err)
+			continue
+		}
+		migrated++
+	}
+	return migrated, skipped
+}
+
 func runMigrate(cmd *cobra.Command, args []string) error {
 	if args[0] != "memrl" {
 		return fmt.Errorf("unknown migration: %s (supported: memrl)", args[0])
@@ -535,34 +569,7 @@ func runMigrate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	migrated := 0
-	skipped := 0
-
-	for _, file := range files {
-		needsMigration, err := needsUtilityMigration(file)
-		if err != nil {
-			VerbosePrintf("Warning: check %s: %v\n", filepath.Base(file), err)
-			continue
-		}
-
-		if !needsMigration {
-			skipped++
-			continue
-		}
-
-		if GetDryRun() {
-			fmt.Printf("[dry-run] Would migrate: %s\n", filepath.Base(file))
-			migrated++
-			continue
-		}
-
-		if err := addUtilityField(file); err != nil {
-			VerbosePrintf("Warning: migrate %s: %v\n", filepath.Base(file), err)
-			continue
-		}
-		migrated++
-	}
-
+	migrated, skipped := migrateJSONLFiles(files, GetDryRun())
 	fmt.Printf("Migration complete: %d migrated, %d skipped (already have utility)\n", migrated, skipped)
 	return nil
 }

@@ -12,11 +12,36 @@ import (
 	"github.com/boshu2/agentops/cli/internal/types"
 )
 
+// enrichPatternFreshness sets age, freshness, and default utility on a pattern
+// based on the file's modification time.
+func enrichPatternFreshness(p *pattern, file string, now time.Time) {
+	info, _ := os.Stat(file)
+	if info != nil {
+		ageHours := now.Sub(info.ModTime()).Hours()
+		p.AgeWeeks = ageHours / (24 * 7)
+		p.FreshnessScore = freshnessScore(p.AgeWeeks)
+	} else {
+		p.FreshnessScore = 0.5
+	}
+	if p.Utility == 0 {
+		p.Utility = types.InitialUtility
+	}
+}
+
+// patternMatchesQuery returns true if the pattern name or description contains
+// the query (case-insensitive). An empty query matches everything.
+func patternMatchesQuery(p pattern, queryLower string) bool {
+	if queryLower == "" {
+		return true
+	}
+	content := strings.ToLower(p.Name + " " + p.Description)
+	return strings.Contains(content, queryLower)
+}
+
 // collectPatterns finds patterns from .agents/patterns/
 func collectPatterns(cwd, query string, limit int) ([]pattern, error) {
 	patternsDir := filepath.Join(cwd, ".agents", "patterns")
 	if _, err := os.Stat(patternsDir); os.IsNotExist(err) {
-		// Try rig root
 		patternsDir = findAgentsSubdir(cwd, "patterns")
 		if patternsDir == "" {
 			return nil, nil
@@ -37,28 +62,11 @@ func collectPatterns(cwd, query string, limit int) ([]pattern, error) {
 		if err != nil {
 			continue
 		}
+		enrichPatternFreshness(&p, file, now)
 
-		info, _ := os.Stat(file)
-		if info != nil {
-			ageHours := now.Sub(info.ModTime()).Hours()
-			ageWeeks := ageHours / (24 * 7)
-			p.AgeWeeks = ageWeeks
-			p.FreshnessScore = freshnessScore(ageWeeks)
-		} else {
-			p.FreshnessScore = 0.5
+		if !patternMatchesQuery(p, queryLower) {
+			continue
 		}
-		if p.Utility == 0 {
-			p.Utility = types.InitialUtility
-		}
-
-		// Filter by query
-		if query != "" {
-			content := strings.ToLower(p.Name + " " + p.Description)
-			if !strings.Contains(content, queryLower) {
-				continue
-			}
-		}
-
 		patterns = append(patterns, p)
 	}
 
@@ -125,6 +133,26 @@ func parseFrontmatterBlock(lines []string) (contentStart int, utility float64) {
 	return 0, utility
 }
 
+// assembleDescriptionFrom builds a description by joining the line at index i
+// with up to one following continuation line.
+func assembleDescriptionFrom(lines []string, i int) string {
+	desc := strings.TrimSpace(lines[i])
+	for j := i + 1; j < len(lines) && j < i+2; j++ {
+		nextLine := strings.TrimSpace(lines[j])
+		if nextLine == "" || strings.HasPrefix(nextLine, "#") {
+			break
+		}
+		desc += " " + nextLine
+	}
+	return truncateText(desc, 150)
+}
+
+// isContentLine returns true if the trimmed line is a non-empty body line
+// (not a heading or frontmatter delimiter).
+func isContentLine(line string) bool {
+	return line != "" && !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "---")
+}
+
 // extractPatternNameAndDescription scans content lines for title and description.
 func extractPatternNameAndDescription(lines []string, contentStart int) (name, description string) {
 	for i := contentStart; i < len(lines); i++ {
@@ -136,16 +164,8 @@ func extractPatternNameAndDescription(lines []string, contentStart int) (name, d
 			name = strings.TrimPrefix(line, "# ")
 			continue
 		}
-		if description == "" && !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "---") {
-			desc := line
-			for j := i + 1; j < len(lines) && j < i+2; j++ {
-				nextLine := strings.TrimSpace(lines[j])
-				if nextLine == "" || strings.HasPrefix(nextLine, "#") {
-					break
-				}
-				desc += " " + nextLine
-			}
-			description = truncateText(desc, 150)
+		if description == "" && isContentLine(line) {
+			description = assembleDescriptionFrom(lines, i)
 			break
 		}
 	}

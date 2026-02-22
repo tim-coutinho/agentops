@@ -78,106 +78,84 @@ func runRatchetNext(cmd *cobra.Command, args []string) error {
 func computeNextStep(chain *ratchet.Chain) NextResult {
 	allSteps := ratchet.AllSteps()
 
-	// If chain is empty, start at the beginning
-	if len(chain.Entries) == 0 {
-		return NextResult{
-			Next:     string(allSteps[0]),
-			Reason:   "no steps completed yet",
-			Skill:    stepSkillMap[string(allSteps[0])],
-			Complete: false,
+	lastStep, lastEntry := findLastLockedEntry(chain)
+	if lastEntry == nil {
+		reason := "no steps completed yet"
+		if len(chain.Entries) > 0 {
+			reason = "no steps locked yet"
 		}
+		return newStartResult(allSteps[0], reason)
 	}
 
-	// Find the last locked or skipped step
-	var lastStep ratchet.Step
-	var lastEntry *ratchet.ChainEntry
+	if lastStep == ratchet.StepPostMortem {
+		return newCompleteResult(lastStep, lastEntry)
+	}
 
+	nextStep := resolveNextStep(allSteps, lastStep)
+	return newPendingResult(nextStep, lastStep, lastEntry)
+}
+
+// findLastLockedEntry returns the most recent locked or skipped entry.
+func findLastLockedEntry(chain *ratchet.Chain) (ratchet.Step, *ratchet.ChainEntry) {
 	for i := len(chain.Entries) - 1; i >= 0; i-- {
 		entry := &chain.Entries[i]
 		if entry.Locked || entry.Skipped {
-			lastStep = entry.Step
-			lastEntry = entry
-			break
+			return entry.Step, entry
 		}
 	}
+	return "", nil
+}
 
-	// If no locked/skipped steps found, start at the beginning
-	if lastEntry == nil {
-		return NextResult{
-			Next:     string(allSteps[0]),
-			Reason:   "no steps locked yet",
-			Skill:    stepSkillMap[string(allSteps[0])],
-			Complete: false,
-		}
-	}
-
-	// Find position of last step in AllSteps
-	var lastStepIndex = -1
-	for i, step := range allSteps {
-		if step == lastStep {
-			lastStepIndex = i
-			break
-		}
-	}
-
-	// Check if we're complete (last locked step is post-mortem)
-	if lastStep == ratchet.StepPostMortem {
-		return NextResult{
-			Next:         "",
-			Reason:       "all steps completed",
-			LastStep:     string(lastStep),
-			LastArtifact: lastEntry.Output,
-			Skill:        "",
-			Complete:     true,
-		}
-	}
-
-	// Handle implement/crank special case
-	// Either implement or crank satisfies that position in the chain
-	// If we just completed implement, next is vibe (skip crank)
-	// If we just completed crank, next is also vibe
+// resolveNextStep determines the successor step, handling implement/crank aliasing.
+func resolveNextStep(allSteps []ratchet.Step, lastStep ratchet.Step) ratchet.Step {
+	// Either implement or crank satisfies the build position; next is vibe.
 	if lastStep == ratchet.StepImplement || lastStep == ratchet.StepCrank {
-		// Next step after implement/crank is vibe
-		return NextResult{
-			Next:         string(ratchet.StepVibe),
-			Reason:       fmt.Sprintf("%s locked", lastStep),
-			LastStep:     string(lastStep),
-			LastArtifact: lastEntry.Output,
-			Skill:        stepSkillMap[string(ratchet.StepVibe)],
-			Complete:     false,
+		return ratchet.StepVibe
+	}
+	// After plan, suggest implement (skip crank).
+	if lastStep == ratchet.StepPlan {
+		return ratchet.StepImplement
+	}
+	// Default: advance to the successor in AllSteps.
+	for i, step := range allSteps {
+		if step == lastStep && i < len(allSteps)-1 {
+			return allSteps[i+1]
 		}
 	}
+	return ""
+}
 
-	// For all other cases, next step is the one after the last locked step
-	if lastStepIndex >= 0 && lastStepIndex < len(allSteps)-1 {
-		nextStep := allSteps[lastStepIndex+1]
-
-		// Skip crank if we just completed plan (go straight to implement)
-		// Actually, according to AllSteps order, after plan comes implement, then crank
-		// But the requirement says either implement or crank satisfies that position
-		// So we should suggest implement first
-		if lastStep == ratchet.StepPlan {
-			nextStep = ratchet.StepImplement
-		}
-
-		return NextResult{
-			Next:         string(nextStep),
-			Reason:       fmt.Sprintf("%s locked", lastStep),
-			LastStep:     string(lastStep),
-			LastArtifact: lastEntry.Output,
-			Skill:        stepSkillMap[string(nextStep)],
-			Complete:     false,
-		}
-	}
-
-	// Shouldn't reach here, but handle gracefully
+// newStartResult builds a NextResult for the first step.
+func newStartResult(first ratchet.Step, reason string) NextResult {
 	return NextResult{
-		Next:         "",
-		Reason:       "unexpected state",
+		Next:   string(first),
+		Reason: reason,
+		Skill:  stepSkillMap[string(first)],
+	}
+}
+
+// newCompleteResult builds a NextResult indicating all steps are done.
+func newCompleteResult(lastStep ratchet.Step, lastEntry *ratchet.ChainEntry) NextResult {
+	return NextResult{
+		Reason:       "all steps completed",
 		LastStep:     string(lastStep),
 		LastArtifact: lastEntry.Output,
-		Skill:        "",
-		Complete:     false,
+		Complete:     true,
+	}
+}
+
+// newPendingResult builds a NextResult for the next pending step.
+func newPendingResult(nextStep, lastStep ratchet.Step, lastEntry *ratchet.ChainEntry) NextResult {
+	reason := "unexpected state"
+	if nextStep != "" {
+		reason = fmt.Sprintf("%s locked", lastStep)
+	}
+	return NextResult{
+		Next:         string(nextStep),
+		Reason:       reason,
+		LastStep:     string(lastStep),
+		LastArtifact: lastEntry.Output,
+		Skill:        stepSkillMap[string(nextStep)],
 	}
 }
 

@@ -180,6 +180,61 @@ func ingestPendingFilesToPool(cwd string, files []string) (poolIngestResult, err
 	return res, nil
 }
 
+// promotionContext holds shared state for candidate promotion across flywheel and pool commands.
+type promotionContext struct {
+	pool            *pool.Pool
+	threshold       time.Duration
+	includeGold     bool
+	citationCounts  map[string]int
+	promotedContent map[string]bool
+}
+
+func (c *promotionContext) isEligibleTier(tier types.Tier) bool {
+	return tier == types.TierSilver || (c.includeGold && tier == types.TierGold)
+}
+
+func (c *promotionContext) processCandidate(e pool.PoolEntry, result *poolAutoPromotePromoteResult) {
+	if !c.isEligibleTier(e.Candidate.Tier) {
+		return
+	}
+	if e.ScoringResult.GateRequired || e.Age < c.threshold {
+		if e.ScoringResult.GateRequired {
+			result.Skipped++
+			result.SkippedIDs = append(result.SkippedIDs, e.Candidate.ID)
+		}
+		return
+	}
+	if reason := checkPromotionCriteria(c.pool.BaseDir, e, c.threshold, c.citationCounts, c.promotedContent); reason != "" {
+		result.Skipped++
+		result.SkippedIDs = append(result.SkippedIDs, e.Candidate.ID)
+		VerbosePrintf("Skipping %s: %s\n", e.Candidate.ID, reason)
+		return
+	}
+	result.Considered++
+	if GetDryRun() {
+		result.Promoted++
+		return
+	}
+	stageAndPromoteEntry(c.pool, e, result, c.promotedContent)
+}
+
+func stageAndPromoteEntry(p *pool.Pool, e pool.PoolEntry, result *poolAutoPromotePromoteResult, promotedContent map[string]bool) {
+	if err := p.Stage(e.Candidate.ID, types.TierSilver); err != nil {
+		result.Skipped++
+		result.SkippedIDs = append(result.SkippedIDs, e.Candidate.ID)
+		return
+	}
+	artifactPath, err := p.Promote(e.Candidate.ID)
+	if err != nil {
+		result.Skipped++
+		result.SkippedIDs = append(result.SkippedIDs, e.Candidate.ID)
+		return
+	}
+	result.Promoted++
+	result.Artifacts = append(result.Artifacts, artifactPath)
+	promotedContent[normalizeContent(e.Candidate.Content)] = true
+}
+
 func autoPromoteAndPromoteToArtifacts(p *pool.Pool, threshold time.Duration, includeGold bool) (poolAutoPromotePromoteResult, error) {
 	entries, err := p.List(pool.ListOptions{
 		Status: types.PoolStatusPending,
@@ -191,80 +246,35 @@ func autoPromoteAndPromoteToArtifacts(p *pool.Pool, threshold time.Duration, inc
 	result := poolAutoPromotePromoteResult{
 		Threshold: threshold.String(),
 	}
-	citationCounts, promotedContent := loadPromotionGateContext(p.BaseDir)
+	ctx := &promotionContext{
+		pool:        p,
+		threshold:   threshold,
+		includeGold: includeGold,
+	}
+	ctx.citationCounts, ctx.promotedContent = loadPromotionGateContext(p.BaseDir)
 
 	for _, e := range entries {
-		if e.Candidate.Tier != types.TierSilver && !(includeGold && e.Candidate.Tier == types.TierGold) {
-			continue
-		}
-		if e.ScoringResult.GateRequired {
-			result.Skipped++
-			result.SkippedIDs = append(result.SkippedIDs, e.Candidate.ID)
-			continue
-		}
-		if e.Age < threshold {
-			continue
-		}
-		if reason := checkPromotionCriteria(p.BaseDir, e, threshold, citationCounts, promotedContent); reason != "" {
-			result.Skipped++
-			result.SkippedIDs = append(result.SkippedIDs, e.Candidate.ID)
-			VerbosePrintf("Skipping %s: %s\n", e.Candidate.ID, reason)
-			continue
-		}
-
-		result.Considered++
-
-		if GetDryRun() {
-			result.Promoted++
-			continue
-		}
-
-		if err := p.Stage(e.Candidate.ID, types.TierSilver); err != nil {
-			result.Skipped++
-			result.SkippedIDs = append(result.SkippedIDs, e.Candidate.ID)
-			continue
-		}
-		artifactPath, err := p.Promote(e.Candidate.ID)
-		if err != nil {
-			result.Skipped++
-			result.SkippedIDs = append(result.SkippedIDs, e.Candidate.ID)
-			continue
-		}
-		result.Promoted++
-		result.Artifacts = append(result.Artifacts, artifactPath)
-		promotedContent[normalizeContent(e.Candidate.Content)] = true
+		ctx.processCandidate(e, &result)
 	}
 
 	return result, nil
 }
 
-func promoteAntiPatternsForCloseLoop(cwd string) (eligible int, promoted int, changedPaths []string, err error) {
-	learningsDir := filepath.Join(cwd, ".agents", "learnings")
-	if _, err := os.Stat(learningsDir); os.IsNotExist(err) {
-		return 0, 0, nil, nil
-	}
-
-	results, err := ratchet.ScanForMaturityTransitions(learningsDir)
-	if err != nil {
-		return 0, 0, nil, fmt.Errorf("scan transitions: %w", err)
-	}
-
-	var antiPatternPromotions []*ratchet.MaturityTransitionResult
+func filterAntiPatternTransitions(results []*ratchet.MaturityTransitionResult) []*ratchet.MaturityTransitionResult {
+	var filtered []*ratchet.MaturityTransitionResult
 	for _, r := range results {
 		if r.NewMaturity == types.MaturityAntiPattern {
-			antiPatternPromotions = append(antiPatternPromotions, r)
+			filtered = append(filtered, r)
 		}
 	}
-	eligible = len(antiPatternPromotions)
-	if eligible == 0 {
-		return 0, 0, nil, nil
-	}
+	return filtered
+}
 
-	if GetDryRun() {
-		return eligible, 0, nil, nil
-	}
-
-	for _, r := range antiPatternPromotions {
+func applyAntiPatternPromotions(baseDir string, promotions []*ratchet.MaturityTransitionResult) (int, []string) {
+	var promoted int
+	var changedPaths []string
+	learningsDir := filepath.Join(baseDir, ".agents", "learnings")
+	for _, r := range promotions {
 		learningPath, ferr := findLearningFile(filepath.Dir(learningsDir), r.LearningID)
 		if ferr != nil {
 			continue
@@ -278,43 +288,59 @@ func promoteAntiPatternsForCloseLoop(cwd string) (eligible int, promoted int, ch
 			changedPaths = append(changedPaths, learningPath)
 		}
 	}
+	return promoted, changedPaths
+}
 
+func promoteAntiPatternsForCloseLoop(cwd string) (eligible int, promoted int, changedPaths []string, err error) {
+	learningsDir := filepath.Join(cwd, ".agents", "learnings")
+	if _, err := os.Stat(learningsDir); os.IsNotExist(err) {
+		return 0, 0, nil, nil
+	}
+
+	results, err := ratchet.ScanForMaturityTransitions(learningsDir)
+	if err != nil {
+		return 0, 0, nil, fmt.Errorf("scan transitions: %w", err)
+	}
+
+	antiPatternPromotions := filterAntiPatternTransitions(results)
+	eligible = len(antiPatternPromotions)
+	if eligible == 0 || GetDryRun() {
+		return eligible, 0, nil, nil
+	}
+
+	promoted, changedPaths = applyAntiPatternPromotions(cwd, antiPatternPromotions)
 	return eligible, promoted, changedPaths, nil
 }
 
-// storeIndexUpsert updates the store index for the provided paths, de-duplicating by path.
-// It returns how many paths were (re)indexed and the index path.
-func storeIndexUpsert(baseDir string, paths []string, categorize bool) (int, string, error) {
-	indexPath := filepath.Join(baseDir, IndexDir, IndexFileName)
-	if len(paths) == 0 {
-		return 0, indexPath, nil
-	}
-
-	// Load existing entries (best-effort).
+// loadExistingIndexEntries reads existing entries from a JSONL index file (best-effort).
+func loadExistingIndexEntries(indexPath string) map[string]IndexEntry {
 	existing := make(map[string]IndexEntry)
 	f, err := os.Open(indexPath)
-	if err == nil {
-		scanner := bufio.NewScanner(f)
-		scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
-		for scanner.Scan() {
-			var e IndexEntry
-			if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
-				continue
-			}
-			if e.Path != "" {
-				existing[e.Path] = e
-			}
-		}
-		_ = f.Close() //nolint:errcheck // best-effort
+	if err != nil {
+		return existing
 	}
+	defer func() {
+		_ = f.Close() //nolint:errcheck // best-effort
+	}()
 
-	// Upsert requested paths.
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+	for scanner.Scan() {
+		var e IndexEntry
+		if err := json.Unmarshal(scanner.Bytes(), &e); err == nil && e.Path != "" {
+			existing[e.Path] = e
+		}
+	}
+	return existing
+}
+
+// upsertIndexPaths creates/updates index entries for the given paths. Returns count of indexed paths.
+func upsertIndexPaths(existing map[string]IndexEntry, paths []string, categorize bool) int {
 	indexed := 0
 	for _, p := range paths {
 		if p == "" {
 			continue
 		}
-		// Only index paths that exist.
 		if _, err := os.Stat(p); err != nil {
 			continue
 		}
@@ -325,19 +351,17 @@ func storeIndexUpsert(baseDir string, paths []string, categorize bool) (int, str
 		existing[p] = *entry
 		indexed++
 	}
+	return indexed
+}
 
-	if GetDryRun() {
-		return indexed, indexPath, nil
-	}
-
-	// Rewrite index deterministically.
-	indexDir := filepath.Dir(indexPath)
-	if err := os.MkdirAll(indexDir, 0755); err != nil {
-		return indexed, indexPath, err
+// writeIndexFile writes the entries map as sorted JSONL to the given path.
+func writeIndexFile(indexPath string, existing map[string]IndexEntry) error {
+	if err := os.MkdirAll(filepath.Dir(indexPath), 0755); err != nil {
+		return err
 	}
 	out, err := os.OpenFile(indexPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	if err != nil {
-		return indexed, indexPath, err
+		return err
 	}
 	defer func() {
 		_ = out.Close() //nolint:errcheck // write completed
@@ -351,10 +375,30 @@ func storeIndexUpsert(baseDir string, paths []string, categorize bool) (int, str
 
 	enc := json.NewEncoder(out)
 	for _, p := range pathsSorted {
-		e := existing[p]
-		if err := enc.Encode(e); err != nil {
-			return indexed, indexPath, err
+		if err := enc.Encode(existing[p]); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// storeIndexUpsert updates the store index for the provided paths, de-duplicating by path.
+// It returns how many paths were (re)indexed and the index path.
+func storeIndexUpsert(baseDir string, paths []string, categorize bool) (int, string, error) {
+	indexPath := filepath.Join(baseDir, IndexDir, IndexFileName)
+	if len(paths) == 0 {
+		return 0, indexPath, nil
+	}
+
+	existing := loadExistingIndexEntries(indexPath)
+	indexed := upsertIndexPaths(existing, paths, categorize)
+
+	if GetDryRun() {
+		return indexed, indexPath, nil
+	}
+
+	if err := writeIndexFile(indexPath, existing); err != nil {
+		return indexed, indexPath, err
 	}
 
 	return indexed, indexPath, nil

@@ -654,27 +654,50 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load tasks: %w", err)
 	}
 
-	// Filter by session if requested
-	if taskStatusSessionID != "" {
-		var filtered []TaskEvent
-		for _, t := range tasks {
-			if t.SessionID == taskStatusSessionID {
-				filtered = append(filtered, t)
-			}
-		}
-		tasks = filtered
-	}
+	tasks = filterTasksBySession(tasks, taskStatusSessionID)
 
 	if len(tasks) == 0 {
 		fmt.Println("No tasks found.")
 		return nil
 	}
 
-	// Compute distributions
+	statusCounts, maturityCounts, withLearnings := computeTaskDistributions(tasks)
+
+	if GetOutput() == "json" {
+		return outputTaskStatusJSON(tasks, statusCounts, maturityCounts, withLearnings)
+	}
+
+	printTaskStatusText(tasks, statusCounts, maturityCounts, withLearnings)
+	return nil
+}
+
+// filterTasksBySession returns only tasks matching the given session, or all
+// tasks when sessionID is empty.
+func filterTasksBySession(tasks []TaskEvent, sessionID string) []TaskEvent {
+	if sessionID == "" {
+		return tasks
+	}
+	var filtered []TaskEvent
+	for _, t := range tasks {
+		if t.SessionID == sessionID {
+			filtered = append(filtered, t)
+		}
+	}
+	return filtered
+}
+
+// taskDistributions holds precomputed counts for task status reporting.
+type taskDistributions struct {
+	StatusCounts   map[string]int
+	MaturityCounts map[types.Maturity]int
+	WithLearnings  int
+}
+
+// computeTaskDistributions tallies status, maturity, and learning counts.
+func computeTaskDistributions(tasks []TaskEvent) (map[string]int, map[types.Maturity]int, int) {
 	statusCounts := make(map[string]int)
 	maturityCounts := make(map[types.Maturity]int)
 	withLearnings := 0
-
 	for _, t := range tasks {
 		statusCounts[t.Status]++
 		maturityCounts[t.Maturity]++
@@ -682,20 +705,25 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 			withLearnings++
 		}
 	}
+	return statusCounts, maturityCounts, withLearnings
+}
 
-	if GetOutput() == "json" {
-		result := map[string]any{
-			"total":           len(tasks),
-			"status_counts":   statusCounts,
-			"maturity_counts": maturityCounts,
-			"with_learnings":  withLearnings,
-			"tasks":           tasks,
-		}
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(result)
+// outputTaskStatusJSON writes task status as structured JSON.
+func outputTaskStatusJSON(tasks []TaskEvent, statusCounts map[string]int, maturityCounts map[types.Maturity]int, withLearnings int) error {
+	result := map[string]any{
+		"total":           len(tasks),
+		"status_counts":   statusCounts,
+		"maturity_counts": maturityCounts,
+		"with_learnings":  withLearnings,
+		"tasks":           tasks,
 	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(result)
+}
 
+// printTaskStatusText renders task status as a human-readable table.
+func printTaskStatusText(tasks []TaskEvent, statusCounts map[string]int, maturityCounts map[types.Maturity]int, withLearnings int) {
 	fmt.Printf("Task Status\n")
 	fmt.Printf("===========\n")
 	fmt.Printf("Total tasks: %d\n\n", len(tasks))
@@ -713,6 +741,4 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("\nPromoted to learnings: %d\n", withLearnings)
-
-	return nil
 }

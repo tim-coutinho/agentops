@@ -66,6 +66,21 @@ Safety defaults:
 	rootCmd.AddCommand(worktreeCmd)
 }
 
+// finalizeWorktreeGC handles pruning and prints the summary message.
+func finalizeWorktreeGC(repoRoot string, candidateCount, removed, killedSessions, tmuxCandidates int) {
+	if worktreeGCPrune && !GetDryRun() {
+		if err := pruneWorktrees(repoRoot); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: git worktree prune failed: %v\n", err)
+		}
+	}
+
+	if GetDryRun() {
+		fmt.Printf("[dry-run] Worktree GC complete. worktree_candidates=%d tmux_candidates=%d\n", candidateCount, tmuxCandidates)
+		return
+	}
+	fmt.Printf("Worktree GC complete. removed=%d tmux_killed=%d\n", removed, killedSessions)
+}
+
 func runWorktreeGC(cmd *cobra.Command, args []string) error {
 	if worktreeGCStaleAfter <= 0 {
 		return fmt.Errorf("--stale-after must be > 0")
@@ -104,17 +119,7 @@ func runWorktreeGC(cmd *cobra.Command, args []string) error {
 		killedSessions, tmuxCandidates = gcTmuxSessions(now, activeRuns, liveWorktreeRuns)
 	}
 
-	if worktreeGCPrune && !GetDryRun() {
-		if err := pruneWorktrees(repoRoot); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: git worktree prune failed: %v\n", err)
-		}
-	}
-
-	if GetDryRun() {
-		fmt.Printf("[dry-run] Worktree GC complete. worktree_candidates=%d tmux_candidates=%d\n", len(candidates), tmuxCandidates)
-		return nil
-	}
-	fmt.Printf("Worktree GC complete. removed=%d tmux_killed=%d\n", removed, killedSessions)
+	finalizeWorktreeGC(repoRoot, len(candidates), removed, killedSessions, tmuxCandidates)
 	return nil
 }
 

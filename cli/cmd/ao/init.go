@@ -79,7 +79,37 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	isGitRepo := isGitRepository(cwd)
 
-	// Phase 1: Create .agents/ subdirectories
+	if err := createAgentsDirs(cwd); err != nil {
+		return err
+	}
+
+	if err := initStorage(cwd); err != nil {
+		return err
+	}
+
+	if err := setupGitProtection(cwd, isGitRepo); err != nil {
+		return err
+	}
+
+	if err := ensureNestedAgentsGitignore(cwd); err != nil {
+		return err
+	}
+
+	if initHooks {
+		if err := installInitHooks(cmd); err != nil {
+			return err
+		}
+	}
+
+	if !dryRun {
+		printInitSummary(cwd, isGitRepo)
+	}
+
+	return nil
+}
+
+// createAgentsDirs creates (or dry-run reports) all .agents/ subdirectories.
+func createAgentsDirs(cwd string) error {
 	for _, dir := range agentsDirs {
 		target := filepath.Join(cwd, dir)
 		if dryRun {
@@ -92,45 +122,33 @@ func runInit(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("create directory %s: %w", dir, err)
 		}
 	}
+	return nil
+}
 
-	// Phase 1b: Create .agents/ao/ storage (sessions, index, provenance)
+// initStorage initializes the .agents/ao/ storage subsystem.
+func initStorage(cwd string) error {
 	baseDir := filepath.Join(cwd, storage.DefaultBaseDir)
 	if dryRun {
 		fmt.Println("[dry-run] Would create .agents/ao/{sessions,index,provenance}")
-	} else {
-		fs := storage.NewFileStorage(storage.WithBaseDir(baseDir))
-		if err := fs.Init(); err != nil {
-			return fmt.Errorf("initialize storage: %w", err)
-		}
+		return nil
 	}
+	fs := storage.NewFileStorage(storage.WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		return fmt.Errorf("initialize storage: %w", err)
+	}
+	return nil
+}
 
-	// Phase 2: Git protection
-	if isGitRepo {
-		if err := setupGitignore(cwd, dryRun, initStealth); err != nil {
-			return fmt.Errorf("setup gitignore: %w", err)
-		}
-		warnTrackedFiles(cwd)
-	} else {
+// setupGitProtection configures gitignore and warns about tracked files.
+func setupGitProtection(cwd string, isGitRepo bool) error {
+	if !isGitRepo {
 		VerbosePrintf("Not a git repo — skipping .gitignore setup\n")
+		return nil
 	}
-
-	// Phase 2b: Nested .agents/.gitignore (belt-and-suspenders)
-	if err := ensureNestedAgentsGitignore(cwd); err != nil {
-		return err
+	if err := setupGitignore(cwd, dryRun, initStealth); err != nil {
+		return fmt.Errorf("setup gitignore: %w", err)
 	}
-
-	// Phase 3: Hooks (optional)
-	if initHooks {
-		if err := installInitHooks(cmd); err != nil {
-			return err
-		}
-	}
-
-	// Summary
-	if !dryRun {
-		printInitSummary(cwd, isGitRepo)
-	}
-
+	warnTrackedFiles(cwd)
 	return nil
 }
 

@@ -400,10 +400,26 @@ func runPlansSearch(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runPlansUpdate(cmd *cobra.Command, args []string) error {
-	planPath := args[0]
+// applyPlanUpdates applies status and beadsID updates to the manifest entry matching absPath.
+// Returns true if a matching entry was found.
+func applyPlanUpdates(entries []types.PlanManifestEntry, absPath, status, beadsID string) bool {
+	for i, e := range entries {
+		if e.Path == absPath {
+			if status != "" {
+				entries[i].Status = types.PlanStatus(status)
+			}
+			if beadsID != "" {
+				entries[i].BeadsID = beadsID
+			}
+			entries[i].UpdatedAt = time.Now()
+			return true
+		}
+	}
+	return false
+}
 
-	absPath, err := filepath.Abs(planPath)
+func runPlansUpdate(cmd *cobra.Command, args []string) error {
+	absPath, err := filepath.Abs(args[0])
 	if err != nil {
 		return fmt.Errorf("resolve path: %w", err)
 	}
@@ -423,22 +439,7 @@ func runPlansUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load manifest: %w", err)
 	}
 
-	found := false
-	for i, e := range entries {
-		if e.Path == absPath {
-			if planStatus != "" {
-				entries[i].Status = types.PlanStatus(planStatus)
-			}
-			if planBeadsID != "" {
-				entries[i].BeadsID = planBeadsID
-			}
-			entries[i].UpdatedAt = time.Now()
-			found = true
-			break
-		}
-	}
-
-	if !found {
+	if !applyPlanUpdates(entries, absPath, planStatus, planBeadsID) {
 		return fmt.Errorf("plan not found in manifest: %s", absPath)
 	}
 
@@ -611,6 +612,29 @@ func countUnlinkedEntries(entries []types.PlanManifestEntry) int {
 	return count
 }
 
+// syncEpicsToManifest syncs beads epic statuses into the manifest entries.
+// Returns the count of entries that were updated.
+func syncEpicsToManifest(entries []types.PlanManifestEntry, epics []beadsEpic, byBeadsID map[string]int) int {
+	synced := 0
+	for _, epic := range epics {
+		if idx, ok := byBeadsID[epic.ID]; ok {
+			if syncEpicStatus(entries, idx, epic.Status) {
+				synced++
+				VerbosePrintf("Synced %s: -> %s\n", epic.ID, entries[idx].Status)
+			}
+		}
+	}
+	return synced
+}
+
+// printSyncSummary prints the result of a plans sync operation.
+func printSyncSummary(synced, drift int) {
+	fmt.Printf("✓ Sync complete: %d synced, %d drift\n", synced, drift)
+	if drift > 0 {
+		fmt.Printf("  Hint: Run 'ao plans list' to see entries without beads linkage\n")
+	}
+}
+
 // runPlansSync syncs manifest with beads (F6: beads is source of truth).
 func runPlansSync(cmd *cobra.Command, args []string) error {
 	if GetDryRun() {
@@ -628,24 +652,13 @@ func runPlansSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load manifest: %w", err)
 	}
 
-	byBeadsID := buildBeadsIDIndex(entries)
-
 	beadsOutput, err := queryBeadsEpics()
 	if err != nil {
 		VerbosePrintf("Warning: could not query beads: %v\n", err)
 		fmt.Println("Beads not available. Checking manifest for drift...")
 	}
 
-	synced := 0
-	for _, epic := range beadsOutput {
-		if idx, ok := byBeadsID[epic.ID]; ok {
-			if syncEpicStatus(entries, idx, epic.Status) {
-				synced++
-				VerbosePrintf("Synced %s: -> %s\n", epic.ID, entries[idx].Status)
-			}
-		}
-	}
-
+	synced := syncEpicsToManifest(entries, beadsOutput, buildBeadsIDIndex(entries))
 	drift := countUnlinkedEntries(entries)
 
 	if synced > 0 {
@@ -654,11 +667,7 @@ func runPlansSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Printf("✓ Sync complete: %d synced, %d drift\n", synced, drift)
-	if drift > 0 {
-		fmt.Printf("  Hint: Run 'ao plans list' to see entries without beads linkage\n")
-	}
-
+	printSyncSummary(synced, drift)
 	return nil
 }
 

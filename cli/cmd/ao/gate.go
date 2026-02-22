@@ -78,60 +78,70 @@ func outputGatePending(entries []pool.PoolEntry) error {
 		enc := yaml.NewEncoder(os.Stdout)
 		return enc.Encode(entries)
 
-	default: // table
-		if len(entries) == 0 {
-			fmt.Println("No pending reviews")
-			return nil
-		}
+	default:
+		return outputGatePendingTable(entries)
+	}
+}
 
-		fmt.Printf("Pending Reviews (%d)\n", len(entries))
-		fmt.Println("==================")
-		fmt.Println()
+// entryUrgency returns a human-readable urgency label for a pool entry.
+func entryUrgency(e pool.PoolEntry) string {
+	switch {
+	case e.ApproachingAutoPromote:
+		return "HIGH (approaching 24h)"
+	case e.Age > 12*time.Hour:
+		return "MEDIUM"
+	default:
+		return "LOW"
+	}
+}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		//nolint:errcheck // CLI tabwriter output to stdout, errors unlikely and non-recoverable
-		fmt.Fprintln(w, "ID\tTIER\tAGE\tUTILITY\tURGENCY")
-		//nolint:errcheck // CLI tabwriter output to stdout
-		fmt.Fprintln(w, "--\t----\t---\t-------\t-------")
-
-		for _, e := range entries {
-			var urgency string
-			switch {
-			case e.ApproachingAutoPromote:
-				urgency = "HIGH (approaching 24h)"
-			case e.Age > 12*time.Hour:
-				urgency = "MEDIUM"
-			default:
-				urgency = "LOW"
-			}
-
-			//nolint:errcheck // CLI tabwriter output to stdout
-			fmt.Fprintf(w, "%s\t%s\t%s\t%.2f\t%s\n",
-				truncateID(e.Candidate.ID, 16),
-				e.Candidate.Tier,
-				e.AgeString,
-				e.Candidate.Utility,
-				urgency,
-			)
-		}
-
-		if err := w.Flush(); err != nil {
-			return err
-		}
-
-		// Summary
-		fmt.Println()
-		approaching := 0
-		for _, e := range entries {
-			if e.ApproachingAutoPromote {
-				approaching++
-			}
-		}
-		if approaching > 0 {
-			fmt.Printf("! %d candidate(s) approaching 24h auto-promote threshold\n", approaching)
-		}
-
+// outputGatePendingTable renders pending gate entries as a formatted table.
+func outputGatePendingTable(entries []pool.PoolEntry) error {
+	if len(entries) == 0 {
+		fmt.Println("No pending reviews")
 		return nil
+	}
+
+	fmt.Printf("Pending Reviews (%d)\n", len(entries))
+	fmt.Println("==================")
+	fmt.Println()
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	//nolint:errcheck // CLI tabwriter output to stdout, errors unlikely and non-recoverable
+	fmt.Fprintln(w, "ID\tTIER\tAGE\tUTILITY\tURGENCY")
+	//nolint:errcheck // CLI tabwriter output to stdout
+	fmt.Fprintln(w, "--\t----\t---\t-------\t-------")
+
+	for _, e := range entries {
+		//nolint:errcheck // CLI tabwriter output to stdout
+		fmt.Fprintf(w, "%s\t%s\t%s\t%.2f\t%s\n",
+			truncateID(e.Candidate.ID, 16),
+			e.Candidate.Tier,
+			e.AgeString,
+			e.Candidate.Utility,
+			entryUrgency(e),
+		)
+	}
+
+	if err := w.Flush(); err != nil {
+		return err
+	}
+
+	printAutoPromoteWarning(entries)
+	return nil
+}
+
+// printAutoPromoteWarning prints a warning if any entries are approaching auto-promote.
+func printAutoPromoteWarning(entries []pool.PoolEntry) {
+	fmt.Println()
+	approaching := 0
+	for _, e := range entries {
+		if e.ApproachingAutoPromote {
+			approaching++
+		}
+	}
+	if approaching > 0 {
+		fmt.Printf("! %d candidate(s) approaching 24h auto-promote threshold\n", approaching)
 	}
 }
 

@@ -75,6 +75,46 @@ func init() {
 	indexCmd.Flags().Bool("quiet", false, "Suppress non-error output")
 }
 
+// scanAndSortDir scans a directory for index entries and sorts them by date descending.
+// Returns nil entries and false if the directory should be skipped.
+func scanAndSortDir(cwd, dir string) (string, []indexEntry, bool) {
+	fullPath := filepath.Join(cwd, dir)
+	info, err := os.Stat(fullPath)
+	if err != nil || !info.IsDir() {
+		VerbosePrintf("Warning: directory not found: %s\n", fullPath)
+		return fullPath, nil, false
+	}
+
+	entries, err := scanDirectory(fullPath)
+	if err != nil {
+		VerbosePrintf("Warning: scanning %s: %v\n", dir, err)
+		return fullPath, nil, false
+	}
+
+	slices.SortFunc(entries, func(a, b indexEntry) int {
+		return cmp.Compare(b.Date, a.Date)
+	})
+	return fullPath, entries, true
+}
+
+// processAllIndexDirs scans, sorts, and processes each directory, returning results and staleness.
+func processAllIndexDirs(cwd string, dirs []string, checkMode, quiet bool) ([]indexResult, bool) {
+	var results []indexResult
+	stale := false
+	for _, dir := range dirs {
+		fullPath, entries, ok := scanAndSortDir(cwd, dir)
+		if !ok {
+			continue
+		}
+		result, dirStale := processIndexDir(checkMode, quiet, dir, fullPath, entries)
+		if dirStale {
+			stale = true
+		}
+		results = append(results, result)
+	}
+	return results, stale
+}
+
 func runIndex(cmd *cobra.Command, args []string) error {
 	checkMode, _ := cmd.Flags().GetBool("check")
 	jsonMode, _ := cmd.Flags().GetBool("json")
@@ -91,33 +131,7 @@ func runIndex(cmd *cobra.Command, args []string) error {
 		dirs = []string{dirFlag}
 	}
 
-	var results []indexResult
-	stale := false
-
-	for _, dir := range dirs {
-		fullPath := filepath.Join(cwd, dir)
-		info, err := os.Stat(fullPath)
-		if err != nil || !info.IsDir() {
-			VerbosePrintf("Warning: directory not found: %s\n", fullPath)
-			continue
-		}
-
-		entries, err := scanDirectory(fullPath)
-		if err != nil {
-			VerbosePrintf("Warning: scanning %s: %v\n", dir, err)
-			continue
-		}
-
-		slices.SortFunc(entries, func(a, b indexEntry) int {
-			return cmp.Compare(b.Date, a.Date)
-		})
-
-		result, dirStale := processIndexDir(checkMode, quiet, dir, fullPath, entries)
-		if dirStale {
-			stale = true
-		}
-		results = append(results, result)
-	}
+	results, stale := processAllIndexDirs(cwd, dirs, checkMode, quiet)
 
 	if jsonMode {
 		enc := json.NewEncoder(os.Stdout)
@@ -377,6 +391,30 @@ func writeIndex(dirPath, relDir string, entries []indexEntry, dryRun bool) error
 	return os.WriteFile(indexPath, []byte(sb.String()), 0644)
 }
 
+// diffFileSets returns slices of files missing from existing and extra files not in expected.
+func diffFileSets(expected, existing map[string]bool) (missing, extra []string) {
+	for f := range expected {
+		if !existing[f] {
+			missing = append(missing, f)
+		}
+	}
+	for f := range existing {
+		if !expected[f] {
+			extra = append(extra, f)
+		}
+	}
+	return missing, extra
+}
+
+// buildExpectedFileSet creates a set of expected filenames from index entries.
+func buildExpectedFileSet(entries []indexEntry) map[string]bool {
+	expected := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		expected[e.Filename] = true
+	}
+	return expected
+}
+
 // checkIndex verifies INDEX.md is current by comparing file lists.
 func checkIndex(dirPath, relDir string, entries []indexEntry) (bool, string) {
 	indexPath := filepath.Join(dirPath, "INDEX.md")
@@ -386,23 +424,8 @@ func checkIndex(dirPath, relDir string, entries []indexEntry) (bool, string) {
 	}
 
 	existingFiles := parseIndexTableRows(content)
-
-	expectedFiles := make(map[string]bool)
-	for _, e := range entries {
-		expectedFiles[e.Filename] = true
-	}
-
-	var missing, extra []string
-	for f := range expectedFiles {
-		if !existingFiles[f] {
-			missing = append(missing, f)
-		}
-	}
-	for f := range existingFiles {
-		if !expectedFiles[f] {
-			extra = append(extra, f)
-		}
-	}
+	expectedFiles := buildExpectedFileSet(entries)
+	missing, extra := diffFileSets(expectedFiles, existingFiles)
 
 	if len(missing) == 0 && len(extra) == 0 && len(existingFiles) == len(expectedFiles) {
 		return false, ""

@@ -9,23 +9,16 @@ import (
 	"strings"
 )
 
-// collectRecentSessions finds recent session summaries
-func collectRecentSessions(cwd, query string, limit int) ([]session, error) {
-	sessionsDir := filepath.Join(cwd, ".agents", "ao", "sessions")
-	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
-		return nil, nil
-	}
-
+// collectSessionFiles gathers .jsonl and .md files from the sessions directory,
+// sorted by modification time (newest first).
+func collectSessionFiles(sessionsDir string) ([]string, error) {
 	files, err := filepath.Glob(filepath.Join(sessionsDir, "*.jsonl"))
 	if err != nil {
 		return nil, err
 	}
-
-	// Also include markdown summaries
 	mdFiles, _ := filepath.Glob(filepath.Join(sessionsDir, "*.md"))
 	files = append(files, mdFiles...)
 
-	// Sort by modification time (newest first)
 	slices.SortFunc(files, func(a, b string) int {
 		infoA, _ := os.Stat(a)
 		infoB, _ := os.Stat(b)
@@ -34,6 +27,20 @@ func collectRecentSessions(cwd, query string, limit int) ([]session, error) {
 		}
 		return infoB.ModTime().Compare(infoA.ModTime())
 	})
+	return files, nil
+}
+
+// collectRecentSessions finds recent session summaries
+func collectRecentSessions(cwd, query string, limit int) ([]session, error) {
+	sessionsDir := filepath.Join(cwd, ".agents", "ao", "sessions")
+	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	files, err := collectSessionFiles(sessionsDir)
+	if err != nil {
+		return nil, err
+	}
 
 	sessions := make([]session, 0, len(files))
 	queryLower := strings.ToLower(query)
@@ -48,7 +55,6 @@ func collectRecentSessions(cwd, query string, limit int) ([]session, error) {
 			continue
 		}
 
-		// Filter by query
 		if query != "" && !strings.Contains(strings.ToLower(s.Summary), queryLower) {
 			continue
 		}
@@ -57,6 +63,45 @@ func collectRecentSessions(cwd, query string, limit int) ([]session, error) {
 	}
 
 	return sessions, nil
+}
+
+// parseJSONLSessionSummary reads the first line of a JSONL file and returns
+// the truncated "summary" field value (empty string if absent or unparseable).
+func parseJSONLSessionSummary(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = f.Close() //nolint:errcheck // read-only session load, close error non-fatal
+	}()
+
+	scanner := bufio.NewScanner(f)
+	if scanner.Scan() {
+		var data map[string]any
+		if err := json.Unmarshal(scanner.Bytes(), &data); err == nil {
+			if summary, ok := data["summary"].(string); ok {
+				return truncateText(summary, 150), nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// parseMarkdownSessionSummary extracts the first content paragraph from a
+// markdown file, skipping headings and frontmatter delimiters.
+func parseMarkdownSessionSummary(path string) (string, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "---") {
+			return truncateText(line, 150), nil
+		}
+	}
+	return "", nil
 }
 
 // parseSessionFile extracts session summary from a file
@@ -70,38 +115,10 @@ func parseSessionFile(path string) (session, error) {
 	s.Date = info.ModTime().Format("2006-01-02")
 
 	if strings.HasSuffix(path, ".jsonl") {
-		f, err := os.Open(path)
-		if err != nil {
-			return s, err
-		}
-		defer func() {
-			_ = f.Close() //nolint:errcheck // read-only session load, close error non-fatal
-		}()
-
-		scanner := bufio.NewScanner(f)
-		if scanner.Scan() {
-			var data map[string]any
-			if err := json.Unmarshal(scanner.Bytes(), &data); err == nil {
-				if summary, ok := data["summary"].(string); ok {
-					s.Summary = truncateText(summary, 150)
-				}
-			}
-		}
+		s.Summary, err = parseJSONLSessionSummary(path)
 	} else {
-		// Markdown - extract first paragraph
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return s, err
-		}
-		lines := strings.Split(string(content), "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line != "" && !strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "---") {
-				s.Summary = truncateText(line, 150)
-				break
-			}
-		}
+		s.Summary, err = parseMarkdownSessionSummary(path)
 	}
 
-	return s, nil
+	return s, err
 }

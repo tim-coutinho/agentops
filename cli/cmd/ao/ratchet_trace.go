@@ -30,6 +30,20 @@ Examples:
 	ratchetCmd.AddCommand(traceSubCmd)
 }
 
+// traceEntry represents one link in a provenance trace.
+type traceEntry struct {
+	Step   ratchet.Step `json:"step"`
+	Input  string       `json:"input"`
+	Output string       `json:"output"`
+	Time   string       `json:"time"`
+}
+
+// traceResult holds the full provenance trace for an artifact.
+type traceResult struct {
+	Artifact string       `json:"artifact"`
+	Chain    []traceEntry `json:"chain"`
+}
+
 // runRatchetTrace traces provenance for an artifact.
 func runRatchetTrace(cmd *cobra.Command, args []string) error {
 	artifact := args[0]
@@ -44,23 +58,17 @@ func runRatchetTrace(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load chain: %w", err)
 	}
 
-	// Find all entries that reference this artifact
-	type traceEntry struct {
-		Step   ratchet.Step `json:"step"`
-		Input  string       `json:"input"`
-		Output string       `json:"output"`
-		Time   string       `json:"time"`
-	}
+	trace := buildTrace(artifact, chain)
+	return outputTrace(trace)
+}
 
-	trace := struct {
-		Artifact string       `json:"artifact"`
-		Chain    []traceEntry `json:"chain"`
-	}{
+// buildTrace walks the chain backward to build the provenance trace.
+func buildTrace(artifact string, chain *ratchet.Chain) traceResult {
+	trace := traceResult{
 		Artifact: artifact,
 		Chain:    []traceEntry{},
 	}
 
-	// Walk backward through chain
 	current := artifact
 	for i := len(chain.Entries) - 1; i >= 0; i-- {
 		entry := chain.Entries[i]
@@ -75,32 +83,39 @@ func runRatchetTrace(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	switch GetOutput() {
-	case "json":
+	return trace
+}
+
+// outputTrace renders the trace as JSON or a text diagram.
+func outputTrace(trace traceResult) error {
+	if GetOutput() == "json" {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(trace)
+	}
+	return outputTraceText(trace)
+}
 
-	default:
-		fmt.Printf("Provenance Trace: %s\n", artifact)
-		fmt.Println("=" + strings.Repeat("=", len(artifact)+18))
+// outputTraceText renders the trace as a human-readable provenance diagram.
+func outputTraceText(trace traceResult) error {
+	fmt.Printf("Provenance Trace: %s\n", trace.Artifact)
+	fmt.Println("=" + strings.Repeat("=", len(trace.Artifact)+18))
 
-		if len(trace.Chain) == 0 {
-			fmt.Println("No provenance chain found")
-			return nil
+	if len(trace.Chain) == 0 {
+		fmt.Println("No provenance chain found")
+		return nil
+	}
+
+	for i, entry := range trace.Chain {
+		if i > 0 {
+			fmt.Println("  ↓")
 		}
-
-		for i, entry := range trace.Chain {
-			if i > 0 {
-				fmt.Println("  ↓")
-			}
-			fmt.Printf("%d. %s\n", i+1, entry.Step)
-			if entry.Input != "" {
-				fmt.Printf("   Input:  %s\n", entry.Input)
-			}
-			fmt.Printf("   Output: %s\n", entry.Output)
-			fmt.Printf("   Time:   %s\n", entry.Time)
+		fmt.Printf("%d. %s\n", i+1, entry.Step)
+		if entry.Input != "" {
+			fmt.Printf("   Input:  %s\n", entry.Input)
 		}
+		fmt.Printf("   Output: %s\n", entry.Output)
+		fmt.Printf("   Time:   %s\n", entry.Time)
 	}
 
 	return nil

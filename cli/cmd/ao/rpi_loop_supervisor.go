@@ -139,15 +139,11 @@ func buildBaseLoopConfig() rpiLoopSupervisorConfig {
 // applySupervisorDefaults overrides config values with supervisor-mode defaults
 // for any flags the user has not explicitly set.
 func applySupervisorDefaults(cmd *cobra.Command, cfg *rpiLoopSupervisorConfig) {
-	if !cmd.Flags().Changed("failure-policy") {
-		cfg.FailurePolicy = loopFailurePolicyContinue
-	}
-	if !cmd.Flags().Changed("cycle-retries") {
-		cfg.CycleRetries = 1
-	}
-	if !cmd.Flags().Changed("cycle-delay") {
-		cfg.CycleDelay = 5 * time.Minute
-	}
+	applySupervisorBoolDefaults(cmd, cfg)
+	applySupervisorPolicyDefaults(cmd, cfg)
+}
+
+func applySupervisorBoolDefaults(cmd *cobra.Command, cfg *rpiLoopSupervisorConfig) {
 	if !cmd.Flags().Changed("lease") {
 		cfg.LeaseEnabled = true
 	}
@@ -163,6 +159,18 @@ func applySupervisorDefaults(cmd *cobra.Command, cfg *rpiLoopSupervisorConfig) {
 	if !cmd.Flags().Changed("cleanup-prune-branches") {
 		cfg.CleanupPruneBranches = true
 	}
+}
+
+func applySupervisorPolicyDefaults(cmd *cobra.Command, cfg *rpiLoopSupervisorConfig) {
+	if !cmd.Flags().Changed("failure-policy") {
+		cfg.FailurePolicy = loopFailurePolicyContinue
+	}
+	if !cmd.Flags().Changed("cycle-retries") {
+		cfg.CycleRetries = 1
+	}
+	if !cmd.Flags().Changed("cycle-delay") {
+		cfg.CycleDelay = 5 * time.Minute
+	}
 	if !cmd.Flags().Changed("gate-policy") {
 		cfg.GatePolicy = loopGatePolicyRequired
 	}
@@ -171,6 +179,15 @@ func applySupervisorDefaults(cmd *cobra.Command, cfg *rpiLoopSupervisorConfig) {
 // validateLoopConfigValues checks numeric constraints and applies defaults for
 // zero-valued fields. cmd may be nil when rpiSupervisor is false.
 func validateLoopConfigValues(cfg *rpiLoopSupervisorConfig, cmd *cobra.Command) error {
+	if err := validateLoopNumericConstraints(cfg); err != nil {
+		return err
+	}
+	applyLoopTimingDefaults(cfg, cmd)
+	applyLoopPathDefaults(cfg)
+	return nil
+}
+
+func validateLoopNumericConstraints(cfg *rpiLoopSupervisorConfig) error {
 	if cfg.CycleRetries < 0 {
 		return fmt.Errorf("cycle-retries must be >= 0")
 	}
@@ -183,6 +200,10 @@ func validateLoopConfigValues(cfg *rpiLoopSupervisorConfig, cmd *cobra.Command) 
 	if cfg.CommandTimeout < 0 {
 		return fmt.Errorf("command-timeout must be >= 0")
 	}
+	return nil
+}
+
+func applyLoopTimingDefaults(cfg *rpiLoopSupervisorConfig, cmd *cobra.Command) {
 	if cfg.LeaseTTL <= 0 {
 		cfg.LeaseTTL = 2 * time.Minute
 	}
@@ -195,6 +216,9 @@ func validateLoopConfigValues(cfg *rpiLoopSupervisorConfig, cmd *cobra.Command) 
 	if rpiSupervisor && cmd != nil && !cmd.Flags().Changed("auto-clean-stale-after") {
 		cfg.AutoCleanStaleAfter = 0
 	}
+}
+
+func applyLoopPathDefaults(cfg *rpiLoopSupervisorConfig) {
 	if cfg.LeasePath == "" {
 		cfg.LeasePath = filepath.Join(".agents", "rpi", "supervisor.lock")
 	}
@@ -204,7 +228,6 @@ func validateLoopConfigValues(cfg *rpiLoopSupervisorConfig, cmd *cobra.Command) 
 	if cfg.KillSwitchPath == "" {
 		cfg.KillSwitchPath = filepath.Join(".agents", "rpi", "KILL")
 	}
-	return nil
 }
 
 // validateLoopConfigPolicies validates enum-style policy fields.
@@ -302,14 +325,8 @@ type landingScope struct {
 }
 
 func runRPISupervisedCycle(cwd, goal string, cycle, attempt int, cfg rpiLoopSupervisorConfig) (retErr error) {
-	if cfg.DetachedHeal {
-		branch, healed, err := ensureLoopAttachedBranch(cwd, cfg.DetachedBranchPrefix)
-		if err != nil {
-			return wrapCycleFailure(cycleFailureInfrastructure, "detached-head self-heal", err)
-		}
-		if healed {
-			fmt.Printf("Detached HEAD detected. Switched to branch: %s\n", branch)
-		}
+	if err := healDetachedHeadIfNeeded(cwd, cfg); err != nil {
+		return err
 	}
 	var scope *landingScope
 	if cfg.LandingPolicy != loopLandingPolicyOff {
@@ -321,32 +338,11 @@ func runRPISupervisedCycle(cwd, goal string, cycle, attempt int, cfg rpiLoopSupe
 
 	if cfg.EnsureCleanup {
 		defer func() {
-			cleanupErr := runSupervisorCleanupWithBranchPrune(
-				cwd,
-				cfg.AutoCleanStaleAfter,
-				cfg.CleanupPruneWorktrees,
-				cfg.CleanupPruneBranches,
-			)
-			if cleanupErr == nil {
-				return
-			}
-			if retErr == nil {
-				retErr = wrapCycleFailure(cycleFailureInfrastructure, "supervisor cleanup", cleanupErr)
-				return
-			}
-			VerbosePrintf("Warning: supervisor cleanup after failure: %v\n", cleanupErr)
+			retErr = deferSupervisorCleanup(cwd, cfg, retErr)
 		}()
 	}
 
-	opts := defaultPhasedEngineOptions()
-	opts.AutoCleanStale = cfg.AutoClean
-	opts.AutoCleanStaleAfter = cfg.AutoCleanStaleAfter
-	opts.RuntimeMode = cfg.RuntimeMode
-	opts.RuntimeCommand = cfg.RuntimeCommand
-	opts.AOCommand = cfg.AOCommand
-	opts.BDCommand = cfg.BDCommand
-	opts.TmuxCommand = cfg.TmuxCommand
-
+	opts := buildCycleEngineOptions(cfg)
 	if err := runPhasedEngine(cwd, goal, opts); err != nil {
 		return wrapCycleFailure(cycleFailureTask, "phased engine", err)
 	}
@@ -357,6 +353,49 @@ func runRPISupervisedCycle(cwd, goal string, cycle, attempt int, cfg rpiLoopSupe
 		return wrapCycleFailure(cycleFailureInfrastructure, "landing", err)
 	}
 	return nil
+}
+
+func healDetachedHeadIfNeeded(cwd string, cfg rpiLoopSupervisorConfig) error {
+	if !cfg.DetachedHeal {
+		return nil
+	}
+	branch, healed, err := ensureLoopAttachedBranch(cwd, cfg.DetachedBranchPrefix)
+	if err != nil {
+		return wrapCycleFailure(cycleFailureInfrastructure, "detached-head self-heal", err)
+	}
+	if healed {
+		fmt.Printf("Detached HEAD detected. Switched to branch: %s\n", branch)
+	}
+	return nil
+}
+
+func deferSupervisorCleanup(cwd string, cfg rpiLoopSupervisorConfig, retErr error) error {
+	cleanupErr := runSupervisorCleanupWithBranchPrune(
+		cwd,
+		cfg.AutoCleanStaleAfter,
+		cfg.CleanupPruneWorktrees,
+		cfg.CleanupPruneBranches,
+	)
+	if cleanupErr == nil {
+		return retErr
+	}
+	if retErr == nil {
+		return wrapCycleFailure(cycleFailureInfrastructure, "supervisor cleanup", cleanupErr)
+	}
+	VerbosePrintf("Warning: supervisor cleanup after failure: %v\n", cleanupErr)
+	return retErr
+}
+
+func buildCycleEngineOptions(cfg rpiLoopSupervisorConfig) phasedEngineOptions {
+	opts := defaultPhasedEngineOptions()
+	opts.AutoCleanStale = cfg.AutoClean
+	opts.AutoCleanStaleAfter = cfg.AutoCleanStaleAfter
+	opts.RuntimeMode = cfg.RuntimeMode
+	opts.RuntimeCommand = cfg.RuntimeCommand
+	opts.AOCommand = cfg.AOCommand
+	opts.BDCommand = cfg.BDCommand
+	opts.TmuxCommand = cfg.TmuxCommand
+	return opts
 }
 
 func ensureLoopAttachedBranch(cwd, branchPrefix string) (string, bool, error) {
@@ -492,17 +531,38 @@ func runSyncPushLanding(cwd string, cfg rpiLoopSupervisorConfig, cycle, attempt 
 		fmt.Println("Landing: no commit performed.")
 		return nil
 	}
+	return syncRebaseAndPush(cwd, cfg)
+}
+
+func syncRebaseAndPush(cwd string, cfg rpiLoopSupervisorConfig) error {
 	targetBranch, err := resolveLandingBranch(cwd, cfg.LandingBranch, cfg.CommandTimeout)
 	if err != nil {
 		return err
 	}
-	if err := loopCommandRunner(cwd, cfg.CommandTimeout, "git", "fetch", "origin", targetBranch); err != nil {
-		return wrapSyncPushLandingFailure(cwd, cfg.CommandTimeout, "fetch", err)
+	if err := fetchAndRebase(cwd, cfg.CommandTimeout, targetBranch); err != nil {
+		return err
 	}
-	if err := loopCommandRunner(cwd, cfg.CommandTimeout, "git", "rebase", "origin/"+targetBranch); err != nil {
-		return wrapSyncPushLandingFailure(cwd, cfg.CommandTimeout, "rebase", err)
+	if err := runBDSyncIfNeeded(cwd, cfg); err != nil {
+		return err
 	}
+	if err := loopCommandRunner(cwd, cfg.CommandTimeout, "git", "push", "origin", "HEAD:"+targetBranch); err != nil {
+		return fmt.Errorf("landing push failed: %w", err)
+	}
+	_ = loopCommandRunner(cwd, cfg.CommandTimeout, "git", "status", "-sb")
+	return nil
+}
 
+func fetchAndRebase(cwd string, timeout time.Duration, targetBranch string) error {
+	if err := loopCommandRunner(cwd, timeout, "git", "fetch", "origin", targetBranch); err != nil {
+		return wrapSyncPushLandingFailure(cwd, timeout, "fetch", err)
+	}
+	if err := loopCommandRunner(cwd, timeout, "git", "rebase", "origin/"+targetBranch); err != nil {
+		return wrapSyncPushLandingFailure(cwd, timeout, "rebase", err)
+	}
+	return nil
+}
+
+func runBDSyncIfNeeded(cwd string, cfg rpiLoopSupervisorConfig) error {
 	runSync, err := shouldRunBDSync(cwd, cfg.BDSyncPolicy, cfg.BDCommand)
 	if err != nil {
 		return err
@@ -512,11 +572,6 @@ func runSyncPushLanding(cwd string, cfg rpiLoopSupervisorConfig, cycle, attempt 
 			return fmt.Errorf("bd sync failed: %w", err)
 		}
 	}
-
-	if err := loopCommandRunner(cwd, cfg.CommandTimeout, "git", "push", "origin", "HEAD:"+targetBranch); err != nil {
-		return fmt.Errorf("landing push failed: %w", err)
-	}
-	_ = loopCommandRunner(cwd, cfg.CommandTimeout, "git", "status", "-sb")
 	return nil
 }
 
@@ -771,23 +826,42 @@ func acquireSupervisorLease(cwd, leasePath string, ttl time.Duration, runID stri
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(cwd, path)
 	}
+	file, err := openLeaseFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := flockLeaseFile(file, path); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+
+	return buildAndStartLease(file, path, cwd, ttl, runID)
+}
+
+func openLeaseFile(path string) (*os.File, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return nil, fmt.Errorf("create lease directory: %w", err)
 	}
-
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("open lease file: %w", err)
 	}
+	return file, nil
+}
 
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		_ = file.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
-			return nil, fmt.Errorf("single-flight lease already held: %s", readLeaseHolderHint(path))
-		}
-		return nil, fmt.Errorf("acquire lease lock: %w", err)
+func flockLeaseFile(file *os.File, path string) error {
+	err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	if err == nil {
+		return nil
 	}
+	if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+		return fmt.Errorf("single-flight lease already held: %s", readLeaseHolderHint(path))
+	}
+	return fmt.Errorf("acquire lease lock: %w", err)
+}
 
+func buildAndStartLease(file *os.File, path, cwd string, ttl time.Duration, runID string) (*supervisorLease, error) {
 	host, _ := os.Hostname()
 	now := time.Now().UTC()
 	meta := supervisorLeaseMetadata{

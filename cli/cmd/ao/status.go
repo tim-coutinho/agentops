@@ -67,6 +67,57 @@ type flywheelBrief struct {
 	LastForgeTime  string  `json:"last_forge_time,omitempty"`
 }
 
+// loadRecentSessions populates status with session count and recent sessions.
+func loadRecentSessions(baseDir string, status *statusOutput) {
+	fs := storage.NewFileStorage(storage.WithBaseDir(baseDir))
+	sessions, err := fs.ListSessions()
+	if err != nil {
+		return
+	}
+	status.SessionCount = len(sessions)
+	if len(sessions) == 0 {
+		return
+	}
+
+	slices.SortFunc(sessions, func(a, b storage.IndexEntry) int {
+		return b.Date.Compare(a.Date)
+	})
+
+	limit := 5
+	if len(sessions) < limit {
+		limit = len(sessions)
+	}
+
+	for _, s := range sessions[:limit] {
+		status.RecentSessions = append(status.RecentSessions, sessionInfo{
+			ID:      s.SessionID,
+			Date:    s.Date.Format("2006-01-02"),
+			Summary: truncateStatus(s.Summary, 60),
+			Path:    filepath.Base(s.SessionPath),
+		})
+	}
+}
+
+// loadFlywheelBrief computes the flywheel health summary for status output.
+func loadFlywheelBrief(cwd string) *flywheelBrief {
+	metrics, err := computeMetrics(cwd, 7)
+	if err != nil {
+		return nil
+	}
+	brief := &flywheelBrief{
+		Status:         metrics.EscapeVelocityStatus(),
+		TotalArtifacts: metrics.TotalArtifacts,
+		Velocity:       metrics.Velocity,
+		NewArtifacts:   metrics.NewArtifacts,
+		StaleArtifacts: metrics.StaleArtifacts,
+	}
+	if lastForge := findLastForgeTime(cwd); !lastForge.IsZero() {
+		brief.LastForgeTime = lastForge.Format("2006-01-02 15:04")
+		brief.LastForgeAge = formatDurationBrief(time.Since(lastForge))
+	}
+	return brief
+}
+
 func runStatus(cmd *cobra.Command, args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -78,43 +129,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		BaseDir: baseDir,
 	}
 
-	// Check if initialized
 	if _, err := os.Stat(baseDir); os.IsNotExist(err) {
 		status.Initialized = false
 		return outputStatus(status)
 	}
 	status.Initialized = true
 
-	// Load sessions from index
-	fs := storage.NewFileStorage(storage.WithBaseDir(baseDir))
-	sessions, err := fs.ListSessions()
-	if err == nil {
-		status.SessionCount = len(sessions)
+	loadRecentSessions(baseDir, status)
 
-		// Get recent sessions (up to 5)
-		if len(sessions) > 0 {
-			// Sort by date descending
-			slices.SortFunc(sessions, func(a, b storage.IndexEntry) int {
-				return b.Date.Compare(a.Date)
-			})
-
-			limit := 5
-			if len(sessions) < limit {
-				limit = len(sessions)
-			}
-
-			for _, s := range sessions[:limit] {
-				status.RecentSessions = append(status.RecentSessions, sessionInfo{
-					ID:      s.SessionID,
-					Date:    s.Date.Format("2006-01-02"),
-					Summary: truncateStatus(s.Summary, 60),
-					Path:    filepath.Base(s.SessionPath),
-				})
-			}
-		}
-	}
-
-	// Load provenance stats
 	provPath := filepath.Join(baseDir, storage.ProvenanceDir, storage.ProvenanceFile)
 	graph, err := provenance.NewGraph(provPath)
 	if err == nil {
@@ -125,25 +147,26 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Flywheel health summary
-	metrics, err := computeMetrics(cwd, 7)
-	if err == nil {
-		brief := &flywheelBrief{
-			Status:         metrics.EscapeVelocityStatus(),
-			TotalArtifacts: metrics.TotalArtifacts,
-			Velocity:       metrics.Velocity,
-			NewArtifacts:   metrics.NewArtifacts,
-			StaleArtifacts: metrics.StaleArtifacts,
-		}
-		// Find most recent forge (retro/learning) timestamp
-		if lastForge := findLastForgeTime(cwd); !lastForge.IsZero() {
-			brief.LastForgeTime = lastForge.Format("2006-01-02 15:04")
-			brief.LastForgeAge = formatDurationBrief(time.Since(lastForge))
-		}
-		status.Flywheel = brief
-	}
+	status.Flywheel = loadFlywheelBrief(cwd)
 
 	return outputStatus(status)
+}
+
+// printFlywheelHealth prints the flywheel health section for table output.
+func printFlywheelHealth(fw *flywheelBrief) {
+	fmt.Println("\nFlywheel Health")
+	fmt.Println("───────────────")
+	fmt.Printf("  Status:     %s\n", fw.Status)
+	fmt.Printf("  Artifacts:  %d total, %d new (7d), %d stale (90d+)\n",
+		fw.TotalArtifacts, fw.NewArtifacts, fw.StaleArtifacts)
+	velocitySign := "+"
+	if fw.Velocity < 0 {
+		velocitySign = ""
+	}
+	fmt.Printf("  Velocity:   %s%.3f/week\n", velocitySign, fw.Velocity)
+	if fw.LastForgeAge != "" {
+		fmt.Printf("  Last forge: %s ago\n", fw.LastForgeAge)
+	}
 }
 
 func outputStatus(status *statusOutput) error {
@@ -156,7 +179,6 @@ func outputStatus(status *statusOutput) error {
 		return nil
 	}
 
-	// Table output
 	fmt.Println("AgentOps Status")
 	fmt.Println("==============")
 	fmt.Println()
@@ -188,19 +210,7 @@ func outputStatus(status *statusOutput) error {
 	}
 
 	if status.Flywheel != nil {
-		fmt.Println("\nFlywheel Health")
-		fmt.Println("───────────────")
-		fmt.Printf("  Status:     %s\n", status.Flywheel.Status)
-		fmt.Printf("  Artifacts:  %d total, %d new (7d), %d stale (90d+)\n",
-			status.Flywheel.TotalArtifacts, status.Flywheel.NewArtifacts, status.Flywheel.StaleArtifacts)
-		velocitySign := "+"
-		if status.Flywheel.Velocity < 0 {
-			velocitySign = ""
-		}
-		fmt.Printf("  Velocity:   %s%.3f/week\n", velocitySign, status.Flywheel.Velocity)
-		if status.Flywheel.LastForgeAge != "" {
-			fmt.Printf("  Last forge: %s ago\n", status.Flywheel.LastForgeAge)
-		}
+		printFlywheelHealth(status.Flywheel)
 	}
 
 	fmt.Println("\nCommands:")

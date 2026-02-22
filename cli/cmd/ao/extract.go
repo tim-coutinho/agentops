@@ -82,116 +82,129 @@ func runExtract(cmd *cobra.Command, args []string) error {
 
 	pendingPath := filepath.Join(cwd, storage.DefaultBaseDir, "pending.jsonl")
 
-	// Check if pending file exists
-	if _, err := os.Stat(pendingPath); os.IsNotExist(err) {
-		return nil // No pending extractions, silent exit
-	}
-
-	// Read pending extractions
-	pending, err := readPendingExtractions(pendingPath)
+	pending, err := loadPendingOrNil(pendingPath)
 	if err != nil {
-		return fmt.Errorf("read pending: %w", err)
+		return err
 	}
-
 	if len(pending) == 0 {
-		return nil // No pending extractions
-	}
-
-	// If --clear flag, just remove the file
-	if extractClear {
-		if err := os.Remove(pendingPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("clear pending: %w", err)
-		}
-		fmt.Printf("Cleared %d pending extraction(s)\n", len(pending))
 		return nil
 	}
 
-	// Handle --all flag
+	if extractClear {
+		return clearPendingFile(pendingPath, len(pending))
+	}
+
 	if extractAll {
 		return runExtractAll(pendingPath, pending, cwd)
 	}
 
-	// Default behavior: process only the most recent entry
+	return extractMostRecent(pendingPath, pending, cwd)
+}
+
+// loadPendingOrNil reads the pending file if it exists. Returns nil slice
+// (no error) when the file is missing or empty.
+func loadPendingOrNil(pendingPath string) ([]PendingExtraction, error) {
+	if _, err := os.Stat(pendingPath); os.IsNotExist(err) {
+		return nil, nil
+	}
+	pending, err := readPendingExtractions(pendingPath)
+	if err != nil {
+		return nil, fmt.Errorf("read pending: %w", err)
+	}
+	return pending, nil
+}
+
+// clearPendingFile removes the pending file and reports how many entries were cleared.
+func clearPendingFile(pendingPath string, count int) error {
+	if err := os.Remove(pendingPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("clear pending: %w", err)
+	}
+	fmt.Printf("Cleared %d pending extraction(s)\n", count)
+	return nil
+}
+
+// extractMostRecent processes only the last pending entry and removes it.
+func extractMostRecent(pendingPath string, pending []PendingExtraction, cwd string) error {
 	extraction := pending[len(pending)-1]
-
-	// Output the extraction prompt for Claude
 	outputExtractionPrompt(extraction, cwd, extractMaxContent)
-
-	// Remove only the processed entry from pending
 	if err := removePendingEntry(pendingPath, pending, len(pending)-1); err != nil {
 		VerbosePrintf("Warning: failed to update pending file: %v\n", err)
 	}
-
 	return nil
 }
 
 // runExtractAll processes all pending extractions.
 func runExtractAll(pendingPath string, pending []PendingExtraction, cwd string) error {
-	// Handle dry-run mode
 	if GetDryRun() {
-		if GetOutput() == "json" {
-			result := ExtractBatchResult{
-				Processed: 0,
-				Failed:    0,
-				Remaining: len(pending),
-				Entries:   make([]string, len(pending)),
-			}
-			for i, p := range pending {
-				result.Entries[i] = p.SessionID
-			}
-			data, err := json.MarshalIndent(result, "", "  ")
-			if err != nil {
-				return fmt.Errorf("marshal extract result: %w", err)
-			}
-			fmt.Println(string(data))
-		} else {
-			fmt.Printf("Would process %d pending extraction(s):\n", len(pending))
-			for _, p := range pending {
-				fmt.Printf("  - %s (%s)\n", p.SessionID, p.Summary)
-			}
-		}
-		return nil
+		return outputExtractDryRun(pending)
 	}
 
-	// Process all entries
-	processed := []string{}
-	failed := 0
+	processed := processAllExtractions(pending, cwd)
 
-	for i, extraction := range pending {
-		VerbosePrintf("Processing %d/%d: %s\n", i+1, len(pending), extraction.SessionID)
+	remaining := filterUnprocessed(pending, processed)
 
-		// Output the extraction prompt
-		outputExtractionPrompt(extraction, cwd, extractMaxContent)
-
-		// Mark as processed (success)
-		processed = append(processed, extraction.SessionID)
-	}
-
-	// Remove successfully processed entries from pending
-	remaining := []PendingExtraction{}
-	for i, entry := range pending {
-		// If this entry was not processed, keep it
-		found := false
-		for _, sessionID := range processed {
-			if entry.SessionID == sessionID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			remaining = append(remaining, entry)
-		}
-		// For now, we assume all succeed (since we can't detect failure)
-		// In a real implementation, this would track actual success/failure
-		_ = i
-	}
-
-	// Rewrite pending file with remaining entries using flock
 	if err := rewritePendingFile(pendingPath, remaining); err != nil {
 		return fmt.Errorf("update pending file: %w", err)
 	}
 
-	// Output results
+	return outputExtractBatchResult(processed, 0, remaining)
+}
+
+// outputExtractDryRun prints what would be processed without doing work.
+func outputExtractDryRun(pending []PendingExtraction) error {
+	if GetOutput() == "json" {
+		result := ExtractBatchResult{
+			Processed: 0,
+			Failed:    0,
+			Remaining: len(pending),
+			Entries:   make([]string, len(pending)),
+		}
+		for i, p := range pending {
+			result.Entries[i] = p.SessionID
+		}
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal extract result: %w", err)
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+	fmt.Printf("Would process %d pending extraction(s):\n", len(pending))
+	for _, p := range pending {
+		fmt.Printf("  - %s (%s)\n", p.SessionID, p.Summary)
+	}
+	return nil
+}
+
+// processAllExtractions outputs the extraction prompt for every pending entry
+// and returns the list of session IDs that were processed.
+func processAllExtractions(pending []PendingExtraction, cwd string) []string {
+	var processed []string
+	for i, extraction := range pending {
+		VerbosePrintf("Processing %d/%d: %s\n", i+1, len(pending), extraction.SessionID)
+		outputExtractionPrompt(extraction, cwd, extractMaxContent)
+		processed = append(processed, extraction.SessionID)
+	}
+	return processed
+}
+
+// filterUnprocessed returns pending entries whose SessionID is not in processed.
+func filterUnprocessed(pending []PendingExtraction, processed []string) []PendingExtraction {
+	processedSet := make(map[string]bool, len(processed))
+	for _, sid := range processed {
+		processedSet[sid] = true
+	}
+	var remaining []PendingExtraction
+	for _, entry := range pending {
+		if !processedSet[entry.SessionID] {
+			remaining = append(remaining, entry)
+		}
+	}
+	return remaining
+}
+
+// outputExtractBatchResult prints the batch extraction summary as JSON or text.
+func outputExtractBatchResult(processed []string, failed int, remaining []PendingExtraction) error {
 	if GetOutput() == "json" {
 		result := ExtractBatchResult{
 			Processed: len(processed),
@@ -204,10 +217,9 @@ func runExtractAll(pendingPath string, pending []PendingExtraction, cwd string) 
 			return fmt.Errorf("marshal extract batch result: %w", err)
 		}
 		fmt.Println(string(data))
-	} else {
-		fmt.Printf("Processed: %d, Failed: %d, Remaining: %d\n", len(processed), failed, len(remaining))
+		return nil
 	}
-
+	fmt.Printf("Processed: %d, Failed: %d, Remaining: %d\n", len(processed), failed, len(remaining))
 	return nil
 }
 

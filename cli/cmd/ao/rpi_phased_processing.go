@@ -162,6 +162,13 @@ func classifyGateFailureClass(phaseNum int, gateErr *gateFailError) types.MemRLF
 		return ""
 	}
 	verdict := strings.ToUpper(strings.TrimSpace(gateErr.Verdict))
+	if fc := classifyByPhase(phaseNum, verdict); fc != "" {
+		return fc
+	}
+	return classifyByVerdict(verdict)
+}
+
+func classifyByPhase(phaseNum int, verdict string) types.MemRLFailureClass {
 	switch phaseNum {
 	case 1:
 		if verdict == "FAIL" {
@@ -179,6 +186,10 @@ func classifyGateFailureClass(phaseNum int, gateErr *gateFailError) types.MemRLF
 			return types.MemRLFailureClassVibeFail
 		}
 	}
+	return ""
+}
+
+func classifyByVerdict(verdict string) types.MemRLFailureClass {
 	switch verdict {
 	case string(failReasonTimeout):
 		return types.MemRLFailureClassPhaseTimeout
@@ -219,9 +230,7 @@ func handleGateRetry(cwd string, state *phasedState, phaseNum int, gateErr *gate
 
 	state.Attempts[attemptKey]++
 	attempt := state.Attempts[attemptKey]
-	if state.Opts.LiveStatus {
-		updateLivePhaseStatus(statusPath, allPhases, phaseNum, "retrying after "+gateErr.Verdict, attempt, "")
-	}
+	maybeUpdateLiveStatus(state, statusPath, allPhases, phaseNum, "retrying after "+gateErr.Verdict, attempt, "")
 
 	action, decision := resolveGateRetryAction(state, phaseNum, gateErr, attempt)
 	logGateRetryMemRL(logPath, state.RunID, phaseName, decision, action)
@@ -233,7 +242,6 @@ func handleGateRetry(cwd string, state *phasedState, phaseNum int, gateErr *gate
 	fmt.Printf("%s: %s (attempt %d/%d) — retrying\n", phaseName, gateErr.Verdict, attempt, state.Opts.MaxRetries)
 	logPhaseTransition(logPath, state.RunID, phaseName, fmt.Sprintf("RETRY attempt %d/%d verdict=%s report=%s", attempt, state.Opts.MaxRetries, gateErr.Verdict, gateErr.Report))
 
-	// Build retry prompt
 	retryCtx := &retryContext{
 		Attempt:  attempt,
 		Findings: gateErr.Findings,
@@ -250,36 +258,36 @@ func handleGateRetry(cwd string, state *phasedState, phaseNum int, gateErr *gate
 		return false, nil
 	}
 
-	// Spawn retry session
-	fmt.Printf("Spawning retry: %s -p '%s'\n", effectiveRuntimeCommand(state.Opts.RuntimeCommand), retryPrompt)
-	if state.Opts.LiveStatus {
-		updateLivePhaseStatus(statusPath, allPhases, phaseNum, "running retry prompt", attempt, "")
-	}
-	if err := executor.Execute(retryPrompt, spawnCwd, state.RunID, phaseNum); err != nil {
-		if state.Opts.LiveStatus {
-			updateLivePhaseStatus(statusPath, allPhases, phaseNum, "retry failed", attempt, err.Error())
-		}
+	if err := executeWithStatus(executor, state, statusPath, allPhases, phaseNum, attempt, retryPrompt, spawnCwd, "running retry prompt", "retry failed"); err != nil {
 		return false, fmt.Errorf("retry failed: %w", err)
 	}
 
-	// Re-run the original phase after retry
 	rerunPrompt, err := buildPromptForPhase(cwd, phaseNum, state, nil)
 	if err != nil {
 		return false, fmt.Errorf("build rerun prompt: %w", err)
 	}
 
 	fmt.Printf("Re-running phase %d after retry\n", phaseNum)
-	if state.Opts.LiveStatus {
-		updateLivePhaseStatus(statusPath, allPhases, phaseNum, "re-running phase", attempt, "")
-	}
-	if err := executor.Execute(rerunPrompt, spawnCwd, state.RunID, phaseNum); err != nil {
-		if state.Opts.LiveStatus {
-			updateLivePhaseStatus(statusPath, allPhases, phaseNum, "rerun failed", attempt, err.Error())
-		}
+	if err := executeWithStatus(executor, state, statusPath, allPhases, phaseNum, attempt, rerunPrompt, spawnCwd, "re-running phase", "rerun failed"); err != nil {
 		return false, fmt.Errorf("rerun failed: %w", err)
 	}
 
 	return verifyGateAfterRetry(cwd, state, phaseNum, logPath, spawnCwd, statusPath, allPhases, executor, attempt)
+}
+
+func maybeUpdateLiveStatus(state *phasedState, statusPath string, allPhases []PhaseProgress, phaseNum int, status string, attempt int, errMsg string) {
+	if state.Opts.LiveStatus {
+		updateLivePhaseStatus(statusPath, allPhases, phaseNum, status, attempt, errMsg)
+	}
+}
+
+func executeWithStatus(executor PhaseExecutor, state *phasedState, statusPath string, allPhases []PhaseProgress, phaseNum, attempt int, prompt, spawnCwd, runningMsg, failedMsg string) error {
+	maybeUpdateLiveStatus(state, statusPath, allPhases, phaseNum, runningMsg, attempt, "")
+	if err := executor.Execute(prompt, spawnCwd, state.RunID, phaseNum); err != nil {
+		maybeUpdateLiveStatus(state, statusPath, allPhases, phaseNum, failedMsg, attempt, err.Error())
+		return err
+	}
+	return nil
 }
 
 // logGateRetryMemRL logs the MemRL policy decision for a gate retry, if mode is not off.
@@ -371,29 +379,16 @@ func findLatestCouncilReport(cwd string, pattern string, notBefore time.Time, ep
 	var matches []string
 	var epicMatches []string
 	for _, entry := range entries {
-		if entry.IsDir() {
+		fullPath, ok := matchCouncilEntry(entry, councilDir, pattern, notBefore)
+		if !ok {
 			continue
 		}
-		name := entry.Name()
-		if strings.Contains(name, pattern) && strings.HasSuffix(name, ".md") {
-			if !notBefore.IsZero() {
-				info, err := entry.Info()
-				if err != nil {
-					continue
-				}
-				if info.ModTime().Before(notBefore) {
-					continue
-				}
-			}
-			fullPath := filepath.Join(councilDir, name)
-			matches = append(matches, fullPath)
-			if epicID != "" && strings.Contains(name, epicID) {
-				epicMatches = append(epicMatches, fullPath)
-			}
+		matches = append(matches, fullPath)
+		if epicID != "" && strings.Contains(entry.Name(), epicID) {
+			epicMatches = append(epicMatches, fullPath)
 		}
 	}
 
-	// Prefer epic-scoped matches when available.
 	selected := matches
 	if len(epicMatches) > 0 {
 		selected = epicMatches
@@ -406,6 +401,23 @@ func findLatestCouncilReport(cwd string, pattern string, notBefore time.Time, ep
 	sort.Strings(selected)
 
 	return selected[len(selected)-1], nil
+}
+
+func matchCouncilEntry(entry os.DirEntry, councilDir, pattern string, notBefore time.Time) (string, bool) {
+	if entry.IsDir() {
+		return "", false
+	}
+	name := entry.Name()
+	if !strings.Contains(name, pattern) || !strings.HasSuffix(name, ".md") {
+		return "", false
+	}
+	if !notBefore.IsZero() {
+		info, err := entry.Info()
+		if err != nil || info.ModTime().Before(notBefore) {
+			return "", false
+		}
+	}
+	return filepath.Join(councilDir, name), true
 }
 
 // extractCouncilFindings extracts structured findings from a council report.
@@ -1039,29 +1051,30 @@ func deriveRepoRootFromRPIOrchestrationLog(logPath string) (string, bool) {
 	return filepath.Dir(agentsDir), true
 }
 
+var ledgerPrefixActions = []struct {
+	prefix string
+	action string
+}{
+	{"started", "started"},
+	{"completed", "completed"},
+	{"failed:", "failed"},
+	{"fatal:", "fatal"},
+	{"retry", "retry"},
+	{"dry-run", "dry-run"},
+	{"handoff", "handoff"},
+	{"epic=", "summary"},
+}
+
 func ledgerActionFromDetails(details string) string {
 	normalized := strings.ToLower(strings.TrimSpace(details))
-	switch {
-	case normalized == "":
+	if normalized == "" {
 		return "event"
-	case strings.HasPrefix(normalized, "started"):
-		return "started"
-	case strings.HasPrefix(normalized, "completed"):
-		return "completed"
-	case strings.HasPrefix(normalized, "failed:"):
-		return "failed"
-	case strings.HasPrefix(normalized, "fatal:"):
-		return "fatal"
-	case strings.HasPrefix(normalized, "retry"):
-		return "retry"
-	case strings.HasPrefix(normalized, "dry-run"):
-		return "dry-run"
-	case strings.HasPrefix(normalized, "handoff"):
-		return "handoff"
-	case strings.HasPrefix(normalized, "epic="):
-		return "summary"
 	}
-
+	for _, pa := range ledgerPrefixActions {
+		if strings.HasPrefix(normalized, pa.prefix) {
+			return pa.action
+		}
+	}
 	fields := strings.Fields(normalized)
 	return cmp.Or(strings.Trim(fields[0], ":"), "event")
 }

@@ -167,24 +167,35 @@ func applyLimit(msgs []Message, limit int) []Message {
 	return msgs
 }
 
+// loadAndWarnMessages loads inbox messages, printing warnings for corruption.
+// Returns nil, 0, nil and prints "No messages" when the file does not exist.
+func loadAndWarnMessages(cwd string) ([]Message, int, error) {
+	messages, corruptedCount, err := loadMessages(cwd)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("No messages")
+			return nil, 0, nil
+		}
+		return nil, 0, fmt.Errorf("load messages: %w", err)
+	}
+	if corruptedCount > 0 {
+		fmt.Fprintf(os.Stderr, "Warning: %d corrupted message(s) skipped\n", corruptedCount)
+	}
+	return messages, corruptedCount, nil
+}
+
 func runInbox(cmd *cobra.Command, args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	// Load messages (returns messages and corruption count)
-	messages, corruptedCount, err := loadMessages(cwd)
+	messages, corruptedCount, err := loadAndWarnMessages(cwd)
 	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Println("No messages")
-			return nil
-		}
-		return fmt.Errorf("load messages: %w", err)
+		return err
 	}
-
-	if corruptedCount > 0 {
-		fmt.Fprintf(os.Stderr, "Warning: %d corrupted message(s) skipped\n", corruptedCount)
+	if messages == nil {
+		return nil
 	}
 
 	// Filter messages (with duration validation)
@@ -317,6 +328,12 @@ func parseSinceDuration(since string) (time.Time, string) {
 	return time.Now().Add(-duration), ""
 }
 
+// isInboxRecipient returns true if the message is addressed to the inbox
+// (mayor, all, or empty).
+func isInboxRecipient(to string) bool {
+	return to == "mayor" || to == "all" || to == ""
+}
+
 // messageMatchesFilters returns true if the message passes all filter criteria.
 func messageMatchesFilters(msg Message, sinceTime time.Time, from string, unreadOnly bool) bool {
 	if !sinceTime.IsZero() && msg.Timestamp.Before(sinceTime) {
@@ -328,11 +345,7 @@ func messageMatchesFilters(msg Message, sinceTime time.Time, from string, unread
 	if unreadOnly && msg.Read {
 		return false
 	}
-	// Default: show messages to "mayor", "all", or empty
-	if msg.To != "mayor" && msg.To != "all" && msg.To != "" {
-		return false
-	}
-	return true
+	return isInboxRecipient(msg.To)
 }
 
 func filterMessages(messages []Message, since, from string, unreadOnly bool) ([]Message, string) {
@@ -429,26 +442,35 @@ func writeMessagesJSONL(file *os.File, messages []Message) error {
 	return nil
 }
 
+// openLockedFile opens a file with an exclusive flock and returns a cleanup
+// function that unlocks and closes. The caller must defer cleanup().
+func openLockedFile(path string) (file *os.File, cleanup func() error, err error) {
+	file, err = os.OpenFile(path, os.O_RDWR, 0600)
+	if err != nil {
+		return nil, nil, err
+	}
+	if lockErr := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); lockErr != nil {
+		_ = file.Close()
+		return nil, nil, fmt.Errorf("lock messages file: %w", lockErr)
+	}
+	cleanup = func() error {
+		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN) //nolint:errcheck // unlock best-effort
+		return file.Close()
+	}
+	return file, cleanup, nil
+}
+
 func markMessagesRead(cwd string, messages []Message) (err error) {
 	messagesPath := filepath.Join(cwd, ".agents", "mail", "messages.jsonl")
 
-	// Open file with exclusive lock for read-modify-write
-	file, err := os.OpenFile(messagesPath, os.O_RDWR, 0600)
+	file, cleanup, err := openLockedFile(messagesPath)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		if cerr := file.Close(); cerr != nil && err == nil {
+		if cerr := cleanup(); cerr != nil && err == nil {
 			err = cerr
 		}
-	}()
-
-	// Acquire exclusive lock
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
-		return fmt.Errorf("lock messages file: %w", err)
-	}
-	defer func() {
-		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN) //nolint:errcheck // unlock best-effort
 	}()
 
 	// Read all messages while holding lock

@@ -108,7 +108,10 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		results = results[:searchLimit]
 	}
 
-	// Output results
+	return outputSearchResults(query, results)
+}
+
+func outputSearchResults(query string, results []searchResult) error {
 	if GetOutput() == "json" {
 		data, err := json.MarshalIndent(results, "", "  ")
 		if err != nil {
@@ -117,7 +120,6 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(data))
 		return nil
 	}
-
 	displaySearchResults(query, results)
 	return nil
 }
@@ -353,24 +355,12 @@ func searchJSONL(query string, dir string, limit int) ([]searchResult, error) {
 
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.Contains(strings.ToLower(line), queryLower) {
-				// Parse JSON to get meaningful context
-				var data map[string]any
-				if err := json.Unmarshal([]byte(line), &data); err == nil {
-					context := ""
-					if summary, ok := data["summary"].(string); ok {
-						context = summary
-						if len(context) > ContextLineMaxLength {
-							context = context[:ContextLineMaxLength] + "..."
-						}
-					}
-					results = append(results, searchResult{
-						Path:    file,
-						Context: context,
-						Type:    "session",
-					})
-					break // One match per file
-				}
+			if !strings.Contains(strings.ToLower(line), queryLower) {
+				continue
+			}
+			if r, ok := parseJSONLMatch(line, file); ok {
+				results = append(results, r)
+				break
 			}
 		}
 		_ = f.Close() //nolint:errcheck // read-only search, close error non-fatal
@@ -381,6 +371,25 @@ func searchJSONL(query string, dir string, limit int) ([]searchResult, error) {
 	}
 
 	return results, nil
+}
+
+func parseJSONLMatch(line, file string) (searchResult, bool) {
+	var data map[string]any
+	if err := json.Unmarshal([]byte(line), &data); err != nil {
+		return searchResult{}, false
+	}
+	context := ""
+	if summary, ok := data["summary"].(string); ok {
+		context = summary
+		if len(context) > ContextLineMaxLength {
+			context = context[:ContextLineMaxLength] + "..."
+		}
+	}
+	return searchResult{
+		Path:    file,
+		Context: context,
+		Type:    "session",
+	}, true
 }
 
 // searchSmartConnections uses Smart Connections HTTP API for semantic search.
@@ -563,46 +572,54 @@ func searchLearningsWithMaturity(query, dir string, limit int) ([]searchResult, 
 			if !strings.Contains(strings.ToLower(line), queryLower) {
 				continue
 			}
-
-			// Parse JSONL to get maturity and utility
-			var data map[string]any
-			if err := json.Unmarshal([]byte(line), &data); err != nil {
-				continue
+			if r, ok := parseLearningMatch(line, file); ok {
+				results = append(results, r)
+				break
 			}
-
-			// Calculate maturity-weighted score
-			score := calculateCASSScore(data)
-
-			context := ""
-			if summary, ok := data["summary"].(string); ok {
-				context = summary
-				if len(context) > ContextLineMaxLength {
-					context = context[:ContextLineMaxLength] + "..."
-				}
-			} else if content, ok := data["content"].(string); ok {
-				context = content
-				if len(context) > ContextLineMaxLength {
-					context = context[:ContextLineMaxLength] + "..."
-				}
-			}
-
-			maturityStr := "provisional"
-			if m, ok := data["maturity"].(string); ok {
-				maturityStr = m
-			}
-
-			results = append(results, searchResult{
-				Path:    file,
-				Score:   score,
-				Context: fmt.Sprintf("[%s] %s", maturityStr, context),
-				Type:    "learning",
-			})
-			break // One match per file
 		}
 		_ = f.Close() //nolint:errcheck // read-only search, close error non-fatal
 	}
 
 	return results, nil
+}
+
+func truncateContext(s string) string {
+	if len(s) > ContextLineMaxLength {
+		return s[:ContextLineMaxLength] + "..."
+	}
+	return s
+}
+
+func parseLearningMatch(line, file string) (searchResult, bool) {
+	var data map[string]any
+	if err := json.Unmarshal([]byte(line), &data); err != nil {
+		return searchResult{}, false
+	}
+
+	score := calculateCASSScore(data)
+	context := extractLearningContext(data)
+
+	maturityStr := "provisional"
+	if m, ok := data["maturity"].(string); ok {
+		maturityStr = m
+	}
+
+	return searchResult{
+		Path:    file,
+		Score:   score,
+		Context: fmt.Sprintf("[%s] %s", maturityStr, context),
+		Type:    "learning",
+	}, true
+}
+
+func extractLearningContext(data map[string]any) string {
+	if summary, ok := data["summary"].(string); ok {
+		return truncateContext(summary)
+	}
+	if content, ok := data["content"].(string); ok {
+		return truncateContext(content)
+	}
+	return ""
 }
 
 // calculateCASSScore computes a maturity-weighted score for CASS ranking.
@@ -615,19 +632,7 @@ func calculateCASSScore(data map[string]any) float64 {
 	}
 
 	// Maturity weight
-	maturityWeight := 1.0
-	if maturity, ok := data["maturity"].(string); ok {
-		switch maturity {
-		case "established":
-			maturityWeight = 1.5
-		case "candidate":
-			maturityWeight = 1.2
-		case "provisional":
-			maturityWeight = 1.0
-		case "anti-pattern":
-			maturityWeight = 0.3 // Still surface but ranked lower
-		}
-	}
+	maturityWeight := maturityToWeight(data)
 
 	// Confidence weight (default 0.5 if not set)
 	confidenceWeight := 0.5
@@ -636,6 +641,24 @@ func calculateCASSScore(data map[string]any) float64 {
 	}
 
 	return utility * maturityWeight * confidenceWeight
+}
+
+var maturityWeights = map[string]float64{
+	"established":  1.5,
+	"candidate":    1.2,
+	"provisional":  1.0,
+	"anti-pattern": 0.3,
+}
+
+func maturityToWeight(data map[string]any) float64 {
+	maturity, ok := data["maturity"].(string)
+	if !ok {
+		return 1.0
+	}
+	if w, found := maturityWeights[maturity]; found {
+		return w
+	}
+	return 1.0
 }
 
 // filterByType filters results by knowledge type.

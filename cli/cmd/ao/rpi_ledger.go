@@ -321,11 +321,8 @@ func VerifyRPILedgerChain(records []RPILedgerRecord) error {
 
 // MaterializeRPIRunCache writes .agents/rpi/runs/<run_id>.json for one run.
 func MaterializeRPIRunCache(rootDir, runID string) error {
-	if strings.TrimSpace(runID) == "" {
-		return fmt.Errorf("run_id is required")
-	}
-	if strings.Contains(runID, string(os.PathSeparator)) || strings.Contains(runID, "..") {
-		return fmt.Errorf("run_id contains invalid path elements")
+	if err := validateRunID(runID); err != nil {
+		return err
 	}
 
 	records, err := LoadRPILedgerRecords(rootDir)
@@ -336,6 +333,25 @@ func MaterializeRPIRunCache(rootDir, runID string) error {
 		return err
 	}
 
+	latest, count := filterRunRecords(records, runID)
+	if count == 0 {
+		return os.ErrNotExist
+	}
+
+	return writeRunCache(rootDir, runID, latest, count)
+}
+
+func validateRunID(runID string) error {
+	if strings.TrimSpace(runID) == "" {
+		return fmt.Errorf("run_id is required")
+	}
+	if strings.Contains(runID, string(os.PathSeparator)) || strings.Contains(runID, "..") {
+		return fmt.Errorf("run_id contains invalid path elements")
+	}
+	return nil
+}
+
+func filterRunRecords(records []RPILedgerRecord, runID string) (RPILedgerRecord, int) {
 	var latest RPILedgerRecord
 	count := 0
 	for _, record := range records {
@@ -345,10 +361,10 @@ func MaterializeRPIRunCache(rootDir, runID string) error {
 		latest = record
 		count++
 	}
-	if count == 0 {
-		return os.ErrNotExist
-	}
+	return latest, count
+}
 
+func writeRunCache(rootDir, runID string, latest RPILedgerRecord, count int) error {
 	cache := RPIRunCache{
 		RunID:      runID,
 		EventCount: count,
@@ -431,36 +447,46 @@ func validateLedgerRecord(record RPILedgerRecord) error {
 	if record.SchemaVersion != rpiLedgerSchemaVersion {
 		return fmt.Errorf("schema_version mismatch: got %d want %d", record.SchemaVersion, rpiLedgerSchemaVersion)
 	}
-	if strings.TrimSpace(record.EventID) == "" {
-		return fmt.Errorf("event_id is required")
+	if err := validateLedgerRequiredFields(record); err != nil {
+		return err
 	}
-	if strings.TrimSpace(record.RunID) == "" {
-		return fmt.Errorf("run_id is required")
-	}
-	if strings.TrimSpace(record.Phase) == "" {
-		return fmt.Errorf("phase is required")
-	}
-	if strings.TrimSpace(record.Action) == "" {
-		return fmt.Errorf("action is required")
-	}
-	if strings.TrimSpace(record.TS) == "" {
-		return fmt.Errorf("ts is required")
-	}
-	t, err := time.Parse(time.RFC3339Nano, record.TS)
-	if err != nil {
-		return fmt.Errorf("invalid ts: %w", err)
-	}
-	if t.UTC().Format(time.RFC3339Nano) != record.TS {
-		return fmt.Errorf("ts must be UTC RFC3339Nano")
-	}
-	if strings.TrimSpace(record.PayloadHash) == "" {
-		return fmt.Errorf("payload_hash is required")
-	}
-	if strings.TrimSpace(record.Hash) == "" {
-		return fmt.Errorf("hash is required")
+	if err := validateLedgerTimestamp(record.TS); err != nil {
+		return err
 	}
 	if _, err := normalizeDetails(record.Details); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validateLedgerRequiredFields(record RPILedgerRecord) error {
+	fields := []struct {
+		value string
+		name  string
+	}{
+		{record.EventID, "event_id"},
+		{record.RunID, "run_id"},
+		{record.Phase, "phase"},
+		{record.Action, "action"},
+		{record.TS, "ts"},
+		{record.PayloadHash, "payload_hash"},
+		{record.Hash, "hash"},
+	}
+	for _, f := range fields {
+		if strings.TrimSpace(f.value) == "" {
+			return fmt.Errorf("%s is required", f.name)
+		}
+	}
+	return nil
+}
+
+func validateLedgerTimestamp(ts string) error {
+	t, err := time.Parse(time.RFC3339Nano, ts)
+	if err != nil {
+		return fmt.Errorf("invalid ts: %w", err)
+	}
+	if t.UTC().Format(time.RFC3339Nano) != ts {
+		return fmt.Errorf("ts must be UTC RFC3339Nano")
 	}
 	return nil
 }
@@ -500,33 +526,37 @@ func normalizeDetails(details any) (json.RawMessage, error) {
 
 	switch v := details.(type) {
 	case []byte:
-		if len(bytes.TrimSpace(v)) == 0 {
-			return json.RawMessage([]byte("{}")), nil
-		}
-		var parsed any
-		if err := json.Unmarshal(v, &parsed); err != nil {
-			return nil, fmt.Errorf("details must be valid JSON: %w", err)
-		}
-		normalized, err := json.Marshal(parsed)
-		if err != nil {
-			return nil, fmt.Errorf("marshal details: %w", err)
-		}
-		return json.RawMessage(normalized), nil
+		return normalizeDetailsBytes(v)
 	default:
-		encoded, err := json.Marshal(v)
-		if err != nil {
-			return nil, fmt.Errorf("marshal details: %w", err)
-		}
-		var parsed any
-		if err := json.Unmarshal(encoded, &parsed); err != nil {
-			return nil, fmt.Errorf("details must be valid JSON: %w", err)
-		}
-		normalized, err := json.Marshal(parsed)
-		if err != nil {
-			return nil, fmt.Errorf("marshal details: %w", err)
-		}
-		return json.RawMessage(normalized), nil
+		return normalizeDetailsValue(v)
 	}
+}
+
+func normalizeDetailsBytes(v []byte) (json.RawMessage, error) {
+	if len(bytes.TrimSpace(v)) == 0 {
+		return json.RawMessage([]byte("{}")), nil
+	}
+	return roundTripJSON(v)
+}
+
+func normalizeDetailsValue(v any) (json.RawMessage, error) {
+	encoded, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("marshal details: %w", err)
+	}
+	return roundTripJSON(encoded)
+}
+
+func roundTripJSON(data []byte) (json.RawMessage, error) {
+	var parsed any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return nil, fmt.Errorf("details must be valid JSON: %w", err)
+	}
+	normalized, err := json.Marshal(parsed)
+	if err != nil {
+		return nil, fmt.Errorf("marshal details: %w", err)
+	}
+	return json.RawMessage(normalized), nil
 }
 
 func writeFileAtomic(path string, data []byte, mode os.FileMode) error {

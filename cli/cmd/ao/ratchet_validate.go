@@ -62,31 +62,38 @@ func runRatchetValidate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no files to validate (use --changes or ensure output exists)")
 	}
 
-	opts := buildValidateOptions()
-	w := cmd.OutOrStdout()
+	return validateFiles(cmd.OutOrStdout(), validator, step, files)
+}
 
+// validateFiles runs validation on each file and outputs results.
+func validateFiles(w io.Writer, validator *ratchet.Validator, step ratchet.Step, files []string) error {
+	opts := buildValidateOptions()
 	allValid := true
+
 	for _, file := range files {
 		result, err := validator.ValidateWithOptions(step, file, opts)
 		if err != nil {
 			return fmt.Errorf("validate %s: %w", file, err)
 		}
-
-		if GetOutput() == "json" {
-			enc := json.NewEncoder(w)
-			enc.SetIndent("", "  ")
-			if err := enc.Encode(result); err != nil {
-				return fmt.Errorf("encode validation result: %w", err)
-			}
-		} else {
-			formatValidationResult(w, file, result, &allValid)
+		if err := outputValidationResult(w, file, result, &allValid); err != nil {
+			return err
 		}
 	}
 
 	if !allValid {
 		return fmt.Errorf("validation failed: one or more artifacts are invalid")
 	}
+	return nil
+}
 
+// outputValidationResult writes a single result as JSON or text.
+func outputValidationResult(w io.Writer, file string, result *ratchet.ValidationResult, allValid *bool) error {
+	if GetOutput() == "json" {
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	}
+	formatValidationResult(w, file, result, allValid)
 	return nil
 }
 
@@ -124,38 +131,46 @@ func buildValidateOptions() *ratchet.ValidateOptions {
 // formatValidationResult prints a single validation result in text format.
 func formatValidationResult(w io.Writer, file string, result *ratchet.ValidationResult, allValid *bool) {
 	fmt.Fprintf(w, "Validation: %s\n", file)
+	formatValidationStatus(w, result, allValid)
+	formatLenientInfo(w, result)
+	formatStringList(w, "Issues", result.Issues)
+	formatStringList(w, "Warnings", result.Warnings)
+	if result.Tier != nil {
+		fmt.Fprintf(w, "  Tier: %d (%s)\n", *result.Tier, result.Tier.String())
+	}
+}
+
+// formatValidationStatus prints the VALID/INVALID status line.
+func formatValidationStatus(w io.Writer, result *ratchet.ValidationResult, allValid *bool) {
 	if result.Valid {
 		fmt.Fprintln(w, "  Status: VALID ✓")
 	} else {
 		fmt.Fprintln(w, "  Status: INVALID ✗")
 		*allValid = false
 	}
+}
 
-	if result.Lenient {
-		fmt.Fprintln(w, "  Mode: LENIENT (legacy bypass)")
-		if result.LenientExpiryDate != nil {
-			fmt.Fprintf(w, "  Expires: %s\n", *result.LenientExpiryDate)
-		}
-		if result.LenientExpiringSoon {
-			fmt.Fprintln(w, "  ⚠️  Expiring soon - migration required")
-		}
+// formatLenientInfo prints lenient mode details if applicable.
+func formatLenientInfo(w io.Writer, result *ratchet.ValidationResult) {
+	if !result.Lenient {
+		return
 	}
-
-	if len(result.Issues) > 0 {
-		fmt.Fprintln(w, "  Issues:")
-		for _, issue := range result.Issues {
-			fmt.Fprintf(w, "    - %s\n", issue)
-		}
+	fmt.Fprintln(w, "  Mode: LENIENT (legacy bypass)")
+	if result.LenientExpiryDate != nil {
+		fmt.Fprintf(w, "  Expires: %s\n", *result.LenientExpiryDate)
 	}
-
-	if len(result.Warnings) > 0 {
-		fmt.Fprintln(w, "  Warnings:")
-		for _, warn := range result.Warnings {
-			fmt.Fprintf(w, "    - %s\n", warn)
-		}
+	if result.LenientExpiringSoon {
+		fmt.Fprintln(w, "  ⚠️  Expiring soon - migration required")
 	}
+}
 
-	if result.Tier != nil {
-		fmt.Fprintf(w, "  Tier: %d (%s)\n", *result.Tier, result.Tier.String())
+// formatStringList prints a labeled list of strings (issues or warnings).
+func formatStringList(w io.Writer, label string, items []string) {
+	if len(items) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "  %s:\n", label)
+	for _, item := range items {
+		fmt.Fprintf(w, "    - %s\n", item)
 	}
 }

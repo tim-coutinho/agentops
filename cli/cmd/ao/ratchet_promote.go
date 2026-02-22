@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -52,7 +53,21 @@ func runRatchetPromote(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	// Validate promotion requirements
+	w := cmd.OutOrStdout()
+	if err := validatePromotion(cwd, artifact, targetTier, w); err != nil {
+		return err
+	}
+
+	if GetDryRun() {
+		fmt.Fprintf(w, "Would promote %s to tier %d (%s)\n", artifact, targetTier, targetTier.String())
+		return nil
+	}
+
+	return recordPromotion(cwd, artifact, targetTier, w)
+}
+
+// validatePromotion checks that an artifact meets promotion requirements.
+func validatePromotion(cwd, artifact string, targetTier ratchet.Tier, w io.Writer) error {
 	validator, err := ratchet.NewValidator(cwd)
 	if err != nil {
 		return fmt.Errorf("create validator: %w", err)
@@ -63,21 +78,19 @@ func runRatchetPromote(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("validate promotion: %w", err)
 	}
 
-	w := cmd.OutOrStdout()
-	if !result.Valid {
-		fmt.Fprintln(w, "Promotion blocked:")
-		for _, issue := range result.Issues {
-			fmt.Fprintf(w, "  - %s\n", issue)
-		}
-		return fmt.Errorf("promotion blocked: requirements not met")
-	}
-
-	if GetDryRun() {
-		fmt.Fprintf(w, "Would promote %s to tier %d (%s)\n", artifact, targetTier, targetTier.String())
+	if result.Valid {
 		return nil
 	}
 
-	// Record in chain
+	fmt.Fprintln(w, "Promotion blocked:")
+	for _, issue := range result.Issues {
+		fmt.Fprintf(w, "  - %s\n", issue)
+	}
+	return fmt.Errorf("promotion blocked: requirements not met")
+}
+
+// recordPromotion appends a promotion entry to the ratchet chain.
+func recordPromotion(cwd, artifact string, targetTier ratchet.Tier, w io.Writer) error {
 	chain, err := ratchet.LoadChain(cwd)
 	if err != nil {
 		return fmt.Errorf("load chain: %w", err)
@@ -97,6 +110,5 @@ func runRatchetPromote(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(w, "Promoted: %s → tier %d (%s)\n", artifact, targetTier, targetTier.String())
-
 	return nil
 }

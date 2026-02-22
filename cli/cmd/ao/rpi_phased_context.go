@@ -251,6 +251,24 @@ func validateRuntimeMode(mode string) error {
 	}
 }
 
+// renderPreambleInstructions renders the context-discipline and summary-contract
+// instruction templates into the prompt builder. These are placed first so they
+// survive context compaction.
+func renderPreambleInstructions(prompt *strings.Builder, data any) {
+	disciplineTmpl, err := template.New("discipline").Parse(contextDisciplineInstruction)
+	if err == nil {
+		if execErr := disciplineTmpl.Execute(prompt, data); execErr != nil {
+			VerbosePrintf("Warning: could not render context discipline instruction: %v\n", execErr)
+		}
+	}
+	summaryTmpl, err := template.New("summary").Parse(phaseSummaryInstruction)
+	if err == nil {
+		if execErr := summaryTmpl.Execute(prompt, data); execErr != nil {
+			VerbosePrintf("Warning: could not render summary instruction: %v\n", execErr)
+		}
+	}
+}
+
 // buildPromptForPhase constructs the Claude invocation prompt for a phase.
 func buildPromptForPhase(cwd string, phaseNum int, state *phasedState, _ *retryContext) (string, error) {
 	tmplStr, ok := phasePrompts[phaseNum]
@@ -262,9 +280,6 @@ func buildPromptForPhase(cwd string, phaseNum int, state *phasedState, _ *retryC
 	if err != nil {
 		return "", fmt.Errorf("parse template: %w", err)
 	}
-
-	// Get phase-specific context budget guidance
-	budget := phaseContextBudgets[phaseNum]
 
 	data := struct {
 		Goal          string
@@ -283,7 +298,7 @@ func buildPromptForPhase(cwd string, phaseNum int, state *phasedState, _ *retryC
 		SwarmFirst:    state.SwarmFirst,
 		Interactive:   state.Opts.Interactive,
 		PhaseNum:      phaseNum,
-		ContextBudget: budget,
+		ContextBudget: phaseContextBudgets[phaseNum],
 	}
 
 	var buf strings.Builder
@@ -291,29 +306,10 @@ func buildPromptForPhase(cwd string, phaseNum int, state *phasedState, _ *retryC
 		return "", fmt.Errorf("execute template: %w", err)
 	}
 
-	skillInvocation := buf.String()
-
-	// Build prompt: summary contract first, then context, then skill invocation.
-	// Early instructions survive compaction better than trailing ones.
 	var prompt strings.Builder
+	renderPreambleInstructions(&prompt, data)
 
-	// 1. Context discipline instruction (first — survives compaction)
-	disciplineTmpl, err := template.New("discipline").Parse(contextDisciplineInstruction)
-	if err == nil {
-		if err := disciplineTmpl.Execute(&prompt, data); err != nil {
-			VerbosePrintf("Warning: could not render context discipline instruction: %v\n", err)
-		}
-	}
-
-	// 2. Summary instruction
-	summaryTmpl, err := template.New("summary").Parse(phaseSummaryInstruction)
-	if err == nil {
-		if err := summaryTmpl.Execute(&prompt, data); err != nil {
-			VerbosePrintf("Warning: could not render summary instruction: %v\n", err)
-		}
-	}
-
-	// 3. Cross-phase context for phases 3+ (goal, verdicts, prior summaries)
+	// Cross-phase context for phases 2+ (goal, verdicts, prior summaries)
 	if phaseNum >= 2 {
 		ctx := buildPhaseContext(cwd, state, phaseNum)
 		if ctx != "" {
@@ -322,9 +318,7 @@ func buildPromptForPhase(cwd string, phaseNum int, state *phasedState, _ *retryC
 		}
 	}
 
-	// 4. Skill invocation (last — the actual command)
-	prompt.WriteString(skillInvocation)
-
+	prompt.WriteString(buf.String())
 	return prompt.String(), nil
 }
 

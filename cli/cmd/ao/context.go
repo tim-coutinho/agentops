@@ -241,11 +241,8 @@ func runContextGuard(cmd *cobra.Command, args []string) error {
 	if contextAutoRestart {
 		status = maybeAutoRestartStaleSession(status)
 	}
-	if err := persistBudget(cwd, status); err != nil {
-		return fmt.Errorf("persist budget: %w", err)
-	}
-	if err := persistAssignment(cwd, status); err != nil {
-		return fmt.Errorf("persist assignment: %w", err)
+	if err := persistGuardState(cwd, status); err != nil {
+		return err
 	}
 
 	result := contextGuardResult{
@@ -256,12 +253,25 @@ func runContextGuard(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	return outputGuardResult(result)
+}
+
+func persistGuardState(cwd string, status contextSessionStatus) error {
+	if err := persistBudget(cwd, status); err != nil {
+		return fmt.Errorf("persist budget: %w", err)
+	}
+	if err := persistAssignment(cwd, status); err != nil {
+		return fmt.Errorf("persist assignment: %w", err)
+	}
+	return nil
+}
+
+func outputGuardResult(result contextGuardResult) error {
 	if GetOutput() == "json" {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(result)
 	}
-
 	fmt.Printf("Session: %s\n", result.Session.SessionID)
 	fmt.Printf("Status: %s (%.1f%%)\n", result.Session.Status, result.Session.UsagePercent*100)
 	fmt.Printf("Action: %s\n", result.Session.Action)
@@ -333,37 +343,49 @@ func collectTrackedSessionStatuses(cwd string, watchdog time.Duration) ([]contex
 
 	statuses := make([]contextSessionStatus, 0, len(files))
 	for _, path := range files {
-		data, err := os.ReadFile(path)
-		if err != nil {
+		status, ok := collectOneTrackedStatus(cwd, path, watchdog)
+		if !ok {
 			continue
-		}
-		var b contextbudget.BudgetTracker
-		if err := json.Unmarshal(data, &b); err != nil || strings.TrimSpace(b.SessionID) == "" {
-			continue
-		}
-		status, _, err := collectSessionStatus(cwd, b.SessionID, "", b.MaxTokens, watchdog, "")
-		if err != nil {
-			// Keep stale budget rows visible even if transcript is unavailable.
-			status = contextSessionStatus{
-				SessionID:        b.SessionID,
-				EstimatedUsage:   b.EstimatedUsage,
-				MaxTokens:        nonZeroOrDefault(b.MaxTokens, contextbudget.DefaultMaxTokens),
-				UsagePercent:     b.GetUsagePercent(),
-				RemainingPercent: remainingPercent(b.GetUsagePercent()),
-				Status:           string(b.GetStatus()),
-				Readiness:        readinessForUsage(b.GetUsagePercent()),
-				ReadinessAction:  readinessAction(readinessForUsage(b.GetUsagePercent())),
-				Recommendation:   b.GetRecommendation(),
-				LastUpdated:      b.LastUpdated.Format(time.RFC3339),
-				IsStale:          !b.LastUpdated.IsZero() && time.Since(b.LastUpdated) > watchdog,
-				Action:           actionForStatus(string(b.GetStatus()), !b.LastUpdated.IsZero() && time.Since(b.LastUpdated) > watchdog),
-			}
 		}
 		mergePersistedAssignment(cwd, &status)
 		statuses = append(statuses, status)
 	}
 	slices.SortFunc(statuses, compareSessionStatuses)
 	return statuses, nil
+}
+
+func collectOneTrackedStatus(cwd, path string, watchdog time.Duration) (contextSessionStatus, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return contextSessionStatus{}, false
+	}
+	var b contextbudget.BudgetTracker
+	if err := json.Unmarshal(data, &b); err != nil || strings.TrimSpace(b.SessionID) == "" {
+		return contextSessionStatus{}, false
+	}
+	status, _, err := collectSessionStatus(cwd, b.SessionID, "", b.MaxTokens, watchdog, "")
+	if err != nil {
+		status = staleBudgetFallbackStatus(b, watchdog)
+	}
+	return status, true
+}
+
+func staleBudgetFallbackStatus(b contextbudget.BudgetTracker, watchdog time.Duration) contextSessionStatus {
+	isStale := !b.LastUpdated.IsZero() && time.Since(b.LastUpdated) > watchdog
+	return contextSessionStatus{
+		SessionID:        b.SessionID,
+		EstimatedUsage:   b.EstimatedUsage,
+		MaxTokens:        nonZeroOrDefault(b.MaxTokens, contextbudget.DefaultMaxTokens),
+		UsagePercent:     b.GetUsagePercent(),
+		RemainingPercent: remainingPercent(b.GetUsagePercent()),
+		Status:           string(b.GetStatus()),
+		Readiness:        readinessForUsage(b.GetUsagePercent()),
+		ReadinessAction:  readinessAction(readinessForUsage(b.GetUsagePercent())),
+		Recommendation:   b.GetRecommendation(),
+		LastUpdated:      b.LastUpdated.Format(time.RFC3339),
+		IsStale:          isStale,
+		Action:           actionForStatus(string(b.GetStatus()), isStale),
+	}
 }
 
 // compareSessionStatuses orders sessions by readiness rank, then status severity, then stale-first, then ID.
@@ -581,21 +603,26 @@ func findPendingHandoffForSession(cwd, sessionID string) (handoffPath string, ma
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		path := filepath.Join(pendingDir, e.Name())
-		data, rErr := os.ReadFile(path)
-		if rErr != nil {
-			continue
+		if hp, mp, ok := matchPendingHandoff(filepath.Join(pendingDir, e.Name()), cwd, sessionID); ok {
+			return hp, mp, true, nil
 		}
-		var marker handoffMarker
-		if jErr := json.Unmarshal(data, &marker); jErr != nil {
-			continue
-		}
-		if marker.SessionID != sessionID || marker.Consumed {
-			continue
-		}
-		return marker.HandoffFile, toRepoRelative(cwd, path), true, nil
 	}
 	return "", "", false, nil
+}
+
+func matchPendingHandoff(path, cwd, sessionID string) (string, string, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", false
+	}
+	var marker handoffMarker
+	if err := json.Unmarshal(data, &marker); err != nil {
+		return "", "", false
+	}
+	if marker.SessionID != sessionID || marker.Consumed {
+		return "", "", false
+	}
+	return marker.HandoffFile, toRepoRelative(cwd, path), true
 }
 
 // tailLineEnvelope is the JSON structure of a transcript line.
@@ -628,6 +655,12 @@ func readSessionTail(path string) (transcriptUsage, string, time.Time, error) {
 		return transcriptUsage{}, "", time.Time{}, err
 	}
 
+	usage, lastTask, newestTS := extractTailUsageAndTask(lines)
+	fixupTailTimestamps(path, &usage, &newestTS)
+	return usage, lastTask, newestTS, nil
+}
+
+func extractTailUsageAndTask(lines []string) (transcriptUsage, string, time.Time) {
 	var usage transcriptUsage
 	var lastTask string
 	var newestTS time.Time
@@ -646,15 +679,18 @@ func readSessionTail(path string) (transcriptUsage, string, time.Time, error) {
 			break
 		}
 	}
+	return usage, lastTask, newestTS
+}
+
+func fixupTailTimestamps(path string, usage *transcriptUsage, newestTS *time.Time) {
 	if newestTS.IsZero() {
 		if fi, err := os.Stat(path); err == nil {
-			newestTS = fi.ModTime().UTC()
+			*newestTS = fi.ModTime().UTC()
 		}
 	}
 	if usage.Timestamp.IsZero() {
-		usage.Timestamp = newestTS
+		usage.Timestamp = *newestTS
 	}
-	return usage, lastTask, newestTS, nil
 }
 
 // scanTailLines reads all non-empty lines from a byte slice.
@@ -728,6 +764,10 @@ func readFileTail(path string, maxBytes int64) ([]byte, error) {
 		return []byte{}, nil
 	}
 
+	return seekAndReadTail(f, size, maxBytes)
+}
+
+func seekAndReadTail(f *os.File, size, maxBytes int64) ([]byte, error) {
 	start := int64(0)
 	if size > maxBytes {
 		start = size - maxBytes
@@ -948,26 +988,30 @@ func mergePersistedAssignment(cwd string, status *contextSessionStatus) {
 		return
 	}
 	current := assignmentFromStatus(*status)
+	mergeAssignmentFields(&current, &assignment, status)
+}
+
+func mergeAssignmentFields(current, persisted *contextAssignment, status *contextSessionStatus) {
 	if current.AgentName == "" {
-		status.AgentName = assignment.AgentName
+		status.AgentName = persisted.AgentName
 	}
 	if current.AgentRole == "" {
-		status.AgentRole = assignment.AgentRole
+		status.AgentRole = persisted.AgentRole
 	}
 	if current.TeamName == "" {
-		status.TeamName = assignment.TeamName
+		status.TeamName = persisted.TeamName
 	}
 	if current.IssueID == "" {
-		status.IssueID = assignment.IssueID
+		status.IssueID = persisted.IssueID
 	}
 	if current.TmuxPaneID == "" {
-		status.TmuxPaneID = assignment.TmuxPaneID
+		status.TmuxPaneID = persisted.TmuxPaneID
 	}
 	if current.TmuxTarget == "" {
-		status.TmuxTarget = assignment.TmuxTarget
+		status.TmuxTarget = persisted.TmuxTarget
 	}
 	if current.TmuxSession == "" {
-		status.TmuxSession = assignment.TmuxSession
+		status.TmuxSession = persisted.TmuxSession
 	}
 }
 
@@ -1080,22 +1124,28 @@ func findTeamMemberByName(agentName string) (string, teamConfigMember, bool) {
 		if !entry.IsDir() {
 			continue
 		}
-		cfgPath := filepath.Join(teamsDir, entry.Name(), "config.json")
-		data, err := os.ReadFile(cfgPath)
-		if err != nil {
-			continue
-		}
-		var config teamConfigFile
-		if err := json.Unmarshal(data, &config); err != nil {
-			continue
-		}
-		for _, member := range config.Members {
-			if strings.EqualFold(strings.TrimSpace(member.Name), agentName) {
-				return entry.Name(), member, true
-			}
+		if member, ok := searchTeamConfig(filepath.Join(teamsDir, entry.Name(), "config.json"), agentName); ok {
+			return entry.Name(), member, true
 		}
 	}
 	return "", teamConfigMember{}, false
+}
+
+func searchTeamConfig(cfgPath, agentName string) (teamConfigMember, bool) {
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return teamConfigMember{}, false
+	}
+	var config teamConfigFile
+	if err := json.Unmarshal(data, &config); err != nil {
+		return teamConfigMember{}, false
+	}
+	for _, member := range config.Members {
+		if strings.EqualFold(strings.TrimSpace(member.Name), agentName) {
+			return member, true
+		}
+	}
+	return teamConfigMember{}, false
 }
 
 func inferAgentRole(agentName, explicitRole string) string {

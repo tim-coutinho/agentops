@@ -75,6 +75,40 @@ func runPoolMigrateLegacy(cmd *cobra.Command, args []string) error {
 	return outputPoolMigrateLegacyResult(result)
 }
 
+// migrateSingleLegacyFile processes one legacy file: reads, checks eligibility,
+// and moves (or records dry-run move). Updates result counters accordingly.
+func migrateSingleLegacyFile(src, pendingDir string, result *poolMigrateLegacyResult) {
+	data, readErr := os.ReadFile(src)
+	if readErr != nil {
+		result.Errors++
+		return
+	}
+	if len(parseLearningBlocks(string(data))) == 0 {
+		result.Skipped++
+		return
+	}
+	result.Eligible++
+
+	dst, dstErr := nextLegacyDestination(pendingDir, filepath.Base(src))
+	if dstErr != nil {
+		result.Errors++
+		return
+	}
+
+	if GetDryRun() {
+		result.Moved++
+		result.Moves = append(result.Moves, legacyMove{From: src, To: dst})
+		return
+	}
+
+	if err := os.Rename(src, dst); err != nil {
+		result.Errors++
+		return
+	}
+	result.Moved++
+	result.Moves = append(result.Moves, legacyMove{From: src, To: dst})
+}
+
 func migrateLegacyKnowledgeFiles(sourceDir, pendingDir string) (poolMigrateLegacyResult, error) {
 	result := poolMigrateLegacyResult{}
 
@@ -96,35 +130,7 @@ func migrateLegacyKnowledgeFiles(sourceDir, pendingDir string) (poolMigrateLegac
 	}
 
 	for _, src := range files {
-		data, readErr := os.ReadFile(src)
-		if readErr != nil {
-			result.Errors++
-			continue
-		}
-		if len(parseLearningBlocks(string(data))) == 0 {
-			result.Skipped++
-			continue
-		}
-		result.Eligible++
-
-		dst, dstErr := nextLegacyDestination(pendingDir, filepath.Base(src))
-		if dstErr != nil {
-			result.Errors++
-			continue
-		}
-
-		if GetDryRun() {
-			result.Moved++
-			result.Moves = append(result.Moves, legacyMove{From: src, To: dst})
-			continue
-		}
-
-		if err := os.Rename(src, dst); err != nil {
-			result.Errors++
-			continue
-		}
-		result.Moved++
-		result.Moves = append(result.Moves, legacyMove{From: src, To: dst})
+		migrateSingleLegacyFile(src, pendingDir, &result)
 	}
 
 	return result, nil

@@ -13,6 +13,7 @@ import (
 	"github.com/boshu2/agentops/cli/internal/formatter"
 	"github.com/boshu2/agentops/cli/internal/parser"
 	"github.com/boshu2/agentops/cli/internal/storage"
+	"github.com/boshu2/agentops/cli/internal/types"
 )
 
 // sessionCmd is the parent command for session operations.
@@ -95,7 +96,13 @@ func runSessionClose(cmd *cobra.Command, args []string) error {
 		return outputCloseResult(result)
 	}
 
-	// Step 3: Capture pre-forge flywheel metrics
+	// Step 3: Forge, extract, measure, build result
+	return forgeExtractAndReport(transcriptPath)
+}
+
+// forgeExtractAndReport runs the forge/extract/measure pipeline and outputs
+// the session close result. Extracted from runSessionClose to reduce CC.
+func forgeExtractAndReport(transcriptPath string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get working directory: %w", err)
@@ -106,7 +113,6 @@ func runSessionClose(cmd *cobra.Command, args []string) error {
 		VerbosePrintf("Warning: pre-forge metrics: %v\n", err)
 	}
 
-	// Step 4: Forge the transcript
 	session, err := forgeTranscriptForClose(transcriptPath, cwd)
 	if err != nil {
 		return fmt.Errorf("forge transcript: %w", err)
@@ -115,7 +121,6 @@ func runSessionClose(cmd *cobra.Command, args []string) error {
 	VerbosePrintf("Forged session %s: %d decisions, %d knowledge items\n",
 		session.ID, len(session.Decisions), len(session.Knowledge))
 
-	// Step 5: Queue and trigger extraction
 	extractCount, err := extractForClose(session, transcriptPath, cwd)
 	if err != nil {
 		VerbosePrintf("Warning: extraction: %v\n", err)
@@ -123,26 +128,13 @@ func runSessionClose(cmd *cobra.Command, args []string) error {
 		VerbosePrintf("Extraction processed %d entries\n", extractCount)
 	}
 
-	// Step 6: Capture post-forge flywheel metrics and compute delta
 	postMetrics, err := computeMetrics(cwd, 7)
 	if err != nil {
 		VerbosePrintf("Warning: post-forge metrics: %v\n", err)
 	}
 
-	velocityDelta := 0.0
-	if preMetrics != nil && postMetrics != nil {
-		velocityDelta = postMetrics.Velocity - preMetrics.Velocity
-	}
-
-	// Step 7: Build and output result
-	status := "compounding"
-	if postMetrics != nil && !postMetrics.AboveEscapeVelocity {
-		if postMetrics.Velocity > -0.05 {
-			status = "near-escape"
-		} else {
-			status = "decaying"
-		}
-	}
+	velocityDelta := computeVelocityDelta(preMetrics, postMetrics)
+	status := classifyFlywheelStatus(postMetrics)
 
 	result := SessionCloseResult{
 		SessionID:     session.ID,
@@ -157,6 +149,26 @@ func runSessionClose(cmd *cobra.Command, args []string) error {
 	}
 
 	return outputCloseResult(result)
+}
+
+// computeVelocityDelta returns the velocity change between pre and post metrics.
+// Returns 0.0 if either measurement is nil.
+func computeVelocityDelta(pre, post *types.FlywheelMetrics) float64 {
+	if pre == nil || post == nil {
+		return 0.0
+	}
+	return post.Velocity - pre.Velocity
+}
+
+// classifyFlywheelStatus returns a human-readable flywheel status label.
+func classifyFlywheelStatus(post *types.FlywheelMetrics) string {
+	if post == nil || post.AboveEscapeVelocity {
+		return "compounding"
+	}
+	if post.Velocity > -0.05 {
+		return "near-escape"
+	}
+	return "decaying"
 }
 
 // resolveTranscript finds the transcript path from a session ID or fallback.

@@ -58,6 +58,42 @@ func init() {
 	maturityCmd.Flags().BoolVar(&maturityEvict, "evict", false, "Identify eviction candidates (composite criteria)")
 }
 
+func runMaturitySingle(cwd string, learningID string) error {
+	learningPath, err := findLearningFile(cwd, learningID)
+	if err != nil {
+		return fmt.Errorf("find learning: %w", err)
+	}
+
+	if GetDryRun() {
+		fmt.Printf("[dry-run] Would check maturity for: %s\n", learningID)
+		return nil
+	}
+
+	result, err := checkOrApplyMaturity(learningPath)
+	if err != nil {
+		return fmt.Errorf("check maturity: %w", err)
+	}
+
+	return outputSingleMaturityResult(result)
+}
+
+func checkOrApplyMaturity(learningPath string) (*ratchet.MaturityTransitionResult, error) {
+	if maturityApply {
+		return ratchet.ApplyMaturityTransition(learningPath)
+	}
+	return ratchet.CheckMaturityTransition(learningPath)
+}
+
+func outputSingleMaturityResult(result *ratchet.MaturityTransitionResult) error {
+	if GetOutput() == "json" {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	}
+	displayMaturityResult(result, maturityApply)
+	return nil
+}
+
 func runMaturity(cmd *cobra.Command, args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -70,57 +106,64 @@ func runMaturity(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Evict mode: composite eviction criteria
-	if maturityEvict {
+	switch {
+	case maturityEvict:
 		return runMaturityEvict(cmd)
-	}
-
-	// Expire mode: check for expired learnings
-	if maturityExpire {
+	case maturityExpire:
 		return runMaturityExpire(cmd)
-	}
-
-	// Scan mode: check all learnings
-	if maturityScan {
+	case maturityScan:
 		return runMaturityScan(learningsDir)
-	}
-
-	// Single learning mode
-	if len(args) == 0 {
+	case len(args) == 0:
 		return fmt.Errorf("must provide learning-id or use --scan")
+	default:
+		return runMaturitySingle(cwd, args[0])
 	}
+}
 
-	learningID := args[0]
-	learningPath, err := findLearningFile(cwd, learningID)
-	if err != nil {
-		return fmt.Errorf("find learning: %w", err)
-	}
+func displayMaturityDistribution(dist *ratchet.MaturityDistribution) {
+	fmt.Println("=== Maturity Distribution ===")
+	fmt.Printf("  Provisional:  %d\n", dist.Provisional)
+	fmt.Printf("  Candidate:    %d\n", dist.Candidate)
+	fmt.Printf("  Established:  %d\n", dist.Established)
+	fmt.Printf("  Anti-Pattern: %d\n", dist.AntiPattern)
+	fmt.Printf("  Total:        %d\n", dist.Total)
+	fmt.Println()
+}
 
-	if GetDryRun() {
-		fmt.Printf("[dry-run] Would check maturity for: %s\n", learningID)
-		return nil
-	}
-
-	var result *ratchet.MaturityTransitionResult
-	if maturityApply {
-		result, err = ratchet.ApplyMaturityTransition(learningPath)
-	} else {
-		result, err = ratchet.CheckMaturityTransition(learningPath)
-	}
-
-	if err != nil {
-		return fmt.Errorf("check maturity: %w", err)
-	}
-
-	// Output results
+func displayPendingTransitions(results []*ratchet.MaturityTransitionResult) error {
+	fmt.Printf("=== Pending Transitions (%d) ===\n", len(results))
 	if GetOutput() == "json" {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(result)
+		return enc.Encode(results)
 	}
-
-	displayMaturityResult(result, maturityApply)
+	for _, r := range results {
+		displayMaturityResult(r, false)
+		fmt.Println()
+	}
 	return nil
+}
+
+func applyScannedTransitions(learningsDir string, results []*ratchet.MaturityTransitionResult) {
+	fmt.Println("=== Applying Transitions ===")
+	applied := 0
+	for _, r := range results {
+		learningPath, err := findLearningFile(filepath.Dir(learningsDir), r.LearningID)
+		if err != nil {
+			VerbosePrintf("Warning: could not find %s: %v\n", r.LearningID, err)
+			continue
+		}
+		result, err := ratchet.ApplyMaturityTransition(learningPath)
+		if err != nil {
+			VerbosePrintf("Warning: could not apply transition for %s: %v\n", r.LearningID, err)
+			continue
+		}
+		if result.Transitioned {
+			fmt.Printf("✓ %s: %s → %s\n", result.LearningID, result.OldMaturity, result.NewMaturity)
+			applied++
+		}
+	}
+	fmt.Printf("\nApplied %d transitions.\n", applied)
 }
 
 func runMaturityScan(learningsDir string) error {
@@ -129,67 +172,27 @@ func runMaturityScan(learningsDir string) error {
 		return nil
 	}
 
-	// Get distribution first
 	dist, err := ratchet.GetMaturityDistribution(learningsDir)
 	if err != nil {
 		return fmt.Errorf("get distribution: %w", err)
 	}
+	displayMaturityDistribution(dist)
 
-	fmt.Println("=== Maturity Distribution ===")
-	fmt.Printf("  Provisional:  %d\n", dist.Provisional)
-	fmt.Printf("  Candidate:    %d\n", dist.Candidate)
-	fmt.Printf("  Established:  %d\n", dist.Established)
-	fmt.Printf("  Anti-Pattern: %d\n", dist.AntiPattern)
-	fmt.Printf("  Total:        %d\n", dist.Total)
-	fmt.Println()
-
-	// Scan for pending transitions
 	results, err := ratchet.ScanForMaturityTransitions(learningsDir)
 	if err != nil {
 		return fmt.Errorf("scan transitions: %w", err)
 	}
-
 	if len(results) == 0 {
 		fmt.Println("No pending maturity transitions found.")
 		return nil
 	}
 
-	fmt.Printf("=== Pending Transitions (%d) ===\n", len(results))
-
-	if GetOutput() == "json" {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(results)
+	if err := displayPendingTransitions(results); err != nil {
+		return err
 	}
 
-	for _, r := range results {
-		displayMaturityResult(r, false)
-		fmt.Println()
-	}
-
-	// Apply transitions if requested
 	if maturityApply {
-		fmt.Println("=== Applying Transitions ===")
-		applied := 0
-		for _, r := range results {
-			learningPath, err := findLearningFile(filepath.Dir(learningsDir), r.LearningID)
-			if err != nil {
-				VerbosePrintf("Warning: could not find %s: %v\n", r.LearningID, err)
-				continue
-			}
-
-			result, err := ratchet.ApplyMaturityTransition(learningPath)
-			if err != nil {
-				VerbosePrintf("Warning: could not apply transition for %s: %v\n", r.LearningID, err)
-				continue
-			}
-
-			if result.Transitioned {
-				fmt.Printf("✓ %s: %s → %s\n", result.LearningID, result.OldMaturity, result.NewMaturity)
-				applied++
-			}
-		}
-		fmt.Printf("\nApplied %d transitions.\n", applied)
+		applyScannedTransitions(learningsDir, results)
 	}
 
 	return nil
@@ -681,6 +684,46 @@ func init() {
 	rootCmd.AddCommand(promoteAntiPatternsCmd)
 }
 
+func filterTransitionsByNewMaturity(results []*ratchet.MaturityTransitionResult, maturity string) []*ratchet.MaturityTransitionResult {
+	var filtered []*ratchet.MaturityTransitionResult
+	for _, r := range results {
+		if string(r.NewMaturity) == maturity {
+			filtered = append(filtered, r)
+		}
+	}
+	return filtered
+}
+
+func displayAntiPatternCandidates(promotions []*ratchet.MaturityTransitionResult) {
+	fmt.Printf("Found %d learning(s) eligible for anti-pattern promotion:\n\n", len(promotions))
+	for _, r := range promotions {
+		fmt.Printf("  • %s (utility: %.3f, harmful: %d)\n",
+			r.LearningID, r.Utility, r.HarmfulCount)
+	}
+}
+
+func executeAntiPatternPromotions(learningsDir string, promotions []*ratchet.MaturityTransitionResult) int {
+	fmt.Println("\nPromoting to anti-pattern status...")
+	promoted := 0
+	for _, r := range promotions {
+		learningPath, err := findLearningFile(filepath.Dir(learningsDir), r.LearningID)
+		if err != nil {
+			VerbosePrintf("Warning: could not find %s: %v\n", r.LearningID, err)
+			continue
+		}
+		result, err := ratchet.ApplyMaturityTransition(learningPath)
+		if err != nil {
+			VerbosePrintf("Warning: could not apply transition for %s: %v\n", r.LearningID, err)
+			continue
+		}
+		if result.Transitioned && result.NewMaturity == "anti-pattern" {
+			fmt.Printf("  ✓ %s → anti-pattern\n", result.LearningID)
+			promoted++
+		}
+	}
+	return promoted
+}
+
 func runPromoteAntiPatterns(cmd *cobra.Command, args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -693,58 +736,25 @@ func runPromoteAntiPatterns(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Scan for all transitions
 	results, err := ratchet.ScanForMaturityTransitions(learningsDir)
 	if err != nil {
 		return fmt.Errorf("scan transitions: %w", err)
 	}
 
-	// Filter for anti-pattern promotions only
-	var antiPatternPromotions []*ratchet.MaturityTransitionResult
-	for _, r := range results {
-		if r.NewMaturity == "anti-pattern" {
-			antiPatternPromotions = append(antiPatternPromotions, r)
-		}
-	}
-
+	antiPatternPromotions := filterTransitionsByNewMaturity(results, "anti-pattern")
 	if len(antiPatternPromotions) == 0 {
 		fmt.Println("No learnings eligible for anti-pattern promotion.")
 		return nil
 	}
 
-	fmt.Printf("Found %d learning(s) eligible for anti-pattern promotion:\n\n", len(antiPatternPromotions))
-
-	for _, r := range antiPatternPromotions {
-		fmt.Printf("  • %s (utility: %.3f, harmful: %d)\n",
-			r.LearningID, r.Utility, r.HarmfulCount)
-	}
+	displayAntiPatternCandidates(antiPatternPromotions)
 
 	if GetDryRun() {
 		fmt.Println("\n[dry-run] Would promote the above learnings to anti-pattern status.")
 		return nil
 	}
 
-	fmt.Println("\nPromoting to anti-pattern status...")
-	promoted := 0
-	for _, r := range antiPatternPromotions {
-		learningPath, err := findLearningFile(filepath.Dir(learningsDir), r.LearningID)
-		if err != nil {
-			VerbosePrintf("Warning: could not find %s: %v\n", r.LearningID, err)
-			continue
-		}
-
-		result, err := ratchet.ApplyMaturityTransition(learningPath)
-		if err != nil {
-			VerbosePrintf("Warning: could not apply transition for %s: %v\n", r.LearningID, err)
-			continue
-		}
-
-		if result.Transitioned && result.NewMaturity == "anti-pattern" {
-			fmt.Printf("  ✓ %s → anti-pattern\n", result.LearningID)
-			promoted++
-		}
-	}
-
+	promoted := executeAntiPatternPromotions(learningsDir, antiPatternPromotions)
 	fmt.Printf("\nPromoted %d learning(s) to anti-pattern status.\n", promoted)
 	return nil
 }

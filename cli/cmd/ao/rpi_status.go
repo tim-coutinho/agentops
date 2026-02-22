@@ -694,6 +694,28 @@ func discoverRPIRuns(cwd string) []rpiRunInfo {
 	return fallback
 }
 
+// tryAddSearchRoot normalizes and validates a path, then appends it to roots
+// if it is a valid, unseen directory. Returns whether the root was added.
+func tryAddSearchRoot(path string, seen map[string]struct{}, roots *[]string) {
+	if path == "" {
+		return
+	}
+	normalized := normalizeSearchRootPath(path)
+	if _, ok := seen[normalized]; ok {
+		return
+	}
+	info, err := os.Stat(normalized)
+	if err != nil || !info.IsDir() {
+		return
+	}
+	stored := filepath.Clean(path)
+	if abs, err := filepath.Abs(stored); err == nil {
+		stored = filepath.Clean(abs)
+	}
+	seen[normalized] = struct{}{}
+	*roots = append(*roots, stored)
+}
+
 // collectSearchRoots returns the cwd plus any Git worktree roots attached to
 // the same repository. This allows status/cleanup/cancel commands to discover
 // runs created from other worktrees, not just sibling *-rpi-* directories.
@@ -701,31 +723,12 @@ func discoverRPIRuns(cwd string) []rpiRunInfo {
 func collectSearchRoots(cwd string) []string {
 	roots := []string{}
 	seen := make(map[string]struct{})
-	addRoot := func(path string) {
-		if path == "" {
-			return
-		}
-		normalized := normalizeSearchRootPath(path)
-		if _, ok := seen[normalized]; ok {
-			return
-		}
-		info, err := os.Stat(normalized)
-		if err != nil || !info.IsDir() {
-			return
-		}
-		stored := filepath.Clean(path)
-		if abs, err := filepath.Abs(stored); err == nil {
-			stored = filepath.Clean(abs)
-		}
-		seen[normalized] = struct{}{}
-		roots = append(roots, stored)
-	}
 
-	addRoot(cwd)
+	tryAddSearchRoot(cwd, seen, &roots)
 
 	if discovered := discoverGitWorktreeRoots(cwd); len(discovered) > 0 {
 		for _, root := range discovered {
-			addRoot(root)
+			tryAddSearchRoot(root, seen, &roots)
 		}
 		return roots
 	}
@@ -738,7 +741,7 @@ func collectSearchRoots(cwd string) []string {
 		return roots
 	}
 	for _, m := range matches {
-		addRoot(m)
+		tryAddSearchRoot(m, seen, &roots)
 	}
 	return roots
 }

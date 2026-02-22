@@ -424,70 +424,7 @@ type poolAutoPromotePromoteResult struct {
 	SkippedIDs []string `json:"skipped_ids,omitempty"`
 }
 
-func runPoolAutoPromoteAndPromote(p *pool.Pool, threshold time.Duration, reviewer string) error {
-	entries, err := p.List(pool.ListOptions{
-		Status: types.PoolStatusPending,
-	})
-	if err != nil {
-		return fmt.Errorf("list pending: %w", err)
-	}
-
-	result := poolAutoPromotePromoteResult{
-		Threshold: threshold.String(),
-	}
-	citationCounts, promotedContent := loadPromotionGateContext(p.BaseDir)
-
-	for _, e := range entries {
-		// Only auto-promote high-quality tiers.
-		if e.Candidate.Tier != types.TierSilver && !(poolGold && e.Candidate.Tier == types.TierGold) {
-			continue
-		}
-		// Never auto-promote human-gated items.
-		if e.ScoringResult.GateRequired {
-			result.Skipped++
-			result.SkippedIDs = append(result.SkippedIDs, e.Candidate.ID)
-			continue
-		}
-		if e.Age < threshold {
-			continue
-		}
-		if reason := checkPromotionCriteria(p.BaseDir, e, threshold, citationCounts, promotedContent); reason != "" {
-			result.Skipped++
-			result.SkippedIDs = append(result.SkippedIDs, e.Candidate.ID)
-			VerbosePrintf("Skipping %s: %s\n", e.Candidate.ID, reason)
-			continue
-		}
-
-		result.Considered++
-
-		if GetDryRun() {
-			result.Promoted++
-			continue
-		}
-
-		// Stage (enforces min tier) then promote to knowledge base.
-		if err := p.Stage(e.Candidate.ID, types.TierSilver); err != nil {
-			result.Skipped++
-			result.SkippedIDs = append(result.SkippedIDs, e.Candidate.ID)
-			VerbosePrintf("Warning: stage %s: %v\n", e.Candidate.ID, err)
-			continue
-		}
-
-		artifactPath, err := p.Promote(e.Candidate.ID)
-		if err != nil {
-			result.Skipped++
-			result.SkippedIDs = append(result.SkippedIDs, e.Candidate.ID)
-			VerbosePrintf("Warning: promote %s: %v\n", e.Candidate.ID, err)
-			continue
-		}
-
-		// Record an approval note for audit (best-effort).
-		_ = reviewer
-		result.Promoted++
-		result.Artifacts = append(result.Artifacts, artifactPath)
-		promotedContent[normalizeContent(e.Candidate.Content)] = true
-	}
-
+func outputPoolAutoPromoteResult(result poolAutoPromotePromoteResult) error {
 	switch GetOutput() {
 	case "json":
 		enc := json.NewEncoder(os.Stdout)
@@ -508,6 +445,15 @@ func runPoolAutoPromoteAndPromote(p *pool.Pool, threshold time.Duration, reviewe
 		}
 		return nil
 	}
+}
+
+func runPoolAutoPromoteAndPromote(p *pool.Pool, threshold time.Duration, reviewer string) error {
+	_ = reviewer // reserved for future audit trail
+	result, err := autoPromoteAndPromoteToArtifacts(p, threshold, poolGold)
+	if err != nil {
+		return err
+	}
+	return outputPoolAutoPromoteResult(result)
 }
 
 func init() {

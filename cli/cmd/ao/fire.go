@@ -54,6 +54,48 @@ func DefaultFireConfig() FireConfig {
 // FIRE Loop Entry Point
 // =============================================================================
 
+// runFireIteration executes one FIND-IGNITE-REAP-ESCALATE cycle.
+// Returns true when the loop should exit (all issues complete).
+func runFireIteration(cfg FireConfig, retryQueue map[string]*RetryInfo) (bool, error) {
+	state, err := findPhase(cfg.EpicID)
+	if err != nil {
+		return false, fmt.Errorf("FIND failed: %w", err)
+	}
+
+	if isComplete(state) {
+		fmt.Println("✅ FIRE complete: all issues closed")
+		return true, nil
+	}
+
+	printState(state)
+
+	ignited, err := ignitePhase(state, cfg, retryQueue)
+	if err != nil {
+		fmt.Printf("⚠️  IGNITE error: %v\n", err)
+	}
+	if len(ignited) > 0 {
+		fmt.Printf("🚀 Ignited: %v\n", ignited)
+	}
+
+	reaped, failures, err := reapPhase(state)
+	if err != nil {
+		fmt.Printf("⚠️  REAP error: %v\n", err)
+	}
+	if len(reaped) > 0 {
+		fmt.Printf("✅ Reaped: %v\n", reaped)
+	}
+
+	escalated, err := escalatePhase(failures, retryQueue, cfg)
+	if err != nil {
+		fmt.Printf("⚠️  ESCALATE error: %v\n", err)
+	}
+	if len(escalated) > 0 {
+		fmt.Printf("🚨 Escalated: %v\n", escalated)
+	}
+
+	return false, nil
+}
+
 // RunFireLoop runs the autonomous FIRE loop until completion
 func RunFireLoop(cfg FireConfig) error {
 	fmt.Printf("🔥 FIRE Loop starting for epic %s on rig %s\n", cfg.EpicID, cfg.Rig)
@@ -66,49 +108,14 @@ func RunFireLoop(cfg FireConfig) error {
 		iteration++
 		fmt.Printf("\n━━━ FIRE Iteration %d ━━━\n", iteration)
 
-		// FIND Phase
-		state, err := findPhase(cfg.EpicID)
+		done, err := runFireIteration(cfg, retryQueue)
 		if err != nil {
-			return fmt.Errorf("FIND failed: %w", err)
+			return err
 		}
-
-		// Check exit condition
-		if isComplete(state) {
-			fmt.Println("✅ FIRE complete: all issues closed")
+		if done {
 			return nil
 		}
 
-		printState(state)
-
-		// IGNITE Phase
-		ignited, err := ignitePhase(state, cfg, retryQueue)
-		if err != nil {
-			fmt.Printf("⚠️  IGNITE error: %v\n", err)
-			// Continue - don't fail the whole loop
-		}
-		if len(ignited) > 0 {
-			fmt.Printf("🚀 Ignited: %v\n", ignited)
-		}
-
-		// REAP Phase
-		reaped, failures, err := reapPhase(state)
-		if err != nil {
-			fmt.Printf("⚠️  REAP error: %v\n", err)
-		}
-		if len(reaped) > 0 {
-			fmt.Printf("✅ Reaped: %v\n", reaped)
-		}
-
-		// ESCALATE Phase
-		escalated, err := escalatePhase(failures, retryQueue, cfg)
-		if err != nil {
-			fmt.Printf("⚠️  ESCALATE error: %v\n", err)
-		}
-		if len(escalated) > 0 {
-			fmt.Printf("🚨 Escalated: %v\n", escalated)
-		}
-
-		// Sleep before next iteration
 		fmt.Printf("💤 Sleeping %s...\n", cfg.PollInterval)
 		time.Sleep(cfg.PollInterval)
 	}
@@ -159,65 +166,77 @@ func findPhase(epicID string) (*FireState, error) {
 // IGNITE Phase
 // =============================================================================
 
-func ignitePhase(state *FireState, cfg FireConfig, retryQueue map[string]*RetryInfo) ([]string, error) {
-	// Calculate capacity
-	currentBurning := len(state.Burning)
-	capacity := cfg.MaxPolecats - currentBurning
-	if capacity <= 0 {
-		VerbosePrintf("At capacity (%d burning, max %d)\n", currentBurning, cfg.MaxPolecats)
-		return nil, nil
-	}
-
-	var toIgnite []string
-
-	// Priority 1: Scheduled retries that are due
+// collectDueRetries returns retries from the queue whose NextAttempt has passed, up to capacity.
+// Matching entries are removed from retryQueue.
+func collectDueRetries(retryQueue map[string]*RetryInfo, capacity int) []string {
 	now := time.Now()
+	var due []string
 	for issueID, info := range retryQueue {
 		if now.After(info.NextAttempt) {
-			toIgnite = append(toIgnite, issueID)
-			delete(retryQueue, issueID) // Remove from queue, will re-add if fails again
-			if len(toIgnite) >= capacity {
+			due = append(due, issueID)
+			delete(retryQueue, issueID)
+			if len(due) >= capacity {
 				break
 			}
 		}
 	}
+	return due
+}
 
-	// Priority 2: Fresh ready issues
-	for _, issueID := range state.Ready {
-		// Skip if already in toIgnite
-		alreadyQueued := false
-		for _, id := range toIgnite {
-			if id == issueID {
-				alreadyQueued = true
-				break
-			}
+// containsString reports whether slice contains s.
+func containsString(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
 		}
-		if alreadyQueued {
+	}
+	return false
+}
+
+// collectReadyIssues appends fresh ready issues not already queued, up to capacity.
+func collectReadyIssues(ready []string, already []string, capacity int) []string {
+	var out []string
+	out = append(out, already...)
+	for _, issueID := range ready {
+		if containsString(out, issueID) {
 			continue
 		}
-
-		toIgnite = append(toIgnite, issueID)
-		if len(toIgnite) >= capacity {
+		out = append(out, issueID)
+		if len(out) >= capacity {
 			break
 		}
 	}
+	return out
+}
 
-	if len(toIgnite) == 0 {
-		return nil, nil
-	}
-
-	// IGNITE - spawn polecats via gt sling
+// slingIssues spawns polecats for each issue via gt sling, returning successfully ignited IDs.
+func slingIssues(toIgnite []string, rig string) []string {
 	var ignited []string
 	for _, issueID := range toIgnite {
-		err := gtSling(issueID, cfg.Rig)
-		if err != nil {
+		if err := gtSling(issueID, rig); err != nil {
 			fmt.Printf("⚠️  Failed to sling %s: %v\n", issueID, err)
 			continue
 		}
 		ignited = append(ignited, issueID)
 	}
+	return ignited
+}
 
-	return ignited, nil
+func ignitePhase(state *FireState, cfg FireConfig, retryQueue map[string]*RetryInfo) ([]string, error) {
+	capacity := cfg.MaxPolecats - len(state.Burning)
+	if capacity <= 0 {
+		VerbosePrintf("At capacity (%d burning, max %d)\n", len(state.Burning), cfg.MaxPolecats)
+		return nil, nil
+	}
+
+	toIgnite := collectDueRetries(retryQueue, capacity)
+	toIgnite = collectReadyIssues(state.Ready, toIgnite, capacity)
+
+	if len(toIgnite) == 0 {
+		return nil, nil
+	}
+
+	return slingIssues(toIgnite, cfg.Rig), nil
 }
 
 // =============================================================================

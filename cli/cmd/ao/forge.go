@@ -284,14 +284,11 @@ func runForgeTranscript(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Create parser with no truncation for full content extraction
 	p := parser.NewParser()
-	p.MaxContentLength = 0 // No truncation
+	p.MaxContentLength = 0
 
-	// Create extractor for knowledge identification
 	extractor := parser.NewExtractor()
 
-	// Process each file
 	totals := forgeTotals{}
 
 	for _, filePath := range files {
@@ -301,36 +298,7 @@ func runForgeTranscript(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		// Write session
-		sessionPath, err := fs.WriteSession(session)
-		if err != nil {
-			forgeWarnf(forgeQuiet, "Warning: failed to write session for %s: %v\n", filePath, err)
-			continue
-		}
-
-		if err := writeSessionIndex(fs, session, sessionPath); err != nil {
-			forgeWarnf(forgeQuiet, "Warning: failed to index session: %v\n", err)
-		}
-
-		if err := writeSessionProvenance(fs, session.ID, sessionPath, filePath, "transcript", true); err != nil {
-			forgeWarnf(forgeQuiet, "Warning: failed to write provenance: %v\n", err)
-		}
-
-		// Update search index with the new session file
-		updateSearchIndexForFile(baseDir, sessionPath, forgeQuiet)
-
-		totals.addSession(session)
-
-		if !forgeQuiet {
-			VerbosePrintf("  ✓ %s → %s\n", filepath.Base(filePath), filepath.Base(sessionPath))
-		}
-
-		// Queue for extraction if requested
-		if forgeQueue {
-			if err := queueForExtraction(session, sessionPath, filePath, cwd); err != nil {
-				forgeWarnf(forgeQuiet, "Warning: failed to queue for extraction: %v\n", err)
-			}
-		}
+		forgeTranscriptFile(fs, session, filePath, baseDir, cwd, &totals)
 	}
 
 	if !forgeQuiet {
@@ -338,6 +306,35 @@ func runForgeTranscript(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func forgeTranscriptFile(fs *storage.FileStorage, session *storage.Session, filePath, baseDir, cwd string, totals *forgeTotals) {
+	sessionPath, err := fs.WriteSession(session)
+	if err != nil {
+		forgeWarnf(forgeQuiet, "Warning: failed to write session for %s: %v\n", filePath, err)
+		return
+	}
+
+	if err := writeSessionIndex(fs, session, sessionPath); err != nil {
+		forgeWarnf(forgeQuiet, "Warning: failed to index session: %v\n", err)
+	}
+
+	if err := writeSessionProvenance(fs, session.ID, sessionPath, filePath, "transcript", true); err != nil {
+		forgeWarnf(forgeQuiet, "Warning: failed to write provenance: %v\n", err)
+	}
+
+	updateSearchIndexForFile(baseDir, sessionPath, forgeQuiet)
+	totals.addSession(session)
+
+	if !forgeQuiet {
+		VerbosePrintf("  ✓ %s → %s\n", filepath.Base(filePath), filepath.Base(sessionPath))
+	}
+
+	if forgeQueue {
+		if err := queueForExtraction(session, sessionPath, filePath, cwd); err != nil {
+			forgeWarnf(forgeQuiet, "Warning: failed to queue for extraction: %v\n", err)
+		}
+	}
 }
 
 // processTranscript parses a transcript and extracts session data.
@@ -370,22 +367,24 @@ func processTranscript(filePath string, p *parser.Parser, extractor *parser.Extr
 		seenIssues: make(map[string]bool),
 	}
 
+	consumeTranscriptMessages(msgCh, session, extractor, state, quiet, w, totalLines)
+
+	if err := drainParseErrors(errCh); err != nil {
+		return nil, err
+	}
+
+	finalizeTranscriptSession(session, state, fileSize)
+
+	return session, nil
+}
+
+func consumeTranscriptMessages(msgCh <-chan types.TranscriptMessage, session *storage.Session, extractor *parser.Extractor, state *transcriptState, quiet bool, w io.Writer, totalLines int) {
 	lineCount := 0
 	lastProgress := 0
 
 	for msg := range msgCh {
 		lineCount++
-
-		// Progress output every 1000 lines
-		if !quiet && lineCount-lastProgress >= 1000 {
-			pct := 0
-			if totalLines > 0 {
-				pct = lineCount * 100 / totalLines
-			}
-			fmt.Fprintf(w, "\r[forge] Processing... %d/%d (%d%%)  ", lineCount, totalLines, pct)
-			lastProgress = lineCount
-		}
-
+		reportProgress(quiet, w, lineCount, totalLines, &lastProgress)
 		updateSessionMeta(session, msg)
 		extractMessageKnowledge(msg, extractor, state)
 		extractMessageRefs(msg, session, state)
@@ -394,15 +393,30 @@ func processTranscript(filePath string, p *parser.Parser, extractor *parser.Extr
 	if !quiet {
 		fmt.Fprintf(w, "\r%s\r", "                                                    ")
 	}
+}
 
+func reportProgress(quiet bool, w io.Writer, lineCount, totalLines int, lastProgress *int) {
+	if quiet || lineCount-*lastProgress < 1000 {
+		return
+	}
+	pct := 0
+	if totalLines > 0 {
+		pct = lineCount * 100 / totalLines
+	}
+	fmt.Fprintf(w, "\r[forge] Processing... %d/%d (%d%%)  ", lineCount, totalLines, pct)
+	*lastProgress = lineCount
+}
+
+func drainParseErrors(errCh <-chan error) error {
 	select {
 	case err := <-errCh:
-		if err != nil {
-			return nil, err
-		}
+		return err
 	default:
+		return nil
 	}
+}
 
+func finalizeTranscriptSession(session *storage.Session, state *transcriptState, fileSize int64) {
 	session.Summary = generateSummary(state.decisions, state.knowledge, session.Date)
 	session.Decisions = dedup(state.decisions)
 	session.Knowledge = dedup(state.knowledge)
@@ -412,8 +426,6 @@ func processTranscript(filePath string, p *parser.Parser, extractor *parser.Extr
 		Total:     int(fileSize / CharsPerToken),
 		Estimated: true,
 	}
-
-	return session, nil
 }
 
 // transcriptState holds accumulated state during transcript processing.
@@ -695,34 +707,7 @@ func runForgeMarkdown(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		sessionPath, err := fs.WriteSession(session)
-		if err != nil {
-			forgeWarnf(forgeMdQuiet, "Warning: failed to write session for %s: %v\n", filePath, err)
-			continue
-		}
-
-		if err := writeSessionIndex(fs, session, sessionPath); err != nil {
-			forgeWarnf(forgeMdQuiet, "Warning: failed to index session: %v\n", err)
-		}
-
-		if err := writeSessionProvenance(fs, session.ID, sessionPath, filePath, "markdown", false); err != nil {
-			forgeWarnf(forgeMdQuiet, "Warning: failed to write provenance: %v\n", err)
-		}
-
-		// Update search index with the new session file
-		updateSearchIndexForFile(baseDir, sessionPath, forgeMdQuiet)
-
-		totals.addSession(session)
-
-		if !forgeMdQuiet {
-			VerbosePrintf("  ✓ %s → %s\n", filepath.Base(filePath), filepath.Base(sessionPath))
-		}
-
-		if forgeMdQueue {
-			if err := queueForExtraction(session, sessionPath, filePath, cwd); err != nil {
-				forgeWarnf(forgeMdQuiet, "Warning: failed to queue for extraction: %v\n", err)
-			}
-		}
+		forgeMarkdownFile(fs, session, filePath, baseDir, cwd, &totals)
 	}
 
 	if !forgeMdQuiet {
@@ -730,6 +715,35 @@ func runForgeMarkdown(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func forgeMarkdownFile(fs *storage.FileStorage, session *storage.Session, filePath, baseDir, cwd string, totals *forgeTotals) {
+	sessionPath, err := fs.WriteSession(session)
+	if err != nil {
+		forgeWarnf(forgeMdQuiet, "Warning: failed to write session for %s: %v\n", filePath, err)
+		return
+	}
+
+	if err := writeSessionIndex(fs, session, sessionPath); err != nil {
+		forgeWarnf(forgeMdQuiet, "Warning: failed to index session: %v\n", err)
+	}
+
+	if err := writeSessionProvenance(fs, session.ID, sessionPath, filePath, "markdown", false); err != nil {
+		forgeWarnf(forgeMdQuiet, "Warning: failed to write provenance: %v\n", err)
+	}
+
+	updateSearchIndexForFile(baseDir, sessionPath, forgeMdQuiet)
+	totals.addSession(session)
+
+	if !forgeMdQuiet {
+		VerbosePrintf("  ✓ %s → %s\n", filepath.Base(filePath), filepath.Base(sessionPath))
+	}
+
+	if forgeMdQueue {
+		if err := queueForExtraction(session, sessionPath, filePath, cwd); err != nil {
+			forgeWarnf(forgeMdQuiet, "Warning: failed to queue for extraction: %v\n", err)
+		}
+	}
 }
 
 // processMarkdown parses a markdown file and extracts session data.
@@ -855,6 +869,42 @@ func updateSearchIndexForFile(baseDir, filePath string, quiet bool) {
 	}
 }
 
+type fileWithTime struct {
+	path    string
+	modTime time.Time
+}
+
+func isTranscriptCandidate(path string, info os.FileInfo, projectsDir string) bool {
+	if info.IsDir() || filepath.Ext(path) != ".jsonl" {
+		return false
+	}
+	rel, _ := filepath.Rel(projectsDir, path)
+	depth := len(filepath.SplitList(rel))
+	return depth <= 3 && info.Size() > 100
+}
+
+func collectTranscriptCandidates(projectsDir string) ([]fileWithTime, error) {
+	var candidates []fileWithTime
+
+	err := filepath.Walk(projectsDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() && info.Name() == "subagents" {
+			return filepath.SkipDir
+		}
+		if isTranscriptCandidate(path, info, projectsDir) {
+			candidates = append(candidates, fileWithTime{
+				path:    path,
+				modTime: info.ModTime(),
+			})
+		}
+		return nil
+	})
+
+	return candidates, err
+}
+
 // findLastSession finds the most recently modified transcript file.
 func findLastSession() (string, error) {
 	homeDir, err := os.UserHomeDir()
@@ -867,37 +917,7 @@ func findLastSession() (string, error) {
 		return "", fmt.Errorf("no Claude projects directory found at %s", projectsDir)
 	}
 
-	// Find all main session transcripts (exclude subagents)
-	type fileWithTime struct {
-		path    string
-		modTime time.Time
-	}
-	var candidates []fileWithTime
-
-	err = filepath.Walk(projectsDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Skip errors
-		}
-
-		// Skip directories named "subagents"
-		if info.IsDir() && info.Name() == "subagents" {
-			return filepath.SkipDir
-		}
-
-		// Only consider .jsonl files at depth 2 (project/session.jsonl)
-		if !info.IsDir() && filepath.Ext(path) == ".jsonl" {
-			rel, _ := filepath.Rel(projectsDir, path)
-			depth := len(filepath.SplitList(rel))
-			// Accept files directly in project dirs (depth ~2)
-			if depth <= 3 && info.Size() > 100 { // Skip tiny files
-				candidates = append(candidates, fileWithTime{
-					path:    path,
-					modTime: info.ModTime(),
-				})
-			}
-		}
-		return nil
-	})
+	candidates, err := collectTranscriptCandidates(projectsDir)
 	if err != nil {
 		return "", fmt.Errorf("walk projects directory: %w", err)
 	}
@@ -906,7 +926,6 @@ func findLastSession() (string, error) {
 		return "", fmt.Errorf("no transcript files found in %s", projectsDir)
 	}
 
-	// Sort by modification time, most recent first
 	slices.SortFunc(candidates, func(a, b fileWithTime) int {
 		return b.modTime.Compare(a.modTime)
 	})

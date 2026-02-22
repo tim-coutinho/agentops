@@ -360,6 +360,40 @@ func runStoreStats(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// artifactTypeFromPath determines the artifact type based on the file path.
+func artifactTypeFromPath(path string) string {
+	pathTypeMap := []struct {
+		segment    string
+		resultType string
+	}{
+		{"/learnings/", "learning"},
+		{"/patterns/", "pattern"},
+		{"/research/", "research"},
+		{"/retros/", "retro"},
+		{"/candidates/", "candidate"},
+	}
+	for _, m := range pathTypeMap {
+		if strings.Contains(path, m.segment) {
+			return m.resultType
+		}
+	}
+	return "unknown"
+}
+
+// appendCategoryKeywords appends category and tag values as lowercase keywords.
+func appendCategoryKeywords(keywords []string, category string, tags []string) []string {
+	if category != "" {
+		keywords = append(keywords, strings.ToLower(category))
+	}
+	for _, t := range tags {
+		tt := strings.TrimSpace(t)
+		if tt != "" {
+			keywords = append(keywords, strings.ToLower(tt))
+		}
+	}
+	return keywords
+}
+
 // createIndexEntry creates an index entry from a file.
 func createIndexEntry(path string, categorize bool) (*IndexEntry, error) {
 	info, err := os.Stat(path)
@@ -373,53 +407,22 @@ func createIndexEntry(path string, categorize bool) (*IndexEntry, error) {
 	}
 
 	text := string(content)
-
-	// Determine type from path
-	var artifactType string
-	switch {
-	case strings.Contains(path, "/learnings/"):
-		artifactType = "learning"
-	case strings.Contains(path, "/patterns/"):
-		artifactType = "pattern"
-	case strings.Contains(path, "/research/"):
-		artifactType = "research"
-	case strings.Contains(path, "/retros/"):
-		artifactType = "retro"
-	case strings.Contains(path, "/candidates/"):
-		artifactType = "candidate"
-	default:
-		artifactType = "unknown"
-	}
-
-	// Extract title from first heading
-	title := extractTitle(text)
-
-	// Extract keywords
 	keywords := extractKeywords(text)
 
 	var category string
 	var tags []string
 	if categorize {
 		category, tags = extractCategoryAndTags(text)
-		if category != "" {
-			keywords = append(keywords, strings.ToLower(category))
-		}
-		for _, t := range tags {
-			tt := strings.TrimSpace(t)
-			if tt != "" {
-				keywords = append(keywords, strings.ToLower(tt))
-			}
-		}
+		keywords = appendCategoryKeywords(keywords, category, tags)
 	}
 
-	// Parse MemRL metadata if present
 	utility, maturity := parseMemRLMetadata(text)
 
-	entry := &IndexEntry{
+	return &IndexEntry{
 		Path:       path,
 		ID:         filepath.Base(path),
-		Type:       artifactType,
-		Title:      title,
+		Type:       artifactTypeFromPath(path),
+		Title:      extractTitle(text),
 		Content:    text,
 		Keywords:   keywords,
 		Category:   category,
@@ -428,9 +431,7 @@ func createIndexEntry(path string, categorize bool) (*IndexEntry, error) {
 		Maturity:   maturity,
 		IndexedAt:  time.Now(),
 		ModifiedAt: info.ModTime(),
-	}
-
-	return entry, nil
+	}, nil
 }
 
 // appendToIndex adds an entry to the index file.
@@ -776,6 +777,24 @@ type IndexStats struct {
 	IndexPath    string         `json:"index_path"`
 }
 
+// accumulateEntryStats updates running stats counters from a single index entry.
+func accumulateEntryStats(stats *IndexStats, entry IndexEntry, totalUtility *float64, utilityCount *int) {
+	stats.TotalEntries++
+	stats.ByType[entry.Type]++
+
+	if entry.Utility > 0 {
+		*totalUtility += entry.Utility
+		*utilityCount++
+	}
+
+	if stats.OldestEntry.IsZero() || entry.IndexedAt.Before(stats.OldestEntry) {
+		stats.OldestEntry = entry.IndexedAt
+	}
+	if entry.IndexedAt.After(stats.NewestEntry) {
+		stats.NewestEntry = entry.IndexedAt
+	}
+}
+
 // computeIndexStats calculates index statistics.
 func computeIndexStats(baseDir string) (*IndexStats, error) {
 	indexPath := filepath.Join(baseDir, IndexDir, IndexFileName)
@@ -807,21 +826,7 @@ func computeIndexStats(baseDir string) (*IndexStats, error) {
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
 			continue
 		}
-
-		stats.TotalEntries++
-		stats.ByType[entry.Type]++
-
-		if entry.Utility > 0 {
-			totalUtility += entry.Utility
-			utilityCount++
-		}
-
-		if stats.OldestEntry.IsZero() || entry.IndexedAt.Before(stats.OldestEntry) {
-			stats.OldestEntry = entry.IndexedAt
-		}
-		if entry.IndexedAt.After(stats.NewestEntry) {
-			stats.NewestEntry = entry.IndexedAt
-		}
+		accumulateEntryStats(stats, entry, &totalUtility, &utilityCount)
 	}
 
 	if utilityCount > 0 {

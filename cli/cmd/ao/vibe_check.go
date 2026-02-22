@@ -145,68 +145,85 @@ func outputVibeCheckJSON(result *vibecheck.VibeCheckResult) error {
 // outputVibeCheckMarkdown outputs the result as markdown.
 func outputVibeCheckMarkdown(result *vibecheck.VibeCheckResult) error {
 	fmt.Printf("# Vibe Check Report\n\n")
-
-	// Header with grade and score
 	fmt.Printf("## Overall Health: **%s** (%.1f%%)\n\n", result.Grade, result.Score*100)
-
-	// Metrics section
-	fmt.Printf("## Metrics\n\n")
-	if len(result.Metrics) > 0 {
-		fmt.Println("| Metric | Value |")
-		fmt.Println("|--------|-------|")
-		// Sort metrics by name for consistent output
-		names := make([]string, 0, len(result.Metrics))
-		for name := range result.Metrics {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			val := result.Metrics[name]
-			fmt.Printf("| %s | %.2f |\n", name, val)
-		}
-		fmt.Println()
-	}
-
-	// Findings section
-	fmt.Printf("## Findings\n\n")
-	if len(result.Findings) > 0 {
-		for _, finding := range result.Findings {
-			emoji := "⚠️"
-			if finding.Severity == "error" {
-				emoji = "❌"
-			} else if finding.Severity == "info" {
-				emoji = "ℹ️"
-			}
-			fmt.Printf("### %s %s\n\n", emoji, finding.Category)
-			fmt.Printf("**Message:** %s\n\n", finding.Message)
-			if finding.File != "" {
-				fmt.Printf("**File:** %s", finding.File)
-				if finding.Line > 0 {
-					fmt.Printf(":%d", finding.Line)
-				}
-				fmt.Printf("\n\n")
-			}
-		}
-	} else {
-		fmt.Println("No issues found.")
-	}
-
-	// Events section (if full)
-	if vibeCheckFull && len(result.Events) > 0 {
-		fmt.Printf("## Recent Events (%d commits)\n\n", len(result.Events))
-		fmt.Println("| Date | Author | Message |")
-		fmt.Println("|------|--------|---------|")
-		for _, event := range result.Events {
-			msg := event.Message
-			if len(msg) > 50 {
-				msg = msg[:50] + "..."
-			}
-			fmt.Printf("| %s | %s | %s |\n", event.Timestamp.Format("2006-01-02"), event.Author, msg)
-		}
-		fmt.Println()
-	}
-
+	printMarkdownMetrics(result.Metrics)
+	printMarkdownFindings(result.Findings)
+	printMarkdownEvents(result.Events)
 	return nil
+}
+
+// printMarkdownMetrics renders the metrics section of the markdown report.
+func printMarkdownMetrics(metrics map[string]float64) {
+	fmt.Printf("## Metrics\n\n")
+	if len(metrics) == 0 {
+		return
+	}
+	fmt.Println("| Metric | Value |")
+	fmt.Println("|--------|-------|")
+	names := make([]string, 0, len(metrics))
+	for name := range metrics {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		fmt.Printf("| %s | %.2f |\n", name, metrics[name])
+	}
+	fmt.Println()
+}
+
+// printMarkdownFindings renders the findings section of the markdown report.
+func printMarkdownFindings(findings []vibecheck.Finding) {
+	fmt.Printf("## Findings\n\n")
+	if len(findings) == 0 {
+		fmt.Println("No issues found.")
+		return
+	}
+	for _, finding := range findings {
+		printMarkdownFinding(finding)
+	}
+}
+
+// severityEmoji maps finding severity to its markdown emoji.
+func severityEmoji(severity string) string {
+	switch severity {
+	case "error":
+		return "❌"
+	case "info":
+		return "ℹ️"
+	default:
+		return "⚠️"
+	}
+}
+
+// printMarkdownFinding renders a single finding in markdown.
+func printMarkdownFinding(finding vibecheck.Finding) {
+	fmt.Printf("### %s %s\n\n", severityEmoji(finding.Severity), finding.Category)
+	fmt.Printf("**Message:** %s\n\n", finding.Message)
+	if finding.File != "" {
+		fmt.Printf("**File:** %s", finding.File)
+		if finding.Line > 0 {
+			fmt.Printf(":%d", finding.Line)
+		}
+		fmt.Printf("\n\n")
+	}
+}
+
+// printMarkdownEvents renders the events section if --full is enabled.
+func printMarkdownEvents(events []vibecheck.TimelineEvent) {
+	if !vibeCheckFull || len(events) == 0 {
+		return
+	}
+	fmt.Printf("## Recent Events (%d commits)\n\n", len(events))
+	fmt.Println("| Date | Author | Message |")
+	fmt.Println("|------|--------|---------|")
+	for _, event := range events {
+		msg := event.Message
+		if len(msg) > 50 {
+			msg = msg[:50] + "..."
+		}
+		fmt.Printf("| %s | %s | %s |\n", event.Timestamp.Format("2006-01-02"), event.Author, msg)
+	}
+	fmt.Println()
 }
 
 // outputVibeCheckTable outputs the result as a formatted table.

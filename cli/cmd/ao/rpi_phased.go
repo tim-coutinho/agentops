@@ -165,48 +165,90 @@ func runRPIPhased(cmd *cobra.Command, args []string) error {
 	return runRPIPhasedWithOpts(opts, args)
 }
 
-// runRPIPhasedWithOpts is the core implementation of the phased RPI lifecycle.
-// All configuration is read from opts; no package-level globals are read after
-// this point (except test-injection points: lookPath and spawnDirectFn).
-func runRPIPhasedWithOpts(opts phasedEngineOptions, args []string) (retErr error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get working directory: %w", err)
-	}
+// normalizeOptsCommands resolves all runtime/tool commands to their effective values.
+func normalizeOptsCommands(opts *phasedEngineOptions) {
 	opts.RuntimeMode = normalizeRuntimeMode(opts.RuntimeMode)
 	opts.RuntimeCommand = effectiveRuntimeCommand(opts.RuntimeCommand)
 	opts.AOCommand = effectiveAOCommand(opts.AOCommand)
 	opts.BDCommand = effectiveBDCommand(opts.BDCommand)
 	opts.TmuxCommand = effectiveTmuxCommand(opts.TmuxCommand)
+}
+
+// applyComplexityFastPath classifies goal complexity and activates the fast path
+// (skips council validation) for trivial goals.
+func applyComplexityFastPath(state *phasedState, opts phasedEngineOptions) {
+	complexity := classifyComplexity(state.Goal)
+	state.Complexity = complexity
+	fmt.Printf("RPI mode: rpi-phased (complexity: %s)\n", complexity)
+	if complexity == ComplexityFast && !opts.FastPath {
+		state.FastPath = true
+		fmt.Println("Complexity: fast — skipping validation phase (phase 3)")
+	}
+}
+
+// saveTerminalState writes a terminal status/reason to state and persists it.
+func saveTerminalState(spawnCwd string, state *phasedState, status, reason string) {
+	state.TerminalStatus = status
+	state.TerminalReason = reason
+	state.TerminatedAt = time.Now().Format(time.RFC3339)
+	if err := savePhasedState(spawnCwd, state); err != nil {
+		VerbosePrintf("Warning: could not persist %s terminal state: %v\n", status, err)
+	}
+}
+
+// preflightOpts normalizes, validates, and checks runtime availability for opts.
+func preflightOpts(opts *phasedEngineOptions) error {
+	normalizeOptsCommands(opts)
 	if err := validateRuntimeMode(opts.RuntimeMode); err != nil {
 		return err
 	}
-	if err := preflightRuntimeAvailability(opts.RuntimeCommand); err != nil {
+	return preflightRuntimeAvailability(opts.RuntimeCommand)
+}
+
+// initExecutorAndPersist selects the executor backend for the run and persists
+// the initial state with the backend name.
+func initExecutorAndPersist(spawnCwd, logPath, statusPath string, allPhases []PhaseProgress, state *phasedState, opts phasedEngineOptions) PhaseExecutor {
+	executor := selectExecutorWithLog(statusPath, allPhases, logPath, state.RunID, opts.LiveStatus, opts)
+	state.Backend = executor.Name()
+	if err := savePhasedState(spawnCwd, state); err != nil {
+		VerbosePrintf("Warning: could not persist startup state: %v\n", err)
+	}
+	updateRunHeartbeat(spawnCwd, state.RunID)
+	return executor
+}
+
+// runRPIPhasedWithOpts is the core implementation of the phased RPI lifecycle.
+// All configuration is read from opts; no package-level globals are read after
+// this point (except test-injection points: lookPath and spawnDirectFn).
+// initPhasedState resolves the goal and start phase from args, creates the
+// phasedState, applies complexity fast-path, and resumes from prior state if needed.
+func initPhasedState(cwd string, opts phasedEngineOptions, args []string) (*phasedState, int, string, error) {
+	goal, startPhase, err := resolveGoalAndStartPhase(opts, args, cwd)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	state := newPhasedState(opts, startPhase, goal)
+	applyComplexityFastPath(state, opts)
+
+	spawnCwd, err := resumePhasedStateIfNeeded(cwd, opts, startPhase, goal, state)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	return state, startPhase, spawnCwd, nil
+}
+
+func runRPIPhasedWithOpts(opts phasedEngineOptions, args []string) (retErr error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("get working directory: %w", err)
+	}
+	if err := preflightOpts(&opts); err != nil {
 		return err
 	}
 	maybeAutoCleanStale(opts, cwd)
 
 	originalCwd := cwd
-	goal, startPhase, err := resolveGoalAndStartPhase(opts, args, cwd)
-	if err != nil {
-		return err
-	}
-	state := newPhasedState(opts, startPhase, goal)
-
-	// Classify goal complexity and apply fast-path ceremony reduction.
-	// This runs at RPI start so all downstream phase logic can reference state.Complexity.
-	complexity := classifyComplexity(goal)
-	state.Complexity = complexity
-	// Map complexity to a mode label for user-visible logging.
-	mode := "rpi-phased"
-	fmt.Printf("RPI mode: %s (complexity: %s)\n", mode, complexity)
-	// For fast complexity, activate the fast path (skips council validation).
-	if complexity == ComplexityFast && !opts.FastPath {
-		state.FastPath = true
-		fmt.Println("Complexity: fast — skipping validation phase (phase 3)")
-	}
-
-	spawnCwd, err := resumePhasedStateIfNeeded(cwd, opts, startPhase, goal, state)
+	state, startPhase, spawnCwd, err := initPhasedState(cwd, opts, args)
 	if err != nil {
 		return err
 	}
@@ -234,31 +276,14 @@ func runRPIPhasedWithOpts(opts phasedEngineOptions, args []string) (retErr error
 
 	logPhaseTransition(logPath, state.RunID, "start", fmt.Sprintf("goal=%q from=%s complexity=%s fast_path=%v", state.Goal, opts.From, state.Complexity, state.FastPath))
 
-	// Resolve executor backend once for the entire run.
-	// selectExecutorWithLog records the selection and reason to the orchestration log.
-	executor := selectExecutorWithLog(statusPath, allPhases, logPath, state.RunID, opts.LiveStatus, opts)
-	state.Backend = executor.Name()
-	if err := savePhasedState(spawnCwd, state); err != nil {
-		VerbosePrintf("Warning: could not persist startup state: %v\n", err)
-	}
-	updateRunHeartbeat(spawnCwd, state.RunID)
+	executor := initExecutorAndPersist(spawnCwd, logPath, statusPath, allPhases, state, opts)
 
 	if err := runPhaseLoop(cwd, spawnCwd, state, startPhase, opts, statusPath, allPhases, logPath, executor); err != nil {
-		state.TerminalStatus = "failed"
-		state.TerminalReason = err.Error()
-		state.TerminatedAt = time.Now().Format(time.RFC3339)
-		if saveErr := savePhasedState(spawnCwd, state); saveErr != nil {
-			VerbosePrintf("Warning: could not persist failed terminal state: %v\n", saveErr)
-		}
+		saveTerminalState(spawnCwd, state, "failed", err.Error())
 		return err
 	}
 
-	state.TerminalStatus = "completed"
-	state.TerminalReason = "all phases completed"
-	state.TerminatedAt = time.Now().Format(time.RFC3339)
-	if err := savePhasedState(spawnCwd, state); err != nil {
-		VerbosePrintf("Warning: could not persist completion state: %v\n", err)
-	}
+	saveTerminalState(spawnCwd, state, "completed", "all phases completed")
 
 	// All phases completed — mark worktree for merge+cleanup.
 	cleanupSuccess = true

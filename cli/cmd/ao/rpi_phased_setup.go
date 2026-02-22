@@ -66,17 +66,9 @@ func newPhasedState(opts phasedEngineOptions, startPhase int, goal string) *phas
 	}
 }
 
-func resumePhasedStateIfNeeded(cwd string, opts phasedEngineOptions, startPhase int, goal string, state *phasedState) (string, error) {
-	spawnCwd := cwd
-	if startPhase <= 1 {
-		return spawnCwd, nil
-	}
-
-	existing, err := loadPhasedState(cwd)
-	if err != nil {
-		return spawnCwd, nil
-	}
-
+// mergeExistingStateFields copies relevant fields from a previous run's state
+// into the current state for phase resumption.
+func mergeExistingStateFields(state *phasedState, existing *phasedState, opts phasedEngineOptions, goal string) {
 	state.EpicID = existing.EpicID
 	state.FastPath = existing.FastPath || opts.FastPath
 	state.SwarmFirst = existing.SwarmFirst || opts.SwarmFirst
@@ -89,19 +81,44 @@ func resumePhasedStateIfNeeded(cwd string, opts phasedEngineOptions, startPhase 
 	if goal == "" {
 		state.Goal = existing.Goal
 	}
+}
 
+// resolveExistingWorktree checks whether the previous run's worktree still exists
+// and returns the worktree path to use as spawnCwd.  Returns ("", nil) when no
+// worktree should be used (NoWorktree flag or no prior worktree path).
+func resolveExistingWorktree(state *phasedState, existing *phasedState, opts phasedEngineOptions) (string, error) {
 	if opts.NoWorktree || existing.WorktreePath == "" {
-		return spawnCwd, nil
+		return "", nil
 	}
 	if _, statErr := os.Stat(existing.WorktreePath); statErr != nil {
 		return "", fmt.Errorf("worktree %s from previous run no longer exists (was it removed?)", existing.WorktreePath)
 	}
-
-	spawnCwd = existing.WorktreePath
 	state.WorktreePath = existing.WorktreePath
 	state.RunID = existing.RunID
-	fmt.Printf("Resuming in existing worktree: %s\n", spawnCwd)
-	return spawnCwd, nil
+	fmt.Printf("Resuming in existing worktree: %s\n", existing.WorktreePath)
+	return existing.WorktreePath, nil
+}
+
+func resumePhasedStateIfNeeded(cwd string, opts phasedEngineOptions, startPhase int, goal string, state *phasedState) (string, error) {
+	if startPhase <= 1 {
+		return cwd, nil
+	}
+
+	existing, err := loadPhasedState(cwd)
+	if err != nil {
+		return cwd, nil
+	}
+
+	mergeExistingStateFields(state, existing, opts, goal)
+
+	wtPath, err := resolveExistingWorktree(state, existing, opts)
+	if err != nil {
+		return "", err
+	}
+	if wtPath != "" {
+		return wtPath, nil
+	}
+	return cwd, nil
 }
 
 func setupWorktreeLifecycle(cwd, originalCwd string, opts phasedEngineOptions, state *phasedState) (string, func(success bool, logPath string) error, error) {

@@ -170,6 +170,28 @@ func runCleanupPostActions(cwd, runID string, all, prune, pruneBranches, dryRun 
 	}
 }
 
+// deleteLegacyBranches iterates over candidate branches, skipping active ones,
+// and deletes (or dry-run reports) each.
+func deleteLegacyBranches(cwd string, candidates []string, activeBranches map[string]bool, dryRun bool) {
+	for _, name := range candidates {
+		if activeBranches[name] {
+			fmt.Printf("Skipping active branch: %s\n", name)
+			continue
+		}
+		if dryRun {
+			fmt.Printf("[dry-run] Would delete branch: %s\n", name)
+			continue
+		}
+		cmd := exec.Command("git", "branch", "-D", name)
+		cmd.Dir = cwd
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to delete branch %s: %v\n", name, err)
+			continue
+		}
+		fmt.Printf("Deleted branch: %s\n", name)
+	}
+}
+
 // cleanupLegacyRPIBranches removes legacy RPI branches for the selected scope.
 func cleanupLegacyRPIBranches(cwd, runID string, all, dryRun bool) error {
 	runID = strings.TrimSpace(runID)
@@ -194,25 +216,7 @@ func cleanupLegacyRPIBranches(cwd, runID string, all, dryRun bool) error {
 		return err
 	}
 
-	for _, name := range candidates {
-		if activeBranches[name] {
-			fmt.Printf("Skipping active branch: %s\n", name)
-			continue
-		}
-		if dryRun {
-			fmt.Printf("[dry-run] Would delete branch: %s\n", name)
-			continue
-		}
-
-		cmd := exec.Command("git", "branch", "-D", name)
-		cmd.Dir = cwd
-		if err := cmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to delete branch %s: %v\n", name, err)
-			continue
-		}
-		fmt.Printf("Deleted branch: %s\n", name)
-	}
-
+	deleteLegacyBranches(cwd, candidates, activeBranches, dryRun)
 	return nil
 }
 
@@ -311,6 +315,26 @@ func findStaleRuns(root string) []staleRunEntry {
 	return findStaleRunsWithMinAge(root, 0, time.Now())
 }
 
+// classifyRunEntry reads and parses a run's state file, returning a staleRunEntry
+// if the run qualifies as stale. Returns ok=false if the run is active or
+// cannot be parsed.
+func classifyRunEntry(runID, root, runsDir string, minAge time.Duration, now time.Time) (staleRunEntry, bool) {
+	statePath := filepath.Join(runsDir, runID, phasedStateFile)
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return staleRunEntry{}, false
+	}
+	state, err := parsePhasedState(data)
+	if err != nil || state.RunID == "" {
+		return staleRunEntry{}, false
+	}
+
+	if state.TerminalStatus != "" {
+		return checkTerminalRunStale(runID, root, statePath, state, minAge, now)
+	}
+	return checkNonTerminalRunStale(runID, root, statePath, state, minAge, now)
+}
+
 // findStaleRunsWithMinAge scans the registry for runs that are not active and
 // not completed, optionally filtering to runs older than minAge.
 func findStaleRunsWithMinAge(root string, minAge time.Duration, now time.Time) []staleRunEntry {
@@ -325,25 +349,7 @@ func findStaleRunsWithMinAge(root string, minAge time.Duration, now time.Time) [
 		if !entry.IsDir() {
 			continue
 		}
-		runID := entry.Name()
-		statePath := filepath.Join(runsDir, runID, phasedStateFile)
-		data, err := os.ReadFile(statePath)
-		if err != nil {
-			continue
-		}
-		state, err := parsePhasedState(data)
-		if err != nil || state.RunID == "" {
-			continue
-		}
-
-		if state.TerminalStatus != "" {
-			if sr, ok := checkTerminalRunStale(runID, root, statePath, state, minAge, now); ok {
-				stale = append(stale, sr)
-			}
-			continue
-		}
-
-		if sr, ok := checkNonTerminalRunStale(runID, root, statePath, state, minAge, now); ok {
+		if sr, ok := classifyRunEntry(entry.Name(), root, runsDir, minAge, now); ok {
 			stale = append(stale, sr)
 		}
 	}
@@ -409,6 +415,29 @@ func checkNonTerminalRunStale(runID, root, statePath string, state *phasedState,
 	}, true
 }
 
+// updateFlatStateIfMatches updates the flat (root-level) state file with stale
+// metadata when its run_id matches the given runID.
+func updateFlatStateIfMatches(flatPath, runID, reason, terminatedAt string) {
+	flatData, fErr := os.ReadFile(flatPath)
+	if fErr != nil {
+		return
+	}
+	var flatRaw map[string]any
+	if json.Unmarshal(flatData, &flatRaw) != nil {
+		return
+	}
+	if flatRunID, ok := flatRaw["run_id"].(string); !ok || flatRunID != runID {
+		return
+	}
+	flatRaw["terminal_status"] = "stale"
+	flatRaw["terminal_reason"] = reason
+	flatRaw["terminated_at"] = terminatedAt
+	if flatUpdated, mErr := json.MarshalIndent(flatRaw, "", "  "); mErr == nil {
+		flatUpdated = append(flatUpdated, '\n')
+		_ = writePhasedStateAtomic(flatPath, flatUpdated)
+	}
+}
+
 // markRunStale writes terminal metadata to the state file.
 func markRunStale(sr staleRunEntry) error {
 	data, err := os.ReadFile(sr.statePath)
@@ -435,22 +464,8 @@ func markRunStale(sr staleRunEntry) error {
 		return fmt.Errorf("write state: %w", err)
 	}
 
-	// Also update the flat state file if it exists and matches this run.
 	flatPath := filepath.Join(sr.root, ".agents", "rpi", phasedStateFile)
-	if flatData, fErr := os.ReadFile(flatPath); fErr == nil {
-		var flatRaw map[string]any
-		if json.Unmarshal(flatData, &flatRaw) == nil {
-			if flatRunID, ok := flatRaw["run_id"].(string); ok && flatRunID == sr.runID {
-				flatRaw["terminal_status"] = "stale"
-				flatRaw["terminal_reason"] = sr.reason
-				flatRaw["terminated_at"] = raw["terminated_at"]
-				if flatUpdated, mErr := json.MarshalIndent(flatRaw, "", "  "); mErr == nil {
-					flatUpdated = append(flatUpdated, '\n')
-					_ = writePhasedStateAtomic(flatPath, flatUpdated)
-				}
-			}
-		}
-	}
+	updateFlatStateIfMatches(flatPath, sr.runID, sr.reason, raw["terminated_at"].(string))
 
 	return nil
 }

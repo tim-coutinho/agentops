@@ -179,6 +179,14 @@ func processUniqueCitations(cwd, sessionID, transcriptPath string, citations []t
 	return events, updatedCount, failedCount
 }
 
+// resolveReward determines the reward value, either from the flag or from transcript analysis.
+func resolveFeedbackReward(flagReward float64, transcriptPath, sessionID string) (float64, error) {
+	if flagReward >= 0 && flagReward <= 1 {
+		return flagReward, nil
+	}
+	return computeRewardFromTranscript(transcriptPath, sessionID)
+}
+
 func runFeedbackLoop(cmd *cobra.Command, args []string) error {
 	sessionID, err := resolveFeedbackLoopSessionID(feedbackLoopSessionID)
 	if err != nil {
@@ -195,7 +203,6 @@ func runFeedbackLoop(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Load and filter citations
 	sessionCitations, err := loadSessionCitations(cwd, sessionID, feedbackLoopCitationType)
 	if err != nil {
 		return err
@@ -205,22 +212,16 @@ func runFeedbackLoop(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Determine reward
-	reward := feedbackLoopReward
-	if reward < 0 || reward > 1 {
-		reward, err = computeRewardFromTranscript(feedbackLoopTranscript, sessionID)
-		if err != nil {
-			return err
-		}
+	reward, err := resolveFeedbackReward(feedbackLoopReward, feedbackLoopTranscript, sessionID)
+	if err != nil {
+		return err
 	}
 
-	// Process citations
 	uniqueCitations := deduplicateCitations(cwd, sessionCitations)
 	feedbackEvents, updatedCount, failedCount := processUniqueCitations(
 		cwd, sessionID, feedbackLoopTranscript, uniqueCitations, reward, feedbackLoopAlpha,
 	)
 
-	// Write feedback events to log
 	if err := writeFeedbackEvents(cwd, feedbackEvents); err != nil {
 		VerbosePrintf("Warning: failed to write feedback log: %v\n", err)
 	}
@@ -228,7 +229,6 @@ func runFeedbackLoop(cmd *cobra.Command, args []string) error {
 		VerbosePrintf("Warning: failed to mark citation feedback metadata: %v\n", err)
 	}
 
-	// Output summary
 	return outputFeedbackSummary(sessionID, reward, len(sessionCitations), len(uniqueCitations), updatedCount, failedCount, feedbackEvents)
 }
 

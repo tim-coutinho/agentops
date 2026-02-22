@@ -136,6 +136,20 @@ Examples:
 	temperCmd.AddCommand(statusCmd)
 }
 
+// validateTemperFiles runs validation on each file and returns (results, allValid).
+func validateTemperFiles(files []string) ([]TemperResult, bool) {
+	var results []TemperResult
+	allValid := true
+	for _, path := range files {
+		result := validateArtifact(path, temperMinMaturity, temperMinUtility, temperMinFeedback)
+		results = append(results, result)
+		if !result.Valid {
+			allValid = false
+		}
+	}
+	return results, allValid
+}
+
 func runTemperValidate(cmd *cobra.Command, args []string) error {
 	w := cmd.OutOrStdout()
 
@@ -149,7 +163,6 @@ func runTemperValidate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	// Expand file patterns
 	files, err := expandFilePatterns(cwd, args)
 	if err != nil {
 		return fmt.Errorf("expand patterns: %w", err)
@@ -159,28 +172,16 @@ func runTemperValidate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no files found matching patterns")
 	}
 
-	var results []TemperResult
-	allValid := true
+	results, allValid := validateTemperFiles(files)
 
-	for _, path := range files {
-		result := validateArtifact(path, temperMinMaturity, temperMinUtility, temperMinFeedback)
-		results = append(results, result)
-		if !result.Valid {
-			allValid = false
-		}
-	}
-
-	// Output
 	switch GetOutput() {
 	case "json":
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(results)
-
 	case "yaml":
 		enc := yaml.NewEncoder(w)
 		return enc.Encode(results)
-
 	default:
 		printValidationResults(results)
 	}
@@ -400,34 +401,37 @@ func parseMarkdownField(line, field string) (string, bool) {
 	return "", false
 }
 
+// applyMarkdownLine applies a single parsed markdown line to the metadata.
+func applyMarkdownLine(line string, meta *artifactMetadata) {
+	if val, ok := parseMarkdownField(line, "ID"); ok {
+		meta.ID = val
+	}
+	if val, ok := parseMarkdownField(line, "Maturity"); ok {
+		meta.Maturity = types.Maturity(strings.ToLower(val))
+	}
+	if val, ok := parseMarkdownField(line, "Utility"); ok {
+		//nolint:errcheck // parsing optional metadata, zero value is acceptable default
+		fmt.Sscanf(val, "%f", &meta.Utility)
+	}
+	if val, ok := parseMarkdownField(line, "Confidence"); ok {
+		//nolint:errcheck // parsing optional metadata, zero value is acceptable default
+		fmt.Sscanf(val, "%f", &meta.Confidence)
+	}
+	if val, ok := parseMarkdownField(line, "Schema Version"); ok {
+		//nolint:errcheck // parsing optional metadata, zero value is acceptable default
+		fmt.Sscanf(val, "%d", &meta.SchemaVersion)
+	}
+	if val, ok := parseMarkdownField(line, "Status"); ok {
+		if strings.ToLower(val) == "tempered" || strings.ToLower(val) == "locked" {
+			meta.Tempered = true
+		}
+	}
+}
+
 // parseMarkdownMetadata extracts metadata from markdown content.
 func parseMarkdownMetadata(content string, meta *artifactMetadata) {
 	for _, line := range strings.Split(content, "\n") {
-		line = strings.TrimSpace(line)
-
-		if val, ok := parseMarkdownField(line, "ID"); ok {
-			meta.ID = val
-		}
-		if val, ok := parseMarkdownField(line, "Maturity"); ok {
-			meta.Maturity = types.Maturity(strings.ToLower(val))
-		}
-		if val, ok := parseMarkdownField(line, "Utility"); ok {
-			//nolint:errcheck // parsing optional metadata, zero value is acceptable default
-			fmt.Sscanf(val, "%f", &meta.Utility)
-		}
-		if val, ok := parseMarkdownField(line, "Confidence"); ok {
-			//nolint:errcheck // parsing optional metadata, zero value is acceptable default
-			fmt.Sscanf(val, "%f", &meta.Confidence)
-		}
-		if val, ok := parseMarkdownField(line, "Schema Version"); ok {
-			//nolint:errcheck // parsing optional metadata, zero value is acceptable default
-			fmt.Sscanf(val, "%d", &meta.SchemaVersion)
-		}
-		if val, ok := parseMarkdownField(line, "Status"); ok {
-			if strings.ToLower(val) == "tempered" || strings.ToLower(val) == "locked" {
-				meta.Tempered = true
-			}
-		}
+		applyMarkdownLine(strings.TrimSpace(line), meta)
 	}
 }
 

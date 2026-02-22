@@ -50,50 +50,83 @@ func init() {
 	forgeBatchCmd.Flags().IntVar(&batchMax, "max", 0, "Maximum transcripts to process (0 = all)")
 }
 
+// loadAndFilterTranscripts discovers transcripts, filters already-forged ones, and applies the max limit.
+func loadAndFilterTranscripts(cwd, specificDir string, maxCount int) ([]transcriptCandidate, int, string, error) {
+	transcripts, err := findPendingTranscripts(specificDir)
+	if err != nil {
+		return nil, 0, "", fmt.Errorf("find transcripts: %w", err)
+	}
+	if len(transcripts) == 0 {
+		return nil, 0, "", nil
+	}
+
+	forgedIndexPath := filepath.Join(cwd, storage.DefaultBaseDir, "forged.jsonl")
+	forgedSet, err := loadForgedIndex(forgedIndexPath)
+	if err != nil {
+		return nil, 0, "", fmt.Errorf("load forged index: %w", err)
+	}
+
+	unforged, skipped := filterUnforgedTranscripts(transcripts, forgedSet)
+	if maxCount > 0 && len(unforged) > maxCount {
+		unforged = unforged[:maxCount]
+	}
+	return unforged, skipped, forgedIndexPath, nil
+}
+
+// batchForgeAccumulator collects results across transcript processing.
+type batchForgeAccumulator struct {
+	processed      int
+	failed         int
+	totalDecisions int
+	totalKnowledge int
+	allKnowledge   []string
+	allDecisions   []string
+	processedPaths []string
+}
+
+// accumulate records the result of processing a single transcript.
+func (a *batchForgeAccumulator) accumulate(ok bool, decisions, knowledge []string, path string) {
+	if !ok {
+		a.failed++
+		return
+	}
+	a.processed++
+	a.totalDecisions += len(decisions)
+	a.totalKnowledge += len(knowledge)
+	a.allKnowledge = append(a.allKnowledge, knowledge...)
+	a.allDecisions = append(a.allDecisions, decisions...)
+	a.processedPaths = append(a.processedPaths, path)
+}
+
 func runForgeBatch(cmd *cobra.Command, args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	transcripts, err := findPendingTranscripts(batchDir)
+	unforged, skippedCount, forgedIndexPath, err := loadAndFilterTranscripts(cwd, batchDir, batchMax)
 	if err != nil {
-		return fmt.Errorf("find transcripts: %w", err)
+		return err
 	}
-
-	if len(transcripts) == 0 {
+	if len(unforged) == 0 {
 		fmt.Println("No pending transcripts found.")
 		return nil
 	}
 
-	forgedIndexPath := filepath.Join(cwd, storage.DefaultBaseDir, "forged.jsonl")
-	forgedSet, err := loadForgedIndex(forgedIndexPath)
-	if err != nil {
-		return fmt.Errorf("load forged index: %w", err)
-	}
-
-	unforgedTranscripts, skippedCount := filterUnforgedTranscripts(transcripts, forgedSet)
-	if batchMax > 0 && len(unforgedTranscripts) > batchMax {
-		unforgedTranscripts = unforgedTranscripts[:batchMax]
-	}
-
 	if GetDryRun() {
-		fmt.Printf("[dry-run] Would process %d transcript(s) (skipped %d):\n", len(unforgedTranscripts), skippedCount)
-		for _, t := range unforgedTranscripts {
+		fmt.Printf("[dry-run] Would process %d transcript(s) (skipped %d):\n", len(unforged), skippedCount)
+		for _, t := range unforged {
 			fmt.Printf("  - %s (%s)\n", t.path, humanSize(t.size))
 		}
 		return nil
 	}
 
-	fmt.Printf("Found %d transcript(s) to process (skipped %d already forged).\n", len(unforgedTranscripts), skippedCount)
+	fmt.Printf("Found %d transcript(s) to process (skipped %d already forged).\n", len(unforged), skippedCount)
 
 	baseDir := filepath.Join(cwd, storage.DefaultBaseDir)
 	fs := storage.NewFileStorage(
 		storage.WithBaseDir(baseDir),
-		storage.WithFormatters(
-			formatter.NewMarkdownFormatter(),
-			formatter.NewJSONLFormatter(),
-		),
+		storage.WithFormatters(formatter.NewMarkdownFormatter(), formatter.NewJSONLFormatter()),
 	)
 	if err := fs.Init(); err != nil {
 		return fmt.Errorf("initialize storage: %w", err)
@@ -103,37 +136,19 @@ func runForgeBatch(cmd *cobra.Command, args []string) error {
 	p.MaxContentLength = 0
 	extractor := parser.NewExtractor()
 
-	var (
-		totalProcessed int
-		totalFailed    int
-		totalDecisions int
-		totalKnowledge int
-		allKnowledge   []string
-		allDecisions   []string
-		processedPaths []string
-	)
-
-	for i, t := range unforgedTranscripts {
-		ok, decisions, knowledge, path := forgeSingleTranscript(i, len(unforgedTranscripts), t, fs, p, extractor, forgedIndexPath)
-		if !ok {
-			totalFailed++
-			continue
-		}
-		totalProcessed++
-		totalDecisions += len(decisions)
-		totalKnowledge += len(knowledge)
-		allKnowledge = append(allKnowledge, knowledge...)
-		allDecisions = append(allDecisions, decisions...)
-		processedPaths = append(processedPaths, path)
+	var acc batchForgeAccumulator
+	for i, t := range unforged {
+		ok, decisions, knowledge, path := forgeSingleTranscript(i, len(unforged), t, fs, p, extractor, forgedIndexPath)
+		acc.accumulate(ok, decisions, knowledge, path)
 	}
 
-	dedupedKnowledge := dedupSimilar(allKnowledge)
-	dedupedDecisions := dedupSimilar(allDecisions)
-	totalDupsRemoved := (len(allKnowledge) - len(dedupedKnowledge)) + (len(allDecisions) - len(dedupedDecisions))
+	dedupedKnowledge := dedupSimilar(acc.allKnowledge)
+	dedupedDecisions := dedupSimilar(acc.allDecisions)
+	totalDupsRemoved := (len(acc.allKnowledge) - len(dedupedKnowledge)) + (len(acc.allDecisions) - len(dedupedDecisions))
 
-	totalExtracted := runBatchExtractionStep(cwd, totalProcessed)
+	totalExtracted := runBatchExtractionStep(cwd, acc.processed)
 
-	return outputBatchForgeResult(baseDir, totalProcessed, skippedCount, totalFailed, totalDecisions, totalKnowledge, totalDupsRemoved, totalExtracted, dedupedKnowledge, dedupedDecisions, processedPaths)
+	return outputBatchForgeResult(baseDir, acc.processed, skippedCount, acc.failed, acc.totalDecisions, acc.totalKnowledge, totalDupsRemoved, totalExtracted, dedupedKnowledge, dedupedDecisions, acc.processedPaths)
 }
 
 // filterUnforgedTranscripts returns transcripts not yet in the forged index, plus a skip count.
@@ -270,36 +285,44 @@ type BatchForgeResult struct {
 	Paths     []string `json:"paths"`
 }
 
+// resolveSearchDirs returns directories to scan for transcripts.
+func resolveSearchDirs(specificDir string) ([]string, error) {
+	if specificDir != "" {
+		return []string{specificDir}, nil
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("get home directory: %w", err)
+	}
+	projectsDir := filepath.Join(homeDir, ".claude", "projects")
+	if _, err := os.Stat(projectsDir); os.IsNotExist(err) {
+		return nil, nil
+	}
+	return []string{projectsDir}, nil
+}
+
+// isBatchTranscriptCandidate reports whether a file entry qualifies as a transcript candidate.
+func isBatchTranscriptCandidate(info os.FileInfo, path string) bool {
+	return !info.IsDir() && filepath.Ext(path) == ".jsonl" && info.Size() > 100
+}
+
 // findPendingTranscripts discovers JSONL transcript files in Claude project directories.
 func findPendingTranscripts(specificDir string) ([]transcriptCandidate, error) {
-	var searchDirs []string
-
-	if specificDir != "" {
-		searchDirs = []string{specificDir}
-	} else {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("get home directory: %w", err)
-		}
-		projectsDir := filepath.Join(homeDir, ".claude", "projects")
-		if _, err := os.Stat(projectsDir); os.IsNotExist(err) {
-			return nil, nil // No projects dir, nothing to process
-		}
-		searchDirs = []string{projectsDir}
+	searchDirs, err := resolveSearchDirs(specificDir)
+	if err != nil || len(searchDirs) == 0 {
+		return nil, err
 	}
 
 	var candidates []transcriptCandidate
-
 	for _, dir := range searchDirs {
 		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return nil
 			}
-			// Skip subagent directories
 			if info.IsDir() && info.Name() == "subagents" {
 				return filepath.SkipDir
 			}
-			if !info.IsDir() && filepath.Ext(path) == ".jsonl" && info.Size() > 100 {
+			if isBatchTranscriptCandidate(info, path) {
 				candidates = append(candidates, transcriptCandidate{
 					path:    path,
 					modTime: info.ModTime(),
@@ -313,7 +336,6 @@ func findPendingTranscripts(specificDir string) ([]transcriptCandidate, error) {
 		}
 	}
 
-	// Sort by modification time, oldest first (process in chronological order)
 	slices.SortFunc(candidates, func(a, b transcriptCandidate) int {
 		return a.modTime.Compare(b.modTime)
 	})

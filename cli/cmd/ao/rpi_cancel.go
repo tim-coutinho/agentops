@@ -77,48 +77,64 @@ func runRPICancel(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get working directory: %w", err)
-	}
-
-	procs, err := listProcesses()
+	targets, err := resolveCancelTargets()
 	if err != nil {
 		return err
 	}
-
-	targets := discoverCancelTargets(collectSearchRoots(cwd), runID, procs)
 	if len(targets) == 0 {
 		fmt.Println("No active runs matched cancel criteria.")
 		return nil
 	}
 
-	selfPID := os.Getpid()
-	var failures []string
-	for _, target := range targets {
-		pids := filterKillablePIDs(target.PIDs, selfPID)
-		fmt.Printf("Cancel target: kind=%s run=%s signal=%s pids=%v\n", target.Kind, target.RunID, sig.String(), pids)
-		if rpiCancelDryRun {
-			continue
-		}
-
-		for _, pid := range pids {
-			if killErr := syscall.Kill(pid, sig); killErr != nil && !errors.Is(killErr, syscall.ESRCH) {
-				failures = append(failures, fmt.Sprintf("pid %d: %v", pid, killErr))
-			}
-		}
-
-		if target.StatePath != "" {
-			if markErr := markRunInterruptedByCancel(target); markErr != nil {
-				failures = append(failures, fmt.Sprintf("run %s state update: %v", target.RunID, markErr))
-			}
-		}
-	}
-
+	failures := executeCancelTargets(targets, sig)
 	if len(failures) > 0 {
 		return fmt.Errorf("cancel completed with errors: %s", strings.Join(failures, "; "))
 	}
 	return nil
+}
+
+func resolveCancelTargets() ([]cancelTarget, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("get working directory: %w", err)
+	}
+	procs, err := listProcesses()
+	if err != nil {
+		return nil, err
+	}
+	runID := strings.TrimSpace(rpiCancelRunID)
+	return discoverCancelTargets(collectSearchRoots(cwd), runID, procs), nil
+}
+
+func executeCancelTargets(targets []cancelTarget, sig syscall.Signal) []string {
+	selfPID := os.Getpid()
+	var failures []string
+	for _, target := range targets {
+		failures = append(failures, cancelOneTarget(target, sig, selfPID)...)
+	}
+	return failures
+}
+
+func cancelOneTarget(target cancelTarget, sig syscall.Signal, selfPID int) []string {
+	pids := filterKillablePIDs(target.PIDs, selfPID)
+	fmt.Printf("Cancel target: kind=%s run=%s signal=%s pids=%v\n", target.Kind, target.RunID, sig.String(), pids)
+	if rpiCancelDryRun {
+		return nil
+	}
+
+	var failures []string
+	for _, pid := range pids {
+		if killErr := syscall.Kill(pid, sig); killErr != nil && !errors.Is(killErr, syscall.ESRCH) {
+			failures = append(failures, fmt.Sprintf("pid %d: %v", pid, killErr))
+		}
+	}
+
+	if target.StatePath != "" {
+		if markErr := markRunInterruptedByCancel(target); markErr != nil {
+			failures = append(failures, fmt.Sprintf("run %s state update: %v", target.RunID, markErr))
+		}
+	}
+	return failures
 }
 
 func discoverCancelTargets(roots []string, runID string, procs []processInfo) []cancelTarget {
@@ -149,60 +165,50 @@ func discoverRunRegistryTargets(root, runID string, procs []processInfo, seen ma
 		if !entry.IsDir() {
 			continue
 		}
-		statePath := filepath.Join(runsDir, entry.Name(), phasedStateFile)
-		data, err := os.ReadFile(statePath)
-		if err != nil {
-			continue
+		if t, ok := tryRunRegistryEntry(root, runsDir, entry.Name(), runID, procs, seen); ok {
+			targets = append(targets, t)
 		}
-		state, err := parsePhasedState(data)
-		if err != nil || state.RunID == "" {
-			continue
-		}
-		if runID != "" && state.RunID != runID {
-			continue
-		}
-		key := "run:" + state.RunID
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		isActive, _ := determineRunLiveness(root, state)
-		if !isActive {
-			continue
-		}
-		pids := collectRunProcessPIDs(state, procs)
-		seen[key] = struct{}{}
-		targets = append(targets, cancelTarget{
-			Kind:         "phased",
-			RunID:        state.RunID,
-			Root:         root,
-			StatePath:    statePath,
-			WorktreePath: state.WorktreePath,
-			PIDs:         pids,
-		})
 	}
 	return targets
 }
 
+func tryRunRegistryEntry(root, runsDir, name, runID string, procs []processInfo, seen map[string]struct{}) (cancelTarget, bool) {
+	statePath := filepath.Join(runsDir, name, phasedStateFile)
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return cancelTarget{}, false
+	}
+	state, err := parsePhasedState(data)
+	if err != nil || state.RunID == "" {
+		return cancelTarget{}, false
+	}
+	if runID != "" && state.RunID != runID {
+		return cancelTarget{}, false
+	}
+	key := "run:" + state.RunID
+	if _, ok := seen[key]; ok {
+		return cancelTarget{}, false
+	}
+	isActive, _ := determineRunLiveness(root, state)
+	if !isActive {
+		return cancelTarget{}, false
+	}
+	pids := collectRunProcessPIDs(state, procs)
+	seen[key] = struct{}{}
+	return cancelTarget{
+		Kind:         "phased",
+		RunID:        state.RunID,
+		Root:         root,
+		StatePath:    statePath,
+		WorktreePath: state.WorktreePath,
+		PIDs:         pids,
+	}, true
+}
+
 func discoverSupervisorLeaseTargets(root, runID string, procs []processInfo, seen map[string]struct{}) []cancelTarget {
 	leasePath := filepath.Join(root, ".agents", "rpi", "supervisor.lock")
-	data, err := os.ReadFile(leasePath)
-	if err != nil {
-		return nil
-	}
-	var meta supervisorLeaseMetadata
-	if err := json.Unmarshal(data, &meta); err != nil {
-		return nil
-	}
-	if meta.RunID == "" || meta.PID <= 0 {
-		return nil
-	}
-	if runID != "" && meta.RunID != runID {
-		return nil
-	}
-	if supervisorLeaseMetadataExpired(meta, time.Now().UTC()) {
-		return nil
-	}
-	if !processExists(meta.PID, procs) {
+	meta, ok := loadActiveSupervisorLease(leasePath, runID, procs)
+	if !ok {
 		return nil
 	}
 
@@ -221,6 +227,30 @@ func discoverSupervisorLeaseTargets(root, runID string, procs []processInfo, see
 		LeasePath: leasePath,
 		PIDs:      dedupeInts(pids),
 	}}
+}
+
+func loadActiveSupervisorLease(leasePath, runID string, procs []processInfo) (supervisorLeaseMetadata, bool) {
+	data, err := os.ReadFile(leasePath)
+	if err != nil {
+		return supervisorLeaseMetadata{}, false
+	}
+	var meta supervisorLeaseMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return supervisorLeaseMetadata{}, false
+	}
+	if meta.RunID == "" || meta.PID <= 0 {
+		return supervisorLeaseMetadata{}, false
+	}
+	if runID != "" && meta.RunID != runID {
+		return supervisorLeaseMetadata{}, false
+	}
+	if supervisorLeaseMetadataExpired(meta, time.Now().UTC()) {
+		return supervisorLeaseMetadata{}, false
+	}
+	if !processExists(meta.PID, procs) {
+		return supervisorLeaseMetadata{}, false
+	}
+	return meta, true
 }
 
 func supervisorLeaseMetadataExpired(meta supervisorLeaseMetadata, now time.Time) bool {
@@ -390,29 +420,37 @@ func markRunInterruptedByCancel(target cancelTarget) error {
 	reason := "cancelled by ao rpi cancel"
 
 	update := func(path string) error {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		var raw map[string]any
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		raw["terminal_status"] = "interrupted"
-		raw["terminal_reason"] = reason
-		raw["terminated_at"] = now
-		updated, err := json.MarshalIndent(raw, "", "  ")
-		if err != nil {
-			return err
-		}
-		updated = append(updated, '\n')
-		return writePhasedStateAtomic(path, updated)
+		return patchStateWithCancelFields(path, reason, now)
 	}
 
 	if err := update(target.StatePath); err != nil {
 		return fmt.Errorf("update run state: %w", err)
 	}
 
+	return maybeCancelFlatState(target, update)
+}
+
+func patchStateWithCancelFields(path, reason, now string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	raw["terminal_status"] = "interrupted"
+	raw["terminal_reason"] = reason
+	raw["terminated_at"] = now
+	updated, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	updated = append(updated, '\n')
+	return writePhasedStateAtomic(path, updated)
+}
+
+func maybeCancelFlatState(target cancelTarget, update func(string) error) error {
 	flatPath := filepath.Join(target.Root, ".agents", "rpi", phasedStateFile)
 	flatData, err := os.ReadFile(flatPath)
 	if err != nil {

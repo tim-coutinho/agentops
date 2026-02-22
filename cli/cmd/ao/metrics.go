@@ -381,6 +381,22 @@ func buildLastCitedMap(baseDir string, citations []types.CitationEvent) map[stri
 	return lastCited
 }
 
+// isKnowledgeFile returns true if path ends with .md or .jsonl.
+func isKnowledgeFile(path string) bool {
+	return strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".jsonl")
+}
+
+// isStaleArtifact returns true if the artifact was modified before staleThreshold and
+// has no citation at or after staleThreshold.
+func isStaleArtifact(baseDir, path string, modTime time.Time, staleThreshold time.Time, lastCited map[string]time.Time) bool {
+	if modTime.After(staleThreshold) {
+		return false
+	}
+	norm := normalizeArtifactPath(baseDir, path)
+	last, ok := lastCited[norm]
+	return !ok || last.Before(staleThreshold)
+}
+
 // countStaleInDir counts stale artifacts in one directory.
 func countStaleInDir(baseDir, dir string, staleThreshold time.Time, lastCited map[string]time.Time) int {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -388,18 +404,10 @@ func countStaleInDir(baseDir, dir string, staleThreshold time.Time, lastCited ma
 	}
 	staleCount := 0
 	if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+		if err != nil || info.IsDir() || !isKnowledgeFile(path) {
 			return nil
 		}
-		if !strings.HasSuffix(path, ".md") && !strings.HasSuffix(path, ".jsonl") {
-			return nil
-		}
-		if info.ModTime().After(staleThreshold) {
-			return nil
-		}
-		norm := normalizeArtifactPath(baseDir, path)
-		last, ok := lastCited[norm]
-		if !ok || last.Before(staleThreshold) {
+		if isStaleArtifact(baseDir, path, info.ModTime(), staleThreshold, lastCited) {
 			staleCount++
 		}
 		return nil
@@ -552,6 +560,18 @@ func countNewArtifactsInDir(dir string, since time.Time) (int, error) {
 	return count, nil
 }
 
+// retroHasLearnings checks whether a retro markdown file contains a learnings section.
+func retroHasLearnings(path string) bool {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	text := string(content)
+	return strings.Contains(text, "## Learnings") ||
+		strings.Contains(text, "## Key Learnings") ||
+		strings.Contains(text, "### Learnings")
+}
+
 // countRetros counts retro artifacts and how many have associated learnings.
 func countRetros(baseDir string, since time.Time) (total int, withLearnings int, err error) {
 	retrosDir := filepath.Join(baseDir, ".agents", "retros")
@@ -563,21 +583,12 @@ func countRetros(baseDir string, since time.Time) (total int, withLearnings int,
 		if err != nil || info.IsDir() {
 			return nil
 		}
-		if !strings.HasSuffix(path, ".md") {
+		if !strings.HasSuffix(path, ".md") || !info.ModTime().After(since) {
 			return nil
 		}
-		if info.ModTime().After(since) {
-			total++
-			// Check if retro has learnings section
-			content, readErr := os.ReadFile(path)
-			if readErr == nil {
-				text := string(content)
-				if strings.Contains(text, "## Learnings") ||
-					strings.Contains(text, "## Key Learnings") ||
-					strings.Contains(text, "### Learnings") {
-					withLearnings++
-				}
-			}
+		total++
+		if retroHasLearnings(path) {
+			withLearnings++
 		}
 		return nil
 	}); err != nil {
@@ -657,32 +668,33 @@ func computeUtilityMetrics(baseDir string) utilityStats {
 	return computeUtilityStats(utilities)
 }
 
-// parseUtilityFromFile extracts utility value from JSONL or markdown front matter.
-func parseUtilityFromFile(path string) float64 {
-	if strings.HasSuffix(path, ".md") {
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return 0
-		}
-		lines := strings.Split(string(content), "\n")
-		if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
-			return 0
-		}
-		for i := 1; i < len(lines); i++ {
-			line := strings.TrimSpace(lines[i])
-			if line == "---" {
-				break
-			}
-			if strings.HasPrefix(line, "utility:") {
-				var utility float64
-				if _, parseErr := fmt.Sscanf(line, "utility: %f", &utility); parseErr == nil {
-					return utility
-				}
-			}
-		}
+// parseUtilityFromMarkdown extracts utility from markdown front matter.
+func parseUtilityFromMarkdown(path string) float64 {
+	content, err := os.ReadFile(path)
+	if err != nil {
 		return 0
 	}
+	lines := strings.Split(string(content), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return 0
+	}
+	for i := 1; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == "---" {
+			break
+		}
+		if strings.HasPrefix(line, "utility:") {
+			var utility float64
+			if _, parseErr := fmt.Sscanf(line, "utility: %f", &utility); parseErr == nil {
+				return utility
+			}
+		}
+	}
+	return 0
+}
 
+// parseUtilityFromJSONL extracts utility from the first line of a JSONL file.
+func parseUtilityFromJSONL(path string) float64 {
 	f, err := os.Open(path)
 	if err != nil {
 		return 0
@@ -700,4 +712,12 @@ func parseUtilityFromFile(path string) float64 {
 		}
 	}
 	return 0
+}
+
+// parseUtilityFromFile extracts utility value from JSONL or markdown front matter.
+func parseUtilityFromFile(path string) float64 {
+	if strings.HasSuffix(path, ".md") {
+		return parseUtilityFromMarkdown(path)
+	}
+	return parseUtilityFromJSONL(path)
 }

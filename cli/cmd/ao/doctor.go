@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,44 +50,66 @@ type doctorOutput struct {
 	Summary string        `json:"summary"`
 }
 
+// gatherDoctorChecks runs all doctor checks and returns the results.
+func gatherDoctorChecks() []doctorCheck {
+	return []doctorCheck{
+		{Name: "ao CLI", Status: "pass", Detail: fmt.Sprintf("v%s", version), Required: true},
+		checkCLIDependencies(),
+		checkHookCoverage(),
+		checkKnowledgeBase(),
+		checkKnowledgeFreshness(),
+		checkSearchIndex(),
+		checkFlywheelHealth(),
+		checkSkills(),
+		checkOptionalCLI("codex", "needed for --mixed council"),
+	}
+}
+
+// doctorStatusIcon returns the display icon for a check status.
+func doctorStatusIcon(status string) string {
+	switch status {
+	case "pass":
+		return "\u2713"
+	case "warn":
+		return "!"
+	case "fail":
+		return "\u2717"
+	}
+	return "?"
+}
+
+// renderDoctorTable writes the formatted doctor output table.
+func renderDoctorTable(w io.Writer, output doctorOutput) {
+	fmt.Fprintln(w, "ao doctor")
+	fmt.Fprintln(w, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+
+	maxName := 0
+	for _, c := range output.Checks {
+		if len(c.Name) > maxName {
+			maxName = len(c.Name)
+		}
+	}
+
+	for _, c := range output.Checks {
+		padding := strings.Repeat(" ", maxName-len(c.Name))
+		fmt.Fprintf(w, "%s %s%s  %s\n", doctorStatusIcon(c.Status), c.Name, padding, c.Detail)
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "%s\n", output.Summary)
+}
+
+// hasRequiredFailure returns true if any required check has failed.
+func hasRequiredFailure(checks []doctorCheck) bool {
+	for _, c := range checks {
+		if c.Required && c.Status == "fail" {
+			return true
+		}
+	}
+	return false
+}
+
 func runDoctor(cmd *cobra.Command, args []string) error {
-	var checks []doctorCheck
-
-	// 1. ao CLI version
-	checks = append(checks, doctorCheck{
-		Name:     "ao CLI",
-		Status:   "pass",
-		Detail:   fmt.Sprintf("v%s", version),
-		Required: true,
-	})
-
-	// 2. CLI Dependencies (gt and bd in PATH)
-	checks = append(checks, checkCLIDependencies())
-
-	// 3. Hook Coverage
-	checks = append(checks, checkHookCoverage())
-
-	// 4. Knowledge base (.agents/ao directory)
-	checks = append(checks, checkKnowledgeBase())
-
-	// 5. Knowledge Freshness (most recent session)
-	checks = append(checks, checkKnowledgeFreshness())
-
-	// 6. Search Index
-	checks = append(checks, checkSearchIndex())
-
-	// 7. Flywheel Health
-	checks = append(checks, checkFlywheelHealth())
-
-	// 8. Plugin/skills presence
-	checks = append(checks, checkSkills())
-
-	// 9. Codex CLI (optional)
-	checks = append(checks, checkOptionalCLI("codex", "needed for --mixed council"))
-
-	// Compute result
-	output := computeResult(checks)
-
+	output := computeResult(gatherDoctorChecks())
 	w := cmd.OutOrStdout()
 
 	if doctorJSON {
@@ -98,39 +121,10 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Table output
-	fmt.Fprintln(w, "ao doctor")
-	fmt.Fprintln(w, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+	renderDoctorTable(w, output)
 
-	// Find max name length for alignment
-	maxName := 0
-	for _, c := range output.Checks {
-		if len(c.Name) > maxName {
-			maxName = len(c.Name)
-		}
-	}
-
-	for _, c := range output.Checks {
-		var icon string
-		switch c.Status {
-		case "pass":
-			icon = "\u2713"
-		case "warn":
-			icon = "!"
-		case "fail":
-			icon = "\u2717"
-		}
-		padding := strings.Repeat(" ", maxName-len(c.Name))
-		fmt.Fprintf(w, "%s %s%s  %s\n", icon, c.Name, padding, c.Detail)
-	}
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "%s\n", output.Summary)
-
-	// Exit non-zero if any required checks failed
-	for _, c := range output.Checks {
-		if c.Required && c.Status == "fail" {
-			return fmt.Errorf("doctor failed: one or more required checks did not pass")
-		}
+	if hasRequiredFailure(output.Checks) {
+		return fmt.Errorf("doctor failed: one or more required checks did not pass")
 	}
 
 	return nil
@@ -310,24 +304,9 @@ func checkKnowledgeBase() doctorCheck {
 	return doctorCheck{Name: "Knowledge Base", Status: "pass", Detail: ".agents/ao initialized", Required: true}
 }
 
-// checkKnowledgeFreshness checks the most recent file in .agents/ao/sessions/.
-func checkKnowledgeFreshness() doctorCheck {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return doctorCheck{Name: "Knowledge Freshness", Status: "warn", Detail: "cannot determine working directory", Required: false}
-	}
-
-	sessionsDir := filepath.Join(cwd, storage.DefaultBaseDir, "sessions")
-	entries, err := os.ReadDir(sessionsDir)
-	if err != nil || len(entries) == 0 {
-		return doctorCheck{
-			Name:     "Knowledge Freshness",
-			Status:   "warn",
-			Detail:   "No sessions found \u2014 run 'ao forge transcript' after your next session",
-			Required: false,
-		}
-	}
-
+// newestFileModTime returns the most recent modification time among regular files in entries.
+// Returns zero time if no regular files are found.
+func newestFileModTime(entries []os.DirEntry) time.Time {
 	var newest time.Time
 	for _, e := range entries {
 		if e.IsDir() {
@@ -341,14 +320,32 @@ func checkKnowledgeFreshness() doctorCheck {
 			newest = info.ModTime()
 		}
 	}
+	return newest
+}
 
+// checkKnowledgeFreshness checks the most recent file in .agents/ao/sessions/.
+func checkKnowledgeFreshness() doctorCheck {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return doctorCheck{Name: "Knowledge Freshness", Status: "warn", Detail: "cannot determine working directory", Required: false}
+	}
+
+	noSessionsCheck := doctorCheck{
+		Name:     "Knowledge Freshness",
+		Status:   "warn",
+		Detail:   "No sessions found \u2014 run 'ao forge transcript' after your next session",
+		Required: false,
+	}
+
+	sessionsDir := filepath.Join(cwd, storage.DefaultBaseDir, "sessions")
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil || len(entries) == 0 {
+		return noSessionsCheck
+	}
+
+	newest := newestFileModTime(entries)
 	if newest.IsZero() {
-		return doctorCheck{
-			Name:     "Knowledge Freshness",
-			Status:   "warn",
-			Detail:   "No sessions found \u2014 run 'ao forge transcript' after your next session",
-			Required: false,
-		}
+		return noSessionsCheck
 	}
 
 	age := time.Since(newest)
@@ -594,10 +591,8 @@ func countFiles(dir string) int {
 	return count
 }
 
-func computeResult(checks []doctorCheck) doctorOutput {
-	passes := 0
-	fails := 0
-	warns := 0
+// countCheckStatuses tallies pass, fail, and warn counts from checks.
+func countCheckStatuses(checks []doctorCheck) (passes, fails, warns int) {
 	for _, c := range checks {
 		switch c.Status {
 		case "pass":
@@ -608,23 +603,20 @@ func computeResult(checks []doctorCheck) doctorOutput {
 			warns++
 		}
 	}
+	return passes, fails, warns
+}
 
-	total := len(checks)
-	result := "HEALTHY"
-
-	if fails > 0 {
-		result = "UNHEALTHY"
-	}
-
-	var summary string
+// buildDoctorSummary constructs a human-readable summary from check tallies.
+func buildDoctorSummary(passes, fails, warns, total int) string {
 	switch {
 	case fails == 0 && warns == 0:
-		summary = fmt.Sprintf("%d/%d checks passed", passes, total)
+		return fmt.Sprintf("%d/%d checks passed", passes, total)
 	case fails == 0:
-		summary = fmt.Sprintf("%d/%d checks passed, %d warning", passes, total, warns)
+		summary := fmt.Sprintf("%d/%d checks passed, %d warning", passes, total, warns)
 		if warns > 1 {
 			summary += "s"
 		}
+		return summary
 	default:
 		parts := []string{fmt.Sprintf("%d/%d checks passed", passes, total)}
 		if warns > 0 {
@@ -638,12 +630,22 @@ func computeResult(checks []doctorCheck) doctorOutput {
 			f := fmt.Sprintf("%d failed", fails)
 			parts = append(parts, f)
 		}
-		summary = strings.Join(parts, ", ")
+		return strings.Join(parts, ", ")
+	}
+}
+
+func computeResult(checks []doctorCheck) doctorOutput {
+	passes, fails, warns := countCheckStatuses(checks)
+	total := len(checks)
+
+	result := "HEALTHY"
+	if fails > 0 {
+		result = "UNHEALTHY"
 	}
 
 	return doctorOutput{
 		Checks:  checks,
 		Result:  result,
-		Summary: summary,
+		Summary: buildDoctorSummary(passes, fails, warns, total),
 	}
 }

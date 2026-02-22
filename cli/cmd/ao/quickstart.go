@@ -40,6 +40,36 @@ func init() {
 	quickstartCmd.Flags().BoolVar(&minimal, "minimal", false, "Minimal setup (just directories)")
 }
 
+// quickstartBeadsStep handles step 3: beads initialization or skip.
+func quickstartBeadsStep(cwd string) {
+	if !noBeads {
+		fmt.Println("\n━━━ STEP 3: Beads initialization ━━━")
+		if err := initBeads(cwd); err != nil {
+			fmt.Printf("  ⚠ Beads init skipped: %v\n", err)
+			fmt.Println("  → You can run 'bd init' later to enable git-native issues")
+		}
+	} else {
+		fmt.Println("\n━━━ STEP 3: Skipping beads (--no-beads) ━━━")
+		fmt.Println("  → Issues will be tracked in .agents/tasks.json instead")
+		createTasksFile(cwd)
+	}
+}
+
+// quickstartClaudeMdStep handles step 4: create CLAUDE.md if missing.
+func quickstartClaudeMdStep(cwd string) {
+	fmt.Println("\n━━━ STEP 4: Project configuration ━━━")
+	claudeMdPath := filepath.Join(cwd, "CLAUDE.md")
+	if _, err := os.Stat(claudeMdPath); os.IsNotExist(err) {
+		if err := createProjectClaudeMd(cwd); err != nil {
+			fmt.Printf("  ⚠ Warning: %v\n", err)
+		} else {
+			fmt.Println("  ✓ Created CLAUDE.md (project instructions)")
+		}
+	} else {
+		fmt.Println("  ✓ CLAUDE.md already exists")
+	}
+}
+
 func runQuickstart(cmd *cobra.Command, args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -53,7 +83,6 @@ func runQuickstart(cmd *cobra.Command, args []string) error {
 ╚══════════════════════════════════════════════════════════════════╝`)
 	fmt.Printf("Project: %s\n\n", cwd)
 
-	// Step 1: Create .agents/ structure
 	fmt.Println("━━━ STEP 1: Creating .agents/ structure ━━━")
 	dirs := []string{
 		".agents/research",
@@ -79,37 +108,13 @@ func runQuickstart(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Step 2: Create starter knowledge pack
 	fmt.Println("\n━━━ STEP 2: Creating starter knowledge pack ━━━")
 	if err := createStarterPack(cwd); err != nil {
 		fmt.Printf("  ⚠ Warning: %v\n", err)
 	}
 
-	// Step 3: Initialize beads (optional)
-	if !noBeads {
-		fmt.Println("\n━━━ STEP 3: Beads initialization ━━━")
-		if err := initBeads(cwd); err != nil {
-			fmt.Printf("  ⚠ Beads init skipped: %v\n", err)
-			fmt.Println("  → You can run 'bd init' later to enable git-native issues")
-		}
-	} else {
-		fmt.Println("\n━━━ STEP 3: Skipping beads (--no-beads) ━━━")
-		fmt.Println("  → Issues will be tracked in .agents/tasks.json instead")
-		createTasksFile(cwd)
-	}
-
-	// Step 4: Create CLAUDE.md if it doesn't exist
-	fmt.Println("\n━━━ STEP 4: Project configuration ━━━")
-	claudeMdPath := filepath.Join(cwd, "CLAUDE.md")
-	if _, err := os.Stat(claudeMdPath); os.IsNotExist(err) {
-		if err := createProjectClaudeMd(cwd); err != nil {
-			fmt.Printf("  ⚠ Warning: %v\n", err)
-		} else {
-			fmt.Println("  ✓ Created CLAUDE.md (project instructions)")
-		}
-	} else {
-		fmt.Println("  ✓ CLAUDE.md already exists")
-	}
+	quickstartBeadsStep(cwd)
+	quickstartClaudeMdStep(cwd)
 
 	fmt.Println("\n━━━ SETUP COMPLETE ━━━")
 	showNextSteps(!noBeads)

@@ -37,13 +37,41 @@ func init() {
 	traceCmd.Flags().BoolVar(&traceGraph, "graph", false, "Show ASCII provenance graph")
 }
 
+// traceOneArtifact traces and outputs provenance for a single artifact path.
+func traceOneArtifact(graph *provenance.Graph, artifactPath string) error {
+	result, err := graph.Trace(artifactPath)
+	if err != nil {
+		return fmt.Errorf("trace %s: %w", artifactPath, err)
+	}
+
+	if GetOutput() == "json" {
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal trace result: %w", err)
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+
+	if len(result.Chain) == 0 {
+		fmt.Printf("No provenance found for: %s\n", artifactPath)
+		return nil
+	}
+
+	if traceGraph {
+		printTraceGraph(result)
+	} else {
+		printTraceTable(result)
+	}
+	return nil
+}
+
 func runTrace(cmd *cobra.Command, args []string) error {
 	if GetDryRun() {
 		fmt.Printf("[dry-run] Would trace provenance for %d artifact(s)\n", len(args))
 		return nil
 	}
 
-	// Get provenance file path
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get working directory: %w", err)
@@ -51,7 +79,6 @@ func runTrace(cmd *cobra.Command, args []string) error {
 
 	provPath := filepath.Join(cwd, storage.DefaultBaseDir, storage.ProvenanceDir, storage.ProvenanceFile)
 
-	// Load provenance graph
 	graph, err := provenance.NewGraph(provPath)
 	if err != nil {
 		return fmt.Errorf("load provenance: %w", err)
@@ -64,30 +91,8 @@ func runTrace(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, artifactPath := range args {
-		// Trace the artifact
-		result, err := graph.Trace(artifactPath)
-		if err != nil {
-			return fmt.Errorf("trace %s: %w", artifactPath, err)
-		}
-
-		if GetOutput() == "json" {
-			data, err := json.MarshalIndent(result, "", "  ")
-			if err != nil {
-				return fmt.Errorf("marshal trace result: %w", err)
-			}
-			fmt.Println(string(data))
-			continue
-		}
-
-		if len(result.Chain) == 0 {
-			fmt.Printf("No provenance found for: %s\n", artifactPath)
-			continue
-		}
-
-		if traceGraph {
-			printTraceGraph(result)
-		} else {
-			printTraceTable(result)
+		if err := traceOneArtifact(graph, artifactPath); err != nil {
+			return err
 		}
 	}
 

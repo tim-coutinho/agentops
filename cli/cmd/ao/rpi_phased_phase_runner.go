@@ -46,6 +46,66 @@ func runPhaseLoop(cwd, spawnCwd string, state *phasedState, startPhase int, opts
 	return nil
 }
 
+// maybeLiveStatus updates the live-status file if live status tracking is enabled.
+func maybeLiveStatus(opts phasedEngineOptions, statusPath string, allPhases []PhaseProgress, phaseNum int, status string, attempts int, detail string) {
+	if opts.LiveStatus {
+		updateLivePhaseStatus(statusPath, allPhases, phaseNum, status, attempts, detail)
+	}
+}
+
+// handleDryRunPhase prints what would happen and returns true if dry-run mode is active.
+func handleDryRunPhase(cwd string, state *phasedState, startPhase int, p phase, opts phasedEngineOptions, prompt, logPath string) bool {
+	if !GetDryRun() {
+		return false
+	}
+	fmt.Printf("[dry-run] Would spawn: %s -p '%s'\n", effectiveRuntimeCommand(state.Opts.RuntimeCommand), prompt)
+	if !opts.NoWorktree && p.Num == startPhase {
+		runID := generateRunID()
+		fmt.Printf("[dry-run] Would create worktree: ../%s-rpi-%s/ (detached)\n",
+			filepath.Base(cwd), runID)
+	}
+	logPhaseTransition(logPath, state.RunID, p.Name, "dry-run")
+	return true
+}
+
+// executePhaseSession spawns the phase executor and records the result.
+// On success it writes the phaseResult artifact and returns nil.
+func executePhaseSession(spawnCwd string, state *phasedState, p phase, opts phasedEngineOptions, statusPath string, allPhases []PhaseProgress, logPath, prompt string, executor PhaseExecutor) error {
+	fmt.Printf("Spawning: %s -p '%s'\n", effectiveRuntimeCommand(state.Opts.RuntimeCommand), prompt)
+	start := time.Now()
+	updateRunHeartbeat(spawnCwd, state.RunID)
+	retryKey := fmt.Sprintf("phase_%d", p.Num)
+
+	if err := executor.Execute(prompt, spawnCwd, state.RunID, p.Num); err != nil {
+		maybeLiveStatus(opts, statusPath, allPhases, p.Num, "failed", state.Attempts[retryKey], err.Error())
+		logPhaseTransition(logPath, state.RunID, p.Name, fmt.Sprintf("FAILED: %v", err))
+		return fmt.Errorf("phase %d (%s) failed: %w", p.Num, p.Name, err)
+	}
+
+	elapsed := time.Since(start).Round(time.Second)
+	fmt.Printf("Phase %d completed in %s\n", p.Num, elapsed)
+	logPhaseTransition(logPath, state.RunID, p.Name, fmt.Sprintf("completed in %s", elapsed))
+	maybeLiveStatus(opts, statusPath, allPhases, p.Num, "completed", state.Attempts[retryKey], "")
+
+	pr := &phaseResult{
+		SchemaVersion:   1,
+		RunID:           state.RunID,
+		Phase:           p.Num,
+		PhaseName:       p.Name,
+		Status:          "completed",
+		Retries:         state.Attempts[retryKey],
+		Verdicts:        state.Verdicts,
+		StartedAt:       start.Format(time.RFC3339),
+		CompletedAt:     time.Now().Format(time.RFC3339),
+		DurationSeconds: elapsed.Seconds(),
+	}
+	if err := writePhaseResult(spawnCwd, pr); err != nil {
+		VerbosePrintf("Warning: could not write phase result: %v\n", err)
+	}
+	updateRunHeartbeat(spawnCwd, state.RunID)
+	return nil
+}
+
 func runSinglePhase(cwd, spawnCwd string, state *phasedState, startPhase int, p phase, opts phasedEngineOptions, statusPath string, allPhases []PhaseProgress, logPath string, executor PhaseExecutor) error {
 	fmt.Printf("\n--- Phase %d: %s ---\n", p.Num, p.Name)
 	state.Phase = p.Num
@@ -59,60 +119,16 @@ func runSinglePhase(cwd, spawnCwd string, state *phasedState, startPhase int, p 
 	}
 
 	logPhaseTransition(logPath, state.RunID, p.Name, "started")
-	if opts.LiveStatus {
-		retryKey := fmt.Sprintf("phase_%d", p.Num)
-		updateLivePhaseStatus(statusPath, allPhases, p.Num, "starting", state.Attempts[retryKey], "")
-	}
+	retryKey := fmt.Sprintf("phase_%d", p.Num)
+	maybeLiveStatus(opts, statusPath, allPhases, p.Num, "starting", state.Attempts[retryKey], "")
 
-	if GetDryRun() {
-		fmt.Printf("[dry-run] Would spawn: %s -p '%s'\n", effectiveRuntimeCommand(state.Opts.RuntimeCommand), prompt)
-		if !opts.NoWorktree && p.Num == startPhase {
-			runID := generateRunID()
-			fmt.Printf("[dry-run] Would create worktree: ../%s-rpi-%s/ (detached)\n",
-				filepath.Base(cwd), runID)
-		}
-		logPhaseTransition(logPath, state.RunID, p.Name, "dry-run")
+	if handleDryRunPhase(cwd, state, startPhase, p, opts, prompt, logPath) {
 		return nil
 	}
 
-	// Spawn phase session.
-	fmt.Printf("Spawning: %s -p '%s'\n", effectiveRuntimeCommand(state.Opts.RuntimeCommand), prompt)
-	start := time.Now()
-	updateRunHeartbeat(spawnCwd, state.RunID)
-
-	if err := executor.Execute(prompt, spawnCwd, state.RunID, p.Num); err != nil {
-		if opts.LiveStatus {
-			retryKey := fmt.Sprintf("phase_%d", p.Num)
-			updateLivePhaseStatus(statusPath, allPhases, p.Num, "failed", state.Attempts[retryKey], err.Error())
-		}
-		logPhaseTransition(logPath, state.RunID, p.Name, fmt.Sprintf("FAILED: %v", err))
-		return fmt.Errorf("phase %d (%s) failed: %w", p.Num, p.Name, err)
+	if err := executePhaseSession(spawnCwd, state, p, opts, statusPath, allPhases, logPath, prompt, executor); err != nil {
+		return err
 	}
-
-	elapsed := time.Since(start).Round(time.Second)
-	fmt.Printf("Phase %d completed in %s\n", p.Num, elapsed)
-	logPhaseTransition(logPath, state.RunID, p.Name, fmt.Sprintf("completed in %s", elapsed))
-	if opts.LiveStatus {
-		retryKey := fmt.Sprintf("phase_%d", p.Num)
-		updateLivePhaseStatus(statusPath, allPhases, p.Num, "completed", state.Attempts[retryKey], "")
-	}
-
-	pr := &phaseResult{
-		SchemaVersion:   1,
-		RunID:           state.RunID,
-		Phase:           p.Num,
-		PhaseName:       p.Name,
-		Status:          "completed",
-		Retries:         state.Attempts[fmt.Sprintf("phase_%d", p.Num)],
-		Verdicts:        state.Verdicts,
-		StartedAt:       start.Format(time.RFC3339),
-		CompletedAt:     time.Now().Format(time.RFC3339),
-		DurationSeconds: elapsed.Seconds(),
-	}
-	if err := writePhaseResult(spawnCwd, pr); err != nil {
-		VerbosePrintf("Warning: could not write phase result: %v\n", err)
-	}
-	updateRunHeartbeat(spawnCwd, state.RunID)
 
 	if err := handlePostPhaseGate(spawnCwd, state, p, logPath, statusPath, allPhases, executor); err != nil {
 		return err

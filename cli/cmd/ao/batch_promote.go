@@ -66,6 +66,44 @@ func init() {
 	poolBatchPromoteCmd.Flags().StringVar(&batchPromoteMinAge, "min-age", "24h", "Minimum age for promotion eligibility")
 }
 
+// recordPromoteSkip records a skipped entry with the given reason.
+func recordPromoteSkip(result *batchPromoteResult, candidateID, reason string) {
+	result.Skipped++
+	result.Reasons = append(result.Reasons, skipReason{
+		CandidateID: candidateID,
+		Reason:      reason,
+	})
+}
+
+// tryPromoteEntry attempts to promote a single entry, recording a skip on error.
+func tryPromoteEntry(p *pool.Pool, entry pool.PoolEntry, result *batchPromoteResult) error {
+	if err := promoteEntry(p, entry, result); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to promote %s: %v\n", entry.Candidate.ID, err)
+		recordPromoteSkip(result, entry.Candidate.ID, fmt.Sprintf("error: %v", err))
+		return err
+	}
+	return nil
+}
+
+// processPromotionCandidate evaluates and promotes a single candidate entry.
+// Returns true if the candidate was promoted (for content tracking purposes).
+func processPromotionCandidate(p *pool.Pool, entry pool.PoolEntry, cwd string, minAge time.Duration, citationCounts map[string]int, promotedContent map[string]bool, result *batchPromoteResult) bool {
+	if batchPromoteForce {
+		_ = tryPromoteEntry(p, entry, result)
+		return false
+	}
+
+	if reason := checkPromotionCriteria(cwd, entry, minAge, citationCounts, promotedContent); reason != "" {
+		recordPromoteSkip(result, entry.Candidate.ID, reason)
+		return false
+	}
+
+	if tryPromoteEntry(p, entry, result) != nil {
+		return false
+	}
+	return true
+}
+
 func runBatchPromote(cmd *cobra.Command, args []string) error {
 	minAge, err := time.ParseDuration(batchPromoteMinAge)
 	if err != nil {
@@ -79,10 +117,7 @@ func runBatchPromote(cmd *cobra.Command, args []string) error {
 
 	p := pool.NewPool(cwd)
 
-	// List all pending candidates
-	entries, err := p.List(pool.ListOptions{
-		Status: types.PoolStatusPending,
-	})
+	entries, err := p.List(pool.ListOptions{Status: types.PoolStatusPending})
 	if err != nil {
 		return fmt.Errorf("list pending: %w", err)
 	}
@@ -92,55 +127,19 @@ func runBatchPromote(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Load citations for checking
 	citations, err := ratchet.LoadCitations(cwd)
 	if err != nil {
 		VerbosePrintf("Warning: could not load citations: %v\n", err)
 	}
 
-	// Build citation count map keyed by candidate ID
 	citationCounts := buildCitationCounts(citations, cwd)
-
-	// Load existing promoted content for duplicate detection
 	promotedContent := loadPromotedContent(cwd)
-
-	result := batchPromoteResult{
-		Pending: len(entries),
-	}
+	result := batchPromoteResult{Pending: len(entries)}
 
 	for _, entry := range entries {
-		if batchPromoteForce {
-			if err := promoteEntry(p, entry, &result); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to promote %s: %v\n", entry.Candidate.ID, err)
-				result.Skipped++
-				result.Reasons = append(result.Reasons, skipReason{
-					CandidateID: entry.Candidate.ID,
-					Reason:      fmt.Sprintf("error: %v", err),
-				})
-			}
-			continue
+		if processPromotionCandidate(p, entry, cwd, minAge, citationCounts, promotedContent, &result) {
+			promotedContent[normalizeContent(entry.Candidate.Content)] = true
 		}
-
-		// Check criteria
-		if reason := checkPromotionCriteria(cwd, entry, minAge, citationCounts, promotedContent); reason != "" {
-			result.Skipped++
-			result.Reasons = append(result.Reasons, skipReason{
-				CandidateID: entry.Candidate.ID,
-				Reason:      reason,
-			})
-			continue
-		}
-
-		if err := promoteEntry(p, entry, &result); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to promote %s: %v\n", entry.Candidate.ID, err)
-			result.Skipped++
-			result.Reasons = append(result.Reasons, skipReason{
-				CandidateID: entry.Candidate.ID,
-				Reason:      fmt.Sprintf("error: %v", err),
-			})
-			continue
-		}
-		promotedContent[normalizeContent(entry.Candidate.Content)] = true
 	}
 
 	return outputBatchResult(result)

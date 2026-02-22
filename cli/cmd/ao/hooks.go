@@ -65,66 +65,47 @@ type HooksConfig struct {
 	ConfigChange     []HookGroup `json:"ConfigChange,omitempty"`
 }
 
+// eventGroupPtrs returns a map from event name to a pointer to the corresponding
+// []HookGroup field. Used by GetEventGroups and SetEventGroups.
+func (c *HooksConfig) eventGroupPtrs() map[string]*[]HookGroup {
+	return map[string]*[]HookGroup{
+		"SessionStart":     &c.SessionStart,
+		"SessionEnd":       &c.SessionEnd,
+		"PreToolUse":       &c.PreToolUse,
+		"PostToolUse":      &c.PostToolUse,
+		"UserPromptSubmit": &c.UserPromptSubmit,
+		"TaskCompleted":    &c.TaskCompleted,
+		"Stop":             &c.Stop,
+		"PreCompact":       &c.PreCompact,
+		"SubagentStop":     &c.SubagentStop,
+		"WorktreeCreate":   &c.WorktreeCreate,
+		"WorktreeRemove":   &c.WorktreeRemove,
+		"ConfigChange":     &c.ConfigChange,
+	}
+}
+
+// eventGroupPtr returns a pointer to the []HookGroup field for the given event name,
+// or nil if the event is unknown.
+func (c *HooksConfig) eventGroupPtr(event string) *[]HookGroup {
+	return c.eventGroupPtrs()[event]
+}
+
 // GetEventGroups returns the hook groups for a given event name.
 func (c *HooksConfig) GetEventGroups(event string) []HookGroup {
-	switch event {
-	case "SessionStart":
-		return c.SessionStart
-	case "SessionEnd":
-		return c.SessionEnd
-	case "PreToolUse":
-		return c.PreToolUse
-	case "PostToolUse":
-		return c.PostToolUse
-	case "UserPromptSubmit":
-		return c.UserPromptSubmit
-	case "TaskCompleted":
-		return c.TaskCompleted
-	case "Stop":
-		return c.Stop
-	case "PreCompact":
-		return c.PreCompact
-	case "SubagentStop":
-		return c.SubagentStop
-	case "WorktreeCreate":
-		return c.WorktreeCreate
-	case "WorktreeRemove":
-		return c.WorktreeRemove
-	case "ConfigChange":
-		return c.ConfigChange
-	default:
+	ptr := c.eventGroupPtr(event)
+	if ptr == nil {
 		return nil
 	}
+	return *ptr
 }
 
 // SetEventGroups sets the hook groups for a given event name.
 func (c *HooksConfig) SetEventGroups(event string, groups []HookGroup) {
-	switch event {
-	case "SessionStart":
-		c.SessionStart = groups
-	case "SessionEnd":
-		c.SessionEnd = groups
-	case "PreToolUse":
-		c.PreToolUse = groups
-	case "PostToolUse":
-		c.PostToolUse = groups
-	case "UserPromptSubmit":
-		c.UserPromptSubmit = groups
-	case "TaskCompleted":
-		c.TaskCompleted = groups
-	case "Stop":
-		c.Stop = groups
-	case "PreCompact":
-		c.PreCompact = groups
-	case "SubagentStop":
-		c.SubagentStop = groups
-	case "WorktreeCreate":
-		c.WorktreeCreate = groups
-	case "WorktreeRemove":
-		c.WorktreeRemove = groups
-	case "ConfigChange":
-		c.ConfigChange = groups
+	ptr := c.eventGroupPtr(event)
+	if ptr == nil {
+		return
 	}
+	*ptr = groups
 }
 
 // ClaudeSettings represents the Claude Code settings.json structure.
@@ -446,65 +427,99 @@ func copyDir(src, dst string) (int, error) {
 	})
 }
 
+// copyShellScripts copies all .sh files from srcDir to dstDir, making them executable.
+func copyShellScripts(srcDir, dstDir string) (int, error) {
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return 0, fmt.Errorf("read hooks directory: %w", err)
+	}
+	copied := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sh") {
+			continue
+		}
+		src := filepath.Join(srcDir, e.Name())
+		dst := filepath.Join(dstDir, e.Name())
+		if err := hooksCopyFile(src, dst); err != nil {
+			return copied, fmt.Errorf("copy %s: %w", e.Name(), err)
+		}
+		if err := os.Chmod(dst, 0755); err != nil {
+			return copied, fmt.Errorf("chmod %s: %w", e.Name(), err)
+		}
+		copied++
+	}
+	return copied, nil
+}
+
+// copyOptionalFile copies a single file if it exists. Returns 1 if copied, 0 if source missing.
+func copyOptionalFile(src, dst, label string) (int, error) {
+	if _, err := os.Stat(src); err != nil {
+		return 0, nil //nolint:nilerr // missing optional file is not an error
+	}
+	if err := hooksCopyFile(src, dst); err != nil {
+		return 0, fmt.Errorf("copy %s: %w", label, err)
+	}
+	return 1, nil
+}
+
+// copyOptionalDir copies a directory tree if it exists. Returns file count.
+func copyOptionalDir(src, dst, label string) (int, error) {
+	if _, err := os.Stat(src); err != nil {
+		return 0, nil //nolint:nilerr // missing optional dir is not an error
+	}
+	n, err := copyDir(src, dst)
+	if err != nil {
+		return 0, fmt.Errorf("copy %s: %w", label, err)
+	}
+	return n, nil
+}
+
 // installFullHooks copies hook scripts and dependencies to ~/.agentops/ and returns
 // the install base path. Source directory should be a git-managed agentops checkout.
 func installFullHooks(sourceDir, installBase string) (int, error) {
-	copied := 0
-
 	// Verify source is within a git repository (integrity requirement)
 	gitDir := filepath.Join(sourceDir, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
 		return 0, fmt.Errorf("source directory %s is not a git root; refusing to install unverified hooks (use --source-dir to specify a valid checkout)", sourceDir)
 	}
 
-	// Copy hook scripts
-	hooksDir := filepath.Join(sourceDir, "hooks")
-	entries, err := os.ReadDir(hooksDir)
+	copied := 0
+
+	n, err := copyShellScripts(filepath.Join(sourceDir, "hooks"), filepath.Join(installBase, "hooks"))
 	if err != nil {
-		return 0, fmt.Errorf("read hooks directory: %w", err)
+		return copied, err
 	}
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sh") {
-			src := filepath.Join(hooksDir, e.Name())
-			dst := filepath.Join(installBase, "hooks", e.Name())
-			if err := hooksCopyFile(src, dst); err != nil {
-				return copied, fmt.Errorf("copy %s: %w", e.Name(), err)
-			}
-			// Make executable
-			if err := os.Chmod(dst, 0755); err != nil {
-				return copied, fmt.Errorf("chmod %s: %w", e.Name(), err)
-			}
-			copied++
-		}
-	}
+	copied += n
 
-	// Copy lib/hook-helpers.sh
-	libSrc := filepath.Join(sourceDir, "lib", "hook-helpers.sh")
-	if _, err := os.Stat(libSrc); err == nil {
-		if err := hooksCopyFile(libSrc, filepath.Join(installBase, "lib", "hook-helpers.sh")); err != nil {
-			return copied, fmt.Errorf("copy hook-helpers.sh: %w", err)
-		}
-		copied++
+	n, err = copyOptionalFile(
+		filepath.Join(sourceDir, "lib", "hook-helpers.sh"),
+		filepath.Join(installBase, "lib", "hook-helpers.sh"),
+		"hook-helpers.sh",
+	)
+	if err != nil {
+		return copied, err
 	}
+	copied += n
 
-	// Copy skills/standards/references/
-	stdRefSrc := filepath.Join(sourceDir, "skills", "standards", "references")
-	if _, err := os.Stat(stdRefSrc); err == nil {
-		n, err := copyDir(stdRefSrc, filepath.Join(installBase, "skills", "standards", "references"))
-		if err != nil {
-			return copied, fmt.Errorf("copy standards references: %w", err)
-		}
-		copied += n
+	n, err = copyOptionalDir(
+		filepath.Join(sourceDir, "skills", "standards", "references"),
+		filepath.Join(installBase, "skills", "standards", "references"),
+		"standards references",
+	)
+	if err != nil {
+		return copied, err
 	}
+	copied += n
 
-	// Copy skills/using-agentops/SKILL.md
-	uaSrc := filepath.Join(sourceDir, "skills", "using-agentops", "SKILL.md")
-	if _, err := os.Stat(uaSrc); err == nil {
-		if err := hooksCopyFile(uaSrc, filepath.Join(installBase, "skills", "using-agentops", "SKILL.md")); err != nil {
-			return copied, fmt.Errorf("copy using-agentops SKILL.md: %w", err)
-		}
-		copied++
+	n, err = copyOptionalFile(
+		filepath.Join(sourceDir, "skills", "using-agentops", "SKILL.md"),
+		filepath.Join(installBase, "skills", "using-agentops", "SKILL.md"),
+		"using-agentops SKILL.md",
+	)
+	if err != nil {
+		return copied, err
 	}
+	copied += n
 
 	return copied, nil
 }
@@ -690,6 +705,29 @@ func printHooksInstallSummary(settingsPath string, newHooks *HooksConfig, events
 	fmt.Println("Run 'ao hooks test' to verify the installation.")
 }
 
+// existingAoHooksBlock returns true if ao hooks are already installed and --force was not set.
+func existingAoHooksBlock(rawSettings map[string]any) bool {
+	if hooksForce {
+		return false
+	}
+	existingHooks, ok := rawSettings["hooks"].(map[string]any)
+	return ok && hookGroupContainsAo(existingHooks, "SessionStart")
+}
+
+// dryRunPrintSettings prints the would-be settings and returns true if --dry-run is active.
+func dryRunPrintSettings(settingsPath string, rawSettings map[string]any) (bool, error) {
+	if !hooksDryRun {
+		return false, nil
+	}
+	fmt.Println("[dry-run] Would write to", settingsPath)
+	data, err := json.MarshalIndent(rawSettings, "", "  ")
+	if err != nil {
+		return true, fmt.Errorf("marshal hooks settings: %w", err)
+	}
+	fmt.Println(string(data))
+	return true, nil
+}
+
 func runHooksInstall(cmd *cobra.Command, args []string) error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -714,28 +752,24 @@ func runHooksInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Check for existing ao hooks
-	if existingHooks, ok := rawSettings["hooks"].(map[string]any); ok && !hooksForce {
-		if hookGroupContainsAo(existingHooks, "SessionStart") {
-			fmt.Println("ao hooks already installed. Use --force to overwrite.")
-			return nil
-		}
+	if existingAoHooksBlock(rawSettings) {
+		fmt.Println("ao hooks already installed. Use --force to overwrite.")
+		return nil
 	}
 
 	hooksMap := cloneHooksMap(rawSettings)
 	installedEvents := mergeHookEvents(hooksMap, newHooks, eventsToInstall)
 	rawSettings["hooks"] = hooksMap
 
-	if hooksDryRun {
-		fmt.Println("[dry-run] Would write to", settingsPath)
-		data, err := json.MarshalIndent(rawSettings, "", "  ")
-		if err != nil {
-			return fmt.Errorf("marshal hooks settings: %w", err)
-		}
-		fmt.Println(string(data))
-		return nil
+	if done, err := dryRunPrintSettings(settingsPath, rawSettings); done || err != nil {
+		return err
 	}
 
+	return commitHooksSettings(settingsPath, rawSettings, newHooks, eventsToInstall, installedEvents)
+}
+
+// commitHooksSettings backs up, writes, and prints a summary for the hooks installation.
+func commitHooksSettings(settingsPath string, rawSettings map[string]any, newHooks *HooksConfig, eventsToInstall []string, installedEvents int) error {
 	if err := backupHooksSettings(settingsPath); err != nil {
 		return err
 	}
@@ -743,8 +777,73 @@ func runHooksInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	printHooksInstallSummary(settingsPath, newHooks, eventsToInstall, installedEvents)
-
 	return nil
+}
+
+// loadHooksMap reads settings.json and extracts the hooks map.
+// Returns (nil, nil) with a printed message when hooks are absent or invalid.
+func loadHooksMap(settingsPath string) (map[string]any, error) {
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("No Claude settings found at", settingsPath)
+			fmt.Println("Run 'ao hooks install' to set up hooks.")
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read settings: %w", err)
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("parse settings: %w", err)
+	}
+
+	hooks, ok := settings["hooks"]
+	if !ok {
+		fmt.Println("No hooks configured in", settingsPath)
+		fmt.Println("Run 'ao hooks install' to set up hooks.")
+		return nil, nil
+	}
+
+	hooksMap, ok := hooks.(map[string]any)
+	if !ok {
+		fmt.Println("Invalid hooks format in", settingsPath)
+		return nil, nil
+	}
+	return hooksMap, nil
+}
+
+// countRawGroupHooks counts the total hooks across all entries in a raw hook group slice.
+func countRawGroupHooks(groups []any) int {
+	count := 0
+	for _, g := range groups {
+		gm, ok := g.(map[string]any)
+		if !ok {
+			continue
+		}
+		if hs, ok := gm["hooks"].([]any); ok {
+			count += len(hs)
+		}
+	}
+	return count
+}
+
+// printEventCoverage prints per-event hook coverage and returns the count of installed events.
+func printEventCoverage(hooksMap map[string]any) int {
+	allEvents := AllEventNames()
+	installedCount := 0
+	fmt.Println("Hook Event Coverage:")
+	fmt.Println()
+	for _, event := range allEvents {
+		groups, hasEvent := hooksMap[event].([]any)
+		if hasEvent && len(groups) > 0 {
+			fmt.Printf("  ✓ %-20s %d hook(s)\n", event, countRawGroupHooks(groups))
+			installedCount++
+		} else {
+			fmt.Printf("  - %-20s not installed\n", event)
+		}
+	}
+	return installedCount
 }
 
 func runHooksShow(cmd *cobra.Command, args []string) error {
@@ -754,58 +853,17 @@ func runHooksShow(cmd *cobra.Command, args []string) error {
 	}
 
 	settingsPath := filepath.Join(homeDir, ".claude", "settings.json")
-
-	data, err := os.ReadFile(settingsPath)
+	hooksMap, err := loadHooksMap(settingsPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Println("No Claude settings found at", settingsPath)
-			fmt.Println("Run 'ao hooks install' to set up hooks.")
-			return nil
-		}
-		return fmt.Errorf("read settings: %w", err)
+		return err
 	}
-
-	var settings map[string]any
-	if err := json.Unmarshal(data, &settings); err != nil {
-		return fmt.Errorf("parse settings: %w", err)
-	}
-
-	hooks, ok := settings["hooks"]
-	if !ok {
-		fmt.Println("No hooks configured in", settingsPath)
-		fmt.Println("Run 'ao hooks install' to set up hooks.")
+	if hooksMap == nil {
 		return nil
 	}
 
-	hooksMap, ok := hooks.(map[string]any)
-	if !ok {
-		fmt.Println("Invalid hooks format in", settingsPath)
-		return nil
-	}
+	installedCount := printEventCoverage(hooksMap)
 
-	// Show coverage summary
 	allEvents := AllEventNames()
-	installedCount := 0
-	fmt.Println("Hook Event Coverage:")
-	fmt.Println()
-	for _, event := range allEvents {
-		groups, hasEvent := hooksMap[event].([]any)
-		if hasEvent && len(groups) > 0 {
-			hookCount := 0
-			for _, g := range groups {
-				if gm, ok := g.(map[string]any); ok {
-					if hs, ok := gm["hooks"].([]any); ok {
-						hookCount += len(hs)
-					}
-				}
-			}
-			fmt.Printf("  ✓ %-20s %d hook(s)\n", event, hookCount)
-			installedCount++
-		} else {
-			fmt.Printf("  - %-20s not installed\n", event)
-		}
-	}
-
 	fmt.Println()
 	fmt.Printf("%d/%d events installed\n", installedCount, len(allEvents))
 
@@ -815,15 +873,49 @@ func runHooksShow(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check for ao hooks specifically
+	fmt.Println()
 	if hookGroupContainsAo(hooksMap, "SessionStart") {
-		fmt.Println()
 		fmt.Println("✓ ao hooks are installed")
 	} else {
-		fmt.Println()
 		fmt.Println("⚠ ao hooks not found. Run 'ao hooks install' to set up.")
 	}
 
 	return nil
+}
+
+// rawGroupIsAoManaged checks whether a single raw hook group (map[string]any) contains
+// an ao-managed command. Handles both new format (hooks array) and legacy format
+// (top-level command array).
+func rawGroupIsAoManaged(group map[string]any) bool {
+	return rawGroupHooksContainAo(group) || rawGroupLegacyContainsAo(group)
+}
+
+// rawGroupHooksContainAo checks the new-format hooks array for ao commands.
+func rawGroupHooksContainAo(group map[string]any) bool {
+	hooks, ok := group["hooks"].([]any)
+	if !ok {
+		return false
+	}
+	for _, h := range hooks {
+		hook, ok := h.(map[string]any)
+		if !ok {
+			continue
+		}
+		if cmd, ok := hook["command"].(string); ok && isAoManagedHookCommand(cmd) {
+			return true
+		}
+	}
+	return false
+}
+
+// rawGroupLegacyContainsAo checks the legacy-format top-level command array for ao commands.
+func rawGroupLegacyContainsAo(group map[string]any) bool {
+	cmd, ok := group["command"].([]any)
+	if !ok || len(cmd) <= 1 {
+		return false
+	}
+	cmdStr, ok := cmd[1].(string)
+	return ok && isAoManagedHookCommand(cmdStr)
 }
 
 // hookGroupContainsAo checks if any hook group in the given event contains an ao command.
@@ -837,21 +929,8 @@ func hookGroupContainsAo(hooksMap map[string]any, event string) bool {
 		if !ok {
 			continue
 		}
-		// New format: check hooks array
-		if hooks, ok := group["hooks"].([]any); ok {
-			for _, h := range hooks {
-				if hook, ok := h.(map[string]any); ok {
-					if cmd, ok := hook["command"].(string); ok && isAoManagedHookCommand(cmd) {
-						return true
-					}
-				}
-			}
-		}
-		// Legacy format: check top-level command array
-		if cmd, ok := group["command"].([]any); ok && len(cmd) > 1 {
-			if cmdStr, ok := cmd[1].(string); ok && isAoManagedHookCommand(cmdStr) {
-				return true
-			}
+		if rawGroupIsAoManaged(group) {
+			return true
 		}
 	}
 	return false
@@ -869,25 +948,7 @@ func filterNonAoHookGroups(hooksMap map[string]any, event string) []map[string]a
 		if !ok {
 			continue
 		}
-		isAo := false
-		// Check new format
-		if hooks, ok := group["hooks"].([]any); ok {
-			for _, h := range hooks {
-				if hook, ok := h.(map[string]any); ok {
-					if cmd, ok := hook["command"].(string); ok && isAoManagedHookCommand(cmd) {
-						isAo = true
-						break
-					}
-				}
-			}
-		}
-		// Check legacy format
-		if cmd, ok := group["command"].([]any); ok && len(cmd) > 1 {
-			if cmdStr, ok := cmd[1].(string); ok && isAoManagedHookCommand(cmdStr) {
-				isAo = true
-			}
-		}
-		if !isAo {
+		if !rawGroupIsAoManaged(group) {
 			result = append(result, group)
 		}
 	}
@@ -957,47 +1018,61 @@ func runRequiredSubcommandsTest(testNum int, allPassed *bool) {
 	fmt.Println("✓ all present")
 }
 
-func runSettingsCoverageTest(testNum int, homeDir string, allPassed *bool) {
-	fmt.Printf("%d. Checking Claude settings... ", testNum)
-	settingsPath := filepath.Join(homeDir, ".claude", "settings.json")
-	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
-		fmt.Println("⚠ settings.json not found")
-		fmt.Println("   Run 'ao hooks install' to create hooks configuration.")
-		return
-	}
-
-	data, err := os.ReadFile(settingsPath)
-	if err != nil {
-		fmt.Println("✗ FAILED to read")
-		*allPassed = false
-		return
-	}
-
-	var settings map[string]any
-	if err := json.Unmarshal(data, &settings); err != nil {
-		fmt.Println("✗ FAILED to parse")
-		*allPassed = false
-		return
-	}
-
-	hooksRaw, ok := settings["hooks"]
-	if !ok {
-		fmt.Println("⚠ no hooks configured")
-		fmt.Println("   Run 'ao hooks install' to set up hooks.")
-		return
-	}
-
-	hooksMap, ok := hooksRaw.(map[string]any)
-	if !ok {
-		return
-	}
-
+// countInstalledHookEvents counts how many of the 12 hook events have at least one group.
+func countInstalledHookEvents(hooksMap map[string]any) int {
 	installed := 0
 	for _, event := range AllEventNames() {
 		if groups, ok := hooksMap[event].([]any); ok && len(groups) > 0 {
 			installed++
 		}
 	}
+	return installed
+}
+
+// readSettingsHooksMap reads, parses, and extracts the hooks map from settings.json.
+// Returns (nil, nil) for recoverable states (missing file, no hooks key), or (nil, err) for failures.
+func readSettingsHooksMap(settingsPath string) (map[string]any, error) {
+	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
+		fmt.Println("⚠ settings.json not found")
+		fmt.Println("   Run 'ao hooks install' to create hooks configuration.")
+		return nil, nil
+	}
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return nil, fmt.Errorf("read")
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("parse")
+	}
+	hooksRaw, ok := settings["hooks"]
+	if !ok {
+		fmt.Println("⚠ no hooks configured")
+		fmt.Println("   Run 'ao hooks install' to set up hooks.")
+		return nil, nil
+	}
+	hooksMap, ok := hooksRaw.(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	return hooksMap, nil
+}
+
+func runSettingsCoverageTest(testNum int, homeDir string, allPassed *bool) {
+	fmt.Printf("%d. Checking Claude settings... ", testNum)
+	settingsPath := filepath.Join(homeDir, ".claude", "settings.json")
+
+	hooksMap, err := readSettingsHooksMap(settingsPath)
+	if err != nil {
+		fmt.Printf("✗ FAILED to %s\n", err)
+		*allPassed = false
+		return
+	}
+	if hooksMap == nil {
+		return
+	}
+
+	installed := countInstalledHookEvents(hooksMap)
 	fmt.Printf("✓ %d/%d events installed\n", installed, len(AllEventNames()))
 	if installed < len(AllEventNames()) {
 		fmt.Println("   Run 'ao hooks install --full' for complete coverage.")
