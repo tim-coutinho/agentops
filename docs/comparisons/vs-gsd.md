@@ -60,7 +60,7 @@ Configure which Claude model each phase uses. Balance quality vs token spend per
 ┌─────────────────────────────────────────────────────────────────┐
 │                      AGENTOPS                                   │
 │                                                                 │
-│  Session 1: research → plan → crank → post-mortem              │
+│  Session 1: research → plan → pre-mortem → crank → vibe → post-mortem │
 │                                              ↓                  │
 │                                      (learnings extracted)      │
 │                                              ↓                  │
@@ -82,7 +82,7 @@ GSD:
   discuss → plan → execute → verify (catch issues here)
 
 AgentOps:
-  research → plan → pre-mortem (catch issues here) → crank → post-mortem
+  research → plan → pre-mortem (catch issues here) → crank → vibe (catch issues here) → post-mortem
 ```
 
 ### Limited Validation
@@ -145,7 +145,9 @@ verify               →  Human verification
      ↓
 /crank        →  Implement → validate → commit
      ↓
-/post-mortem  →  Validate + extract learnings
+/vibe         →  Multi-aspect code validation
+     ↓
+/post-mortem  →  Retro + extract learnings
      ↓
   Done        →  (learnings persist for next session)
 ```

@@ -81,7 +81,16 @@ Safety defaults:
 **Retry gates:** pre-mortem FAIL → re-plan, implementation BLOCKED/PARTIAL → re-crank, vibe FAIL → re-crank (max 3 attempts each).
 **Optional loop (`--loop`):** post-mortem FAIL can spawn another RPI cycle.
 
-Read `references/phase-data-contracts.md` for the phase-to-phase artifact contract.
+### Phase Data Contracts
+
+All phase transitions use filesystem-based artifacts (no in-memory coupling):
+
+| Transition | Key Artifacts | How Next Phase Reads Them |
+|------------|---------------|---------------------------|
+| Start -> Discovery | Goal string | Passed as argument to `/research` |
+| Discovery -> Implementation | Epic ID, pre-mortem verdict, phase-1 summary | `phased-state.json` + `.agents/rpi/phase-1-summary-*.md` |
+| Implementation -> Validation | Crank completion status, phase-2 summary | `bd children <epic-id>` + `.agents/rpi/phase-2-summary-*.md` |
+| Validation -> Next Cycle (optional) | Vibe/post-mortem verdicts, harvested follow-up work | Council reports + `.agents/rpi/next-work.jsonl` |
 
 ## Execution Steps
 
@@ -142,9 +151,7 @@ bash scripts/log-telemetry.sh rpi phase-complete phase=1 phase_name=discovery 2>
 
 Gate behavior:
 - PASS/WARN: proceed to implementation.
-- FAIL: re-run `/plan` with findings context, then `/pre-mortem` (max 3 total attempts).
-
-Detailed retry contract: `references/gate-retry-logic.md`.
+- FAIL: re-run `/plan` with findings context (top 5 structured findings: description, fix, ref), then `/pre-mortem` again. Max 3 total attempts. If still FAIL after 3, stop and require manual intervention.
 
 ### Phase 2: Implementation
 
@@ -158,7 +165,8 @@ After implementation completes:
 1. Check completion via crank output / epic child statuses.
 2. Gate result:
    - DONE: proceed to validation
-   - BLOCKED or PARTIAL: re-run `/crank` with context (max 3 total attempts)
+   - BLOCKED: re-run `/crank` with block context (max 3 total attempts). If still BLOCKED, stop and require manual intervention.
+   - PARTIAL: re-run `/crank` with epic-id; it picks up unclosed issues (max 3 total attempts). If still PARTIAL, stop and require manual intervention.
 3. Write summary to `.agents/rpi/phase-2-summary-YYYY-MM-DD-<goal-slug>.md`.
 4. Record ratchet and telemetry:
 
@@ -167,8 +175,6 @@ ao ratchet record implement 2>/dev/null || true
 bash scripts/checkpoint-commit.sh rpi "phase-2" "implementation complete" 2>/dev/null || true
 bash scripts/log-telemetry.sh rpi phase-complete phase=2 phase_name=implementation 2>/dev/null || true
 ```
-
-Detailed retry contract: `references/gate-retry-logic.md`.
 
 ### Phase 3: Validation
 
@@ -194,7 +200,9 @@ bash scripts/checkpoint-commit.sh rpi "phase-3" "validation complete" 2>/dev/nul
 bash scripts/log-telemetry.sh rpi phase-complete phase=3 phase_name=validation 2>/dev/null || true
 ```
 
-Looping and spawn-next behavior lives in `references/gate4-loop-and-spawn.md`.
+**Optional loop (`--loop`):** If post-mortem verdict is FAIL and `--loop` is enabled, extract 3 concrete fixes from the report and re-invoke `/rpi` from Phase 1 with a tightened goal (up to `--max-cycles` total cycles). PASS/WARN stops the loop.
+
+**Optional spawn-next (`--spawn-next`):** After a PASS/WARN finish, read `.agents/rpi/next-work.jsonl` for harvested follow-up items. Report them to the user with a suggested next `/rpi` command but do NOT auto-invoke.
 
 ### Step Final: Report
 
