@@ -242,45 +242,38 @@ func loadFromPath(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// applyEnvStr sets dst from the named environment variable when non-empty.
+func applyEnvStr(dst *string, envKey string) {
+	if v := os.Getenv(envKey); v != "" {
+		*dst = v
+	}
+}
+
+// envBool returns true when the named environment variable is "true" or "1".
+func envBool(envKey string) bool {
+	v := os.Getenv(envKey)
+	return v == "true" || v == "1"
+}
+
 // applyEnv applies environment variable overrides.
 func applyEnv(cfg *Config) *Config {
-	if v := os.Getenv("AGENTOPS_OUTPUT"); v != "" {
-		cfg.Output = v
-	}
-	if v := os.Getenv("AGENTOPS_BASE_DIR"); v != "" {
-		cfg.BaseDir = v
-	}
-	if os.Getenv("AGENTOPS_VERBOSE") == "true" || os.Getenv("AGENTOPS_VERBOSE") == "1" {
+	applyEnvStr(&cfg.Output, "AGENTOPS_OUTPUT")
+	applyEnvStr(&cfg.BaseDir, "AGENTOPS_BASE_DIR")
+	if envBool("AGENTOPS_VERBOSE") {
 		cfg.Verbose = true
 	}
-	if v := os.Getenv("AGENTOPS_NO_SC"); v == "true" || v == "1" {
+	if envBool("AGENTOPS_NO_SC") {
 		cfg.Search.UseSmartConnections = false
 		cfg.Search.UseSmartConnectionsSet = true
 	}
-	if v := os.Getenv("AGENTOPS_RPI_WORKTREE_MODE"); v != "" {
-		cfg.RPI.WorktreeMode = v
-	}
-	if v := os.Getenv("AGENTOPS_RPI_RUNTIME"); v != "" {
-		cfg.RPI.RuntimeMode = v
-	}
-	if v := os.Getenv("AGENTOPS_RPI_RUNTIME_MODE"); v != "" {
-		cfg.RPI.RuntimeMode = v
-	}
-	if v := os.Getenv("AGENTOPS_RPI_RUNTIME_COMMAND"); v != "" {
-		cfg.RPI.RuntimeCommand = v
-	}
-	if v := os.Getenv("AGENTOPS_RPI_AO_COMMAND"); v != "" {
-		cfg.RPI.AOCommand = v
-	}
-	if v := os.Getenv("AGENTOPS_RPI_BD_COMMAND"); v != "" {
-		cfg.RPI.BDCommand = v
-	}
-	if v := os.Getenv("AGENTOPS_RPI_TMUX_COMMAND"); v != "" {
-		cfg.RPI.TmuxCommand = v
-	}
-	if v := os.Getenv("AGENTOPS_FLYWHEEL_AUTO_PROMOTE_THRESHOLD"); v != "" {
-		cfg.Flywheel.AutoPromoteThreshold = v
-	}
+	applyEnvStr(&cfg.RPI.WorktreeMode, "AGENTOPS_RPI_WORKTREE_MODE")
+	applyEnvStr(&cfg.RPI.RuntimeMode, "AGENTOPS_RPI_RUNTIME")
+	applyEnvStr(&cfg.RPI.RuntimeMode, "AGENTOPS_RPI_RUNTIME_MODE")
+	applyEnvStr(&cfg.RPI.RuntimeCommand, "AGENTOPS_RPI_RUNTIME_COMMAND")
+	applyEnvStr(&cfg.RPI.AOCommand, "AGENTOPS_RPI_AO_COMMAND")
+	applyEnvStr(&cfg.RPI.BDCommand, "AGENTOPS_RPI_BD_COMMAND")
+	applyEnvStr(&cfg.RPI.TmuxCommand, "AGENTOPS_RPI_TMUX_COMMAND")
+	applyEnvStr(&cfg.Flywheel.AutoPromoteThreshold, "AGENTOPS_FLYWHEEL_AUTO_PROMOTE_THRESHOLD")
 	return cfg
 }
 
