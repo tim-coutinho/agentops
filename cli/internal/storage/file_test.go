@@ -779,6 +779,234 @@ func TestGenerateSlug_AllSpecialChars(t *testing.T) {
 	}
 }
 
+func TestFileStorage_Init_ReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	baseDir := filepath.Join(readOnly, ".agents/ao")
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	err := fs.Init()
+	if err == nil {
+		t.Error("expected error when Init in read-only directory")
+	}
+}
+
+func TestFileStorage_AppendJSONL_OpenError(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a directory where the file should be -- os.OpenFile will fail
+	provPath := filepath.Join(baseDir, ProvenanceDir, ProvenanceFile)
+	_ = os.Remove(provPath) // remove if exists
+	if err := os.MkdirAll(provPath, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	record := &ProvenanceRecord{
+		ID:           "error-test",
+		ArtifactPath: "/output/error.md",
+	}
+	err := fs.WriteProvenance(record)
+	if err == nil {
+		t.Error("expected error when provenance file path is a directory")
+	}
+}
+
+func TestFileStorage_AppendJSONL_ReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make provenance dir read-only
+	provDir := filepath.Join(baseDir, ProvenanceDir)
+	if err := os.Chmod(provDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(provDir, 0700) })
+
+	record := &ProvenanceRecord{
+		ID:           "readonly-test",
+		ArtifactPath: "/output/readonly.md",
+	}
+	err := fs.WriteProvenance(record)
+	if err == nil {
+		t.Error("expected error when provenance dir is read-only")
+	}
+}
+
+func TestFileStorage_AtomicWrite_ReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make the sessions dir read-only so CreateTemp fails
+	sessDir := filepath.Join(baseDir, SessionsDir)
+	if err := os.Chmod(sessDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sessDir, 0700) })
+
+	testPath := filepath.Join(sessDir, "test.txt")
+	err := fs.atomicWrite(testPath, func(w io.Writer) error {
+		_, err := w.Write([]byte("data"))
+		return err
+	})
+	if err == nil {
+		t.Error("expected error from atomicWrite in read-only dir")
+	}
+	if !contains(err.Error(), "create temp file") {
+		t.Errorf("expected 'create temp file' error, got: %v", err)
+	}
+}
+
+func TestFileStorage_HasIndexEntry_MalformedJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a valid entry then malformed line to index
+	entry := &IndexEntry{
+		SessionID:   "find-me",
+		SessionPath: "/path/to/session.jsonl",
+		Summary:     "Find this one",
+	}
+	if err := fs.WriteIndex(entry); err != nil {
+		t.Fatal(err)
+	}
+
+	// Append malformed line
+	indexPath := fs.GetIndexPath()
+	f, err := os.OpenFile(indexPath, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.Write([]byte("{bad json\n"))
+	f.Close()
+
+	// hasIndexEntry should still find the valid entry even with malformed lines
+	if !fs.hasIndexEntry(indexPath, "find-me") {
+		t.Error("expected hasIndexEntry to find valid entry despite malformed lines")
+	}
+
+	// Should not find a nonexistent entry
+	if fs.hasIndexEntry(indexPath, "not-here") {
+		t.Error("expected hasIndexEntry to return false for nonexistent entry")
+	}
+}
+
+func TestFileStorage_ListSessions_PermissionError(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a valid entry first
+	entry := &IndexEntry{
+		SessionID:   "perm-test",
+		SessionPath: "/path/session.jsonl",
+	}
+	if err := fs.WriteIndex(entry); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make index file unreadable (not-IsNotExist error path)
+	indexPath := fs.GetIndexPath()
+	if err := os.Chmod(indexPath, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(indexPath, 0644) })
+
+	_, err := fs.ListSessions()
+	if err == nil {
+		t.Error("expected error when index file is unreadable")
+	}
+}
+
+func TestFileStorage_QueryProvenance_PermissionError(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a valid record
+	record := &ProvenanceRecord{
+		ID:           "perm-test",
+		ArtifactPath: "/output/perm.md",
+	}
+	if err := fs.WriteProvenance(record); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make provenance file unreadable
+	provPath := fs.GetProvenancePath()
+	if err := os.Chmod(provPath, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(provPath, 0644) })
+
+	_, err := fs.QueryProvenance("/output/perm.md")
+	if err == nil {
+		t.Error("expected error when provenance file is unreadable")
+	}
+}
+
+func TestFileStorage_WriteIndex_AppendError(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make index dir read-only so appendJSONL cannot create/write the file
+	indexDir := filepath.Join(baseDir, IndexDir)
+	if err := os.Chmod(indexDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(indexDir, 0700) })
+
+	entry := &IndexEntry{
+		SessionID:   "write-fail",
+		SessionPath: "/path/to/session.jsonl",
+	}
+	err := fs.WriteIndex(entry)
+	if err == nil {
+		t.Error("expected error when index dir is read-only")
+	}
+}
+
+func TestFileStorage_ReadSessionFile_FileNotExist(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+	fs := NewFileStorage(WithBaseDir(baseDir))
+
+	_, err := fs.readSessionFile(filepath.Join(tmpDir, "nonexistent.jsonl"))
+	if err == nil {
+		t.Error("expected error for nonexistent session file")
+	}
+}
+
 // contains is a test helper for substring matching.
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr))
