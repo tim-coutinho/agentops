@@ -1,6 +1,7 @@
 package rpi
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -46,8 +47,8 @@ func TestGetRepoRoot_NotARepo(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-git directory")
 	}
-	if !strings.Contains(err.Error(), "not a git repository") {
-		t.Errorf("error should mention 'not a git repository', got: %v", err)
+	if !errors.Is(err, ErrNotGitRepo) {
+		t.Errorf("expected ErrNotGitRepo, got: %v", err)
 	}
 }
 
@@ -410,8 +411,8 @@ func TestCreateWorktree_NotARepo(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-git directory")
 	}
-	if !strings.Contains(err.Error(), "not a git repository") {
-		t.Errorf("expected 'not a git repository' error, got: %v", err)
+	if !errors.Is(err, ErrNotGitRepo) {
+		t.Errorf("expected ErrNotGitRepo, got: %v", err)
 	}
 }
 
@@ -432,8 +433,8 @@ func TestGetCurrentBranch_DetachedHEAD(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for detached HEAD")
 	}
-	if !strings.Contains(err.Error(), "detached HEAD") {
-		t.Errorf("expected 'detached HEAD' error, got: %v", err)
+	if !errors.Is(err, ErrDetachedHEAD) {
+		t.Errorf("expected ErrDetachedHEAD, got: %v", err)
 	}
 }
 
@@ -500,8 +501,8 @@ func TestEnsureAttachedBranch_NonDetachedHEADError(t *testing.T) {
 		t.Fatal("expected error for nonexistent repo")
 	}
 	// Should propagate the non-detached-HEAD error
-	if strings.Contains(err.Error(), "detached HEAD") {
-		t.Errorf("should NOT be detached HEAD error, got: %v", err)
+	if errors.Is(err, ErrDetachedHEAD) {
+		t.Errorf("should NOT be ErrDetachedHEAD, got: %v", err)
 	}
 }
 
@@ -941,8 +942,8 @@ func TestEnsureAttachedBranch_BranchCreateFailsInvalidRef(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid branch ref name")
 	}
-	if !strings.Contains(err.Error(), "detached HEAD self-heal failed") {
-		t.Errorf("expected 'detached HEAD self-heal failed' error, got: %v", err)
+	if !errors.Is(err, ErrDetachedSelfHealFailed) {
+		t.Errorf("expected ErrDetachedSelfHealFailed, got: %v", err)
 	}
 }
 
@@ -1048,8 +1049,8 @@ func TestEnsureAttachedBranch_SwitchFailsIndexLocked(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when index is locked")
 	}
-	if !strings.Contains(err.Error(), "detached HEAD self-heal failed") {
-		t.Errorf("expected 'detached HEAD self-heal failed' error, got: %v", err)
+	if !errors.Is(err, ErrDetachedSelfHealFailed) {
+		t.Errorf("expected ErrDetachedSelfHealFailed, got: %v", err)
 	}
 }
 

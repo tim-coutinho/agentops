@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -39,7 +40,7 @@ func GetCurrentBranch(repoRoot string, timeout time.Duration) (string, error) {
 	}
 	branch := strings.TrimSpace(string(out))
 	if branch == "HEAD" {
-		return "", fmt.Errorf("detached HEAD: worktree requires a named branch")
+		return "", ErrDetachedHEAD
 	}
 	return branch, nil
 }
@@ -53,7 +54,7 @@ func EnsureAttachedBranch(repoRoot string, timeout time.Duration, branchPrefix s
 	if err == nil {
 		return branch, false, nil
 	}
-	if !strings.Contains(err.Error(), "detached HEAD") {
+	if !errors.Is(err, ErrDetachedHEAD) {
 		return "", false, err
 	}
 
@@ -74,7 +75,7 @@ func EnsureAttachedBranch(repoRoot string, timeout time.Duration, branchPrefix s
 		if isBranchBusyInWorktree(switchOut) {
 			return "", false, nil
 		}
-		return "", false, fmt.Errorf("detached HEAD self-heal failed: %s", switchOut)
+		return "", false, fmt.Errorf("%w: %s", ErrDetachedSelfHealFailed, switchOut)
 	}
 
 	branchCreateOut = strings.TrimSpace(branchCreateOut)
@@ -82,9 +83,9 @@ func EnsureAttachedBranch(repoRoot string, timeout time.Duration, branchPrefix s
 		return "", false, nil
 	}
 	if branchCreateOut != "" {
-		return "", false, fmt.Errorf("detached HEAD self-heal failed: %s", branchCreateOut)
+		return "", false, fmt.Errorf("%w: %s", ErrDetachedSelfHealFailed, branchCreateOut)
 	}
-	return "", false, fmt.Errorf("detached HEAD self-heal failed")
+	return "", false, ErrDetachedSelfHealFailed
 
 }
 
@@ -124,7 +125,7 @@ func GetRepoRoot(dir string, timeout time.Duration) (string, error) {
 		if ctx.Err() == context.DeadlineExceeded {
 			return "", fmt.Errorf("git rev-parse timed out after %s", timeout)
 		}
-		return "", fmt.Errorf("not a git repository (run ao rpi phased from inside a git repo)")
+		return "", ErrNotGitRepo
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -163,7 +164,7 @@ func resolveHeadCommit(repoRoot string, timeout time.Duration) (string, error) {
 	}
 	currentCommit := strings.TrimSpace(string(headOut))
 	if currentCommit == "" {
-		return "", fmt.Errorf("unable to resolve HEAD commit for detached worktree creation")
+		return "", ErrResolveHEAD
 	}
 	return currentCommit, nil
 }
@@ -202,7 +203,7 @@ func tryCreateWorktree(repoRoot, currentCommit string, timeout time.Duration, ve
 		}
 		return "", "", fmt.Errorf("git worktree add failed: %w (output: %s)", cmdErr, string(output))
 	}
-	return "", "", fmt.Errorf("failed to create unique worktree path after 3 attempts")
+	return "", "", ErrWorktreeCollision
 }
 
 // MergeWorktree merges the RPI worktree commit back into the original branch.
@@ -213,7 +214,7 @@ func MergeWorktree(repoRoot, worktreePath, runID string, timeout time.Duration, 
 
 	worktreePath = resolveWorktreePath(worktreePath, repoRoot, runID)
 	if worktreePath == "" {
-		return fmt.Errorf("merge source unavailable: missing worktree path and run ID")
+		return ErrMergeSourceUnavailable
 	}
 
 	mergeSource, err := resolveMergeSource(worktreePath, timeout)
@@ -244,7 +245,7 @@ func waitForCleanRepo(repoRoot string, timeout time.Duration, verbosef func(stri
 			time.Sleep(2 * time.Second)
 		}
 	}
-	return fmt.Errorf("original repo has uncommitted changes after 5 retries: commit or stash before merge")
+	return ErrRepoUnclean
 }
 
 // resolveWorktreePath returns the worktree path, inferring from runID if needed. Returns empty string if neither is available.
@@ -270,7 +271,7 @@ func resolveMergeSource(worktreePath string, timeout time.Duration) (string, err
 	}
 	mergeSource := strings.TrimSpace(string(revOut))
 	if mergeSource == "" {
-		return "", fmt.Errorf("worktree merge source commit is empty")
+		return "", ErrEmptyMergeSource
 	}
 	return mergeSource, nil
 }
