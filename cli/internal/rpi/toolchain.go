@@ -68,6 +68,20 @@ func ValidateRuntimeMode(mode string) error {
 	}
 }
 
+// applyEnvField sets dest from the named env var (via lookup) when non-empty.
+func applyEnvField(dest *string, lookup func(string) string, envKey string) {
+	if v := strings.TrimSpace(lookup(envKey)); v != "" {
+		*dest = v
+	}
+}
+
+// applyFlagField sets dest when the flag was explicitly set.
+func applyFlagField(dest *string, flagSet bool, flagValue string) {
+	if flagSet {
+		*dest = flagValue
+	}
+}
+
 // ResolveToolchain resolves command configuration with precedence:
 // flags > env > config > defaults.
 func ResolveToolchain(opts ResolveToolchainOptions) (Toolchain, error) {
@@ -84,46 +98,27 @@ func ResolveToolchain(opts ResolveToolchainOptions) (Toolchain, error) {
 		TmuxCommand:    DefaultTmuxCommand,
 	}
 
+	// Layer 1: config overrides defaults
 	applyConfigField(&tc.RuntimeMode, opts.Config.RuntimeMode)
 	applyConfigField(&tc.RuntimeCommand, opts.Config.RuntimeCommand)
 	applyConfigField(&tc.AOCommand, opts.Config.AOCommand)
 	applyConfigField(&tc.BDCommand, opts.Config.BDCommand)
 	applyConfigField(&tc.TmuxCommand, opts.Config.TmuxCommand)
 
-	if envRuntime := strings.TrimSpace(lookup("AGENTOPS_RPI_RUNTIME")); envRuntime != "" {
-		tc.RuntimeMode = envRuntime
-	}
-	if envRuntimeMode := strings.TrimSpace(lookup("AGENTOPS_RPI_RUNTIME_MODE")); envRuntimeMode != "" {
-		tc.RuntimeMode = envRuntimeMode
-	}
-	if envRuntimeCommand := strings.TrimSpace(lookup("AGENTOPS_RPI_RUNTIME_COMMAND")); envRuntimeCommand != "" {
-		tc.RuntimeCommand = envRuntimeCommand
-	}
-	if envAOCommand := strings.TrimSpace(lookup("AGENTOPS_RPI_AO_COMMAND")); envAOCommand != "" {
-		tc.AOCommand = envAOCommand
-	}
-	if envBDCommand := strings.TrimSpace(lookup("AGENTOPS_RPI_BD_COMMAND")); envBDCommand != "" {
-		tc.BDCommand = envBDCommand
-	}
-	if envTmuxCommand := strings.TrimSpace(lookup("AGENTOPS_RPI_TMUX_COMMAND")); envTmuxCommand != "" {
-		tc.TmuxCommand = envTmuxCommand
-	}
+	// Layer 2: env overrides config
+	applyEnvField(&tc.RuntimeMode, lookup, "AGENTOPS_RPI_RUNTIME")
+	applyEnvField(&tc.RuntimeMode, lookup, "AGENTOPS_RPI_RUNTIME_MODE")
+	applyEnvField(&tc.RuntimeCommand, lookup, "AGENTOPS_RPI_RUNTIME_COMMAND")
+	applyEnvField(&tc.AOCommand, lookup, "AGENTOPS_RPI_AO_COMMAND")
+	applyEnvField(&tc.BDCommand, lookup, "AGENTOPS_RPI_BD_COMMAND")
+	applyEnvField(&tc.TmuxCommand, lookup, "AGENTOPS_RPI_TMUX_COMMAND")
 
-	if opts.FlagSet.RuntimeMode {
-		tc.RuntimeMode = opts.FlagValues.RuntimeMode
-	}
-	if opts.FlagSet.RuntimeCommand {
-		tc.RuntimeCommand = opts.FlagValues.RuntimeCommand
-	}
-	if opts.FlagSet.AOCommand {
-		tc.AOCommand = opts.FlagValues.AOCommand
-	}
-	if opts.FlagSet.BDCommand {
-		tc.BDCommand = opts.FlagValues.BDCommand
-	}
-	if opts.FlagSet.TmuxCommand {
-		tc.TmuxCommand = opts.FlagValues.TmuxCommand
-	}
+	// Layer 3: flags override env
+	applyFlagField(&tc.RuntimeMode, opts.FlagSet.RuntimeMode, opts.FlagValues.RuntimeMode)
+	applyFlagField(&tc.RuntimeCommand, opts.FlagSet.RuntimeCommand, opts.FlagValues.RuntimeCommand)
+	applyFlagField(&tc.AOCommand, opts.FlagSet.AOCommand, opts.FlagValues.AOCommand)
+	applyFlagField(&tc.BDCommand, opts.FlagSet.BDCommand, opts.FlagValues.BDCommand)
+	applyFlagField(&tc.TmuxCommand, opts.FlagSet.TmuxCommand, opts.FlagValues.TmuxCommand)
 
 	tc.RuntimeMode = NormalizeRuntimeMode(tc.RuntimeMode)
 	if err := ValidateRuntimeMode(tc.RuntimeMode); err != nil {
