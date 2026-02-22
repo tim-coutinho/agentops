@@ -120,20 +120,47 @@ func parseChainLines(scanner *bufio.Scanner, chain *Chain) error {
 	return nil
 }
 
+// legacyChainEntry is a single step in the legacy YAML chain format.
+type legacyChainEntry struct {
+	Step      string `yaml:"step"`
+	Timestamp string `yaml:"timestamp"`
+	Input     string `yaml:"input,omitempty"`
+	Output    string `yaml:"output"`
+	Locked    bool   `yaml:"locked"`
+	Skipped   bool   `yaml:"skipped,omitempty"`
+	Reason    string `yaml:"reason,omitempty"`
+}
+
 // legacyChain is the old YAML format structure.
 type legacyChain struct {
-	ID      string `yaml:"id"`
-	Started string `yaml:"started"`
-	EpicID  string `yaml:"epic_id,omitempty"`
-	Chain   []struct {
-		Step      string `yaml:"step"`
-		Timestamp string `yaml:"timestamp"`
-		Input     string `yaml:"input,omitempty"`
-		Output    string `yaml:"output"`
-		Locked    bool   `yaml:"locked"`
-		Skipped   bool   `yaml:"skipped,omitempty"`
-		Reason    string `yaml:"reason,omitempty"`
-	} `yaml:"chain"`
+	ID      string             `yaml:"id"`
+	Started string             `yaml:"started"`
+	EpicID  string             `yaml:"epic_id,omitempty"`
+	Chain   []legacyChainEntry `yaml:"chain"`
+}
+
+// parseTimeOrNow parses an RFC3339 timestamp, returning time.Now() on empty
+// or invalid input.
+func parseTimeOrNow(s string) time.Time {
+	if s != "" {
+		if t, err := time.Parse(time.RFC3339, s); err == nil {
+			return t
+		}
+	}
+	return time.Now()
+}
+
+// convertLegacyEntry converts a legacy YAML chain entry to a ChainEntry.
+func convertLegacyEntry(e legacyChainEntry) ChainEntry {
+	return ChainEntry{
+		Step:      ParseStep(e.Step),
+		Output:    e.Output,
+		Input:     e.Input,
+		Locked:    e.Locked,
+		Skipped:   e.Skipped,
+		Reason:    e.Reason,
+		Timestamp: parseTimeOrNow(e.Timestamp),
+	}
 }
 
 // loadLegacyYAMLChain loads a chain from legacy YAML format.
@@ -151,32 +178,12 @@ func loadLegacyYAMLChain(path string) (*Chain, error) {
 	chain := &Chain{
 		ID:      legacy.ID,
 		EpicID:  legacy.EpicID,
+		Started: parseTimeOrNow(legacy.Started),
 		Entries: make([]ChainEntry, 0, len(legacy.Chain)),
 	}
 
-	if legacy.Started != "" {
-		chain.Started, _ = time.Parse(time.RFC3339, legacy.Started)
-	}
-	if chain.Started.IsZero() {
-		chain.Started = time.Now()
-	}
-
 	for _, e := range legacy.Chain {
-		entry := ChainEntry{
-			Step:    ParseStep(e.Step),
-			Output:  e.Output,
-			Input:   e.Input,
-			Locked:  e.Locked,
-			Skipped: e.Skipped,
-			Reason:  e.Reason,
-		}
-		if e.Timestamp != "" {
-			entry.Timestamp, _ = time.Parse(time.RFC3339, e.Timestamp)
-		}
-		if entry.Timestamp.IsZero() {
-			entry.Timestamp = time.Now()
-		}
-		chain.Entries = append(chain.Entries, entry)
+		chain.Entries = append(chain.Entries, convertLegacyEntry(e))
 	}
 
 	return chain, nil

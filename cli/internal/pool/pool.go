@@ -268,20 +268,24 @@ func (p *Pool) scanDirectory(dir string, status types.PoolStatus) ([]PoolEntry, 
 			continue // Skip malformed entries
 		}
 
-		entry.FilePath = path
-		entry.Status = status
-		entry.Age = time.Since(entry.AddedAt)
-		entry.AgeString = formatDuration(entry.Age)
-
-		// Check if approaching 24h auto-promote threshold (warn at 22h, 2h buffer)
-		if entry.Candidate.Tier == types.TierSilver && entry.Age > 22*time.Hour {
-			entry.ApproachingAutoPromote = true
-		}
-
+		enrichEntry(entry, path, status)
 		entries = append(entries, *entry)
 	}
 
 	return entries, nil
+}
+
+// enrichEntry populates computed fields on a pool entry after loading from disk.
+func enrichEntry(entry *PoolEntry, path string, status types.PoolStatus) {
+	entry.FilePath = path
+	entry.Status = status
+	entry.Age = time.Since(entry.AddedAt)
+	entry.AgeString = formatDuration(entry.Age)
+
+	// Check if approaching 24h auto-promote threshold (warn at 22h, 2h buffer)
+	if entry.Candidate.Tier == types.TierSilver && entry.Age > 22*time.Hour {
+		entry.ApproachingAutoPromote = true
+	}
 }
 
 // readEntry loads a single pool entry from file.
