@@ -461,7 +461,7 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(dst, data, 0644)
+	return os.WriteFile(dst, data, 0o600)
 }
 
 func createMinimalTranscript() string {
@@ -489,9 +489,12 @@ func createMinimalTranscript() string {
 		},
 	}
 
-	var lines []string
+	lines := make([]string, 0, len(messages))
 	for _, msg := range messages {
-		data, _ := json.Marshal(msg)
+		data, err := json.Marshal(msg)
+		if err != nil {
+			panic("marshal transcript message: " + err.Error())
+		}
 		lines = append(lines, string(data))
 	}
 	return strings.Join(lines, "\n")

@@ -61,8 +61,8 @@ type rawMessage struct {
 	UUID       string `json:"uuid"`
 	ParentUUID string `json:"parentUuid,omitempty"`
 	Message    *struct {
-		Role    string      `json:"role"`
-		Content any `json:"content"` // Can be string or array
+		Role    string `json:"role"`
+		Content any    `json:"content"` // Can be string or array
 	} `json:"message,omitempty"`
 	// ToolUseResult contains structured tool output (e.g., for TodoWrite)
 	ToolUseResult any `json:"toolUseResult,omitempty"`

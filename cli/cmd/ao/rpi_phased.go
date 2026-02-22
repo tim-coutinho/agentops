@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -535,43 +536,23 @@ func resolveWorktreeModeFromConfig(flagDefault bool) bool {
 }
 
 func normalizeRuntimeMode(mode string) string {
-	normalized := strings.ToLower(strings.TrimSpace(mode))
-	if normalized == "" {
-		return "auto"
-	}
-	return normalized
+	return cmp.Or(strings.ToLower(strings.TrimSpace(mode)), "auto")
 }
 
 func effectiveRuntimeCommand(command string) string {
-	normalized := strings.TrimSpace(command)
-	if normalized == "" {
-		return "claude"
-	}
-	return normalized
+	return cmp.Or(strings.TrimSpace(command), "claude")
 }
 
 func effectiveAOCommand(command string) string {
-	normalized := strings.TrimSpace(command)
-	if normalized == "" {
-		return "ao"
-	}
-	return normalized
+	return cmp.Or(strings.TrimSpace(command), "ao")
 }
 
 func effectiveBDCommand(command string) string {
-	normalized := strings.TrimSpace(command)
-	if normalized == "" {
-		return "bd"
-	}
-	return normalized
+	return cmp.Or(strings.TrimSpace(command), "bd")
 }
 
 func effectiveTmuxCommand(command string) string {
-	normalized := strings.TrimSpace(command)
-	if normalized == "" {
-		return "tmux"
-	}
-	return normalized
+	return cmp.Or(strings.TrimSpace(command), "tmux")
 }
 
 func validateRuntimeMode(mode string) error {
@@ -1600,7 +1581,7 @@ func parseLatestEpicIDFromText(output string) (string, error) {
 		if limit > 3 {
 			limit = 3
 		}
-		for i := 0; i < limit; i++ {
+		for i := range limit {
 			field := fields[i]
 			token := strings.Trim(field, "[]()")
 			if idPattern.MatchString(token) {
@@ -2189,11 +2170,7 @@ func ledgerActionFromDetails(details string) string {
 	}
 
 	fields := strings.Fields(normalized)
-	action := strings.Trim(fields[0], ":")
-	if action == "" {
-		return "event"
-	}
-	return action
+	return cmp.Or(strings.Trim(fields[0], ":"), "event")
 }
 
 // logFailureContext records actionable remediation context when a phase fails.

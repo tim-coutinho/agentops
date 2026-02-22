@@ -295,7 +295,7 @@ func TestCountHooksInMap(t *testing.T) {
 		{
 			name: "flat hook arrays",
 			raw: map[string]any{
-				"PreToolUse": []any{"hook1", "hook2"},
+				"PreToolUse":  []any{"hook1", "hook2"},
 				"PostToolUse": []any{"hook3"},
 			},
 			want: 3,

@@ -197,13 +197,16 @@ func TestValidatePriorPhaseResult_WrongStatus(t *testing.T) {
 			RunID:         "test-run",
 			StartedAt:     "2026-02-19T00:00:00Z",
 		}
-		data, _ := json.MarshalIndent(result, "", "  ")
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			t.Fatalf("marshal result: %v", err)
+		}
 		path := filepath.Join(stateDir, fmt.Sprintf(phaseResultFileFmt, 2))
 		if err := os.WriteFile(path, data, 0644); err != nil {
 			t.Fatal(err)
 		}
 
-		err := validatePriorPhaseResult(dir, 2)
+		err = validatePriorPhaseResult(dir, 2)
 		if err == nil {
 			t.Errorf("status=%q: expected error, got nil", status)
 		}
@@ -231,7 +234,10 @@ func TestValidatePriorPhaseResult_Completed(t *testing.T) {
 		StartedAt:     "2026-02-19T00:00:00Z",
 		CompletedAt:   "2026-02-19T01:00:00Z",
 	}
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal result: %v", err)
+	}
 	path := filepath.Join(stateDir, fmt.Sprintf(phaseResultFileFmt, 1))
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		t.Fatal(err)

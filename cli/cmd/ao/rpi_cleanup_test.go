@@ -26,7 +26,10 @@ func TestCleanupStaleRun(t *testing.T) {
 		"worktree_path":  "/nonexistent/path",
 		"started_at":     time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	statePath := filepath.Join(runDir, phasedStateFile)
 	if err := os.WriteFile(statePath, data, 0644); err != nil {
 		t.Fatal(err)
@@ -103,7 +106,10 @@ func TestCleanupDryRun(t *testing.T) {
 		"phase":          1,
 		"started_at":     time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	statePath := filepath.Join(runDir, phasedStateFile)
 	if err := os.WriteFile(statePath, data, 0644); err != nil {
 		t.Fatal(err)
@@ -140,7 +146,10 @@ func TestCleanupByRunID(t *testing.T) {
 			"phase":          1,
 			"started_at":     time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
 		}
-		data, _ := json.Marshal(state)
+		data, marshalErr := json.Marshal(state)
+		if marshalErr != nil {
+			t.Fatalf("marshal state: %v", marshalErr)
+		}
 		if err := os.WriteFile(filepath.Join(runDir, phasedStateFile), data, 0644); err != nil {
 			t.Fatal(err)
 		}
@@ -184,7 +193,10 @@ func TestCleanupSkipsTerminalRuns(t *testing.T) {
 		"terminated_at":   time.Now().Add(-10 * time.Minute).Format(time.RFC3339),
 		"started_at":      time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(filepath.Join(runDir, phasedStateFile), data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +231,10 @@ func TestCleanupIncludesTerminalRunsWithExistingWorktree(t *testing.T) {
 		"started_at":      time.Now().Add(-3 * time.Hour).Format(time.RFC3339),
 		"worktree_path":   worktreePath,
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(filepath.Join(runDir, phasedStateFile), data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +287,10 @@ func TestCleanupSkipsCompletedRuns(t *testing.T) {
 		"phase":          3,
 		"started_at":     time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(filepath.Join(runDir, phasedStateFile), data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +318,10 @@ func TestFindStaleRunsWithMinAge_SkipsRecentRuns(t *testing.T) {
 		"phase":          2,
 		"started_at":     now.Add(-10 * time.Minute).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(filepath.Join(runDir, phasedStateFile), data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +349,10 @@ func TestExecuteRPICleanup_StaleAfterOnlyMarksOldRuns(t *testing.T) {
 			"phase":          2,
 			"started_at":     startedAt.Format(time.RFC3339),
 		}
-		data, _ := json.Marshal(state)
+		data, marshalErr := json.Marshal(state)
+		if marshalErr != nil {
+			t.Fatalf("marshal state: %v", marshalErr)
+		}
 		if err := os.WriteFile(filepath.Join(runDir, phasedStateFile), data, 0644); err != nil {
 			t.Fatal(err)
 		}
@@ -576,7 +600,10 @@ func TestExecuteRPICleanup_DryRunWithPruneFlags_PreservesStateAndBranches(t *tes
 		"phase":          2,
 		"started_at":     time.Now().Add(-2 * time.Hour).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(statePath, data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -638,7 +665,10 @@ func TestExecuteRPICleanup_PruneBranchesPreservesActiveCheckedOutWorktree(t *tes
 		"worktree_path":  activeWorktreePath,
 		"started_at":     time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(statePath, data, 0644); err != nil {
 		t.Fatal(err)
 	}

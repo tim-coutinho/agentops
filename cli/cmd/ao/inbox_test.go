@@ -27,10 +27,10 @@ func setupInboxDir(t *testing.T, content string) string {
 
 func TestLoadMessages(t *testing.T) {
 	tests := []struct {
-		name           string
-		content        string
-		wantMessages   int
-		wantCorrupted  int
+		name          string
+		content       string
+		wantMessages  int
+		wantCorrupted int
 	}{
 		{
 			name: "corrupted lines are skipped",
@@ -98,10 +98,10 @@ func TestFilterMessagesInvalidDuration(t *testing.T) {
 	}{
 		{"valid duration 5m", "5m", false, 2},
 		{"valid duration 1h", "1h", false, 2},
-		{"invalid duration 5x", "5x", true, 2},     // Invalid, should warn and show all
-		{"invalid duration abc", "abc", true, 2},    // Invalid, should warn and show all
+		{"invalid duration 5x", "5x", true, 2},           // Invalid, should warn and show all
+		{"invalid duration abc", "abc", true, 2},         // Invalid, should warn and show all
 		{"valid negative duration -5m", "-5m", false, 0}, // Valid Go duration, results in future time filter
-		{"empty duration", "", false, 2},            // No filter
+		{"empty duration", "", false, 2},                 // No filter
 	}
 
 	for _, tt := range tests {
@@ -182,11 +182,11 @@ func TestAppendMessageConcurrent(t *testing.T) {
 	numWriters := 10
 	messagesPerWriter := 5
 
-	for i := 0; i < numWriters; i++ {
+	for i := range numWriters {
 		wg.Add(1)
 		go func(writerID int) {
 			defer wg.Done()
-			for j := 0; j < messagesPerWriter; j++ {
+			for range messagesPerWriter {
 				msg := &Message{
 					ID:        generateMessageID(),
 					From:      "agent",
@@ -247,7 +247,7 @@ func TestMarkMessagesReadConcurrent(t *testing.T) {
 	// Create initial messages
 	messagesPath := filepath.Join(mailDir, "messages.jsonl")
 	var initialMessages []Message
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		msg := Message{
 			ID:        generateMessageID(),
 			From:      "agent",
@@ -267,7 +267,10 @@ func TestMarkMessagesReadConcurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, msg := range initialMessages {
-		data, _ := json.Marshal(msg)
+		data, err := json.Marshal(msg)
+		if err != nil {
+			t.Fatalf("marshal message: %v", err)
+		}
 		_, _ = file.WriteString(string(data) + "\n") //nolint:errcheck // test setup
 	}
 	_ = file.Close() //nolint:errcheck // test setup
@@ -279,7 +282,7 @@ func TestMarkMessagesReadConcurrent(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			msg := &Message{
 				ID:        generateMessageID(),
 				From:      "agent",

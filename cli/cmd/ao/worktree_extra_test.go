@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-
 func TestWorktreeReferenceTime_NoFiles(t *testing.T) {
 	dir := t.TempDir()
 	ref := worktreeReferenceTime(dir)

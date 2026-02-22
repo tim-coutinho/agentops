@@ -10,12 +10,12 @@ type scorable interface {
 	setComposite(float64)
 }
 
-func (l *learning) getFreshness() float64    { return l.FreshnessScore }
-func (l *learning) getUtility() float64      { return l.Utility }
-func (l *learning) setComposite(v float64)   { l.CompositeScore = v }
-func (p *pattern) getFreshness() float64     { return p.FreshnessScore }
-func (p *pattern) getUtility() float64       { return p.Utility }
-func (p *pattern) setComposite(v float64)    { p.CompositeScore = v }
+func (l *learning) getFreshness() float64  { return l.FreshnessScore }
+func (l *learning) getUtility() float64    { return l.Utility }
+func (l *learning) setComposite(v float64) { l.CompositeScore = v }
+func (p *pattern) getFreshness() float64   { return p.FreshnessScore }
+func (p *pattern) getUtility() float64     { return p.Utility }
+func (p *pattern) setComposite(v float64)  { p.CompositeScore = v }
 
 // freshnessScore calculates decay-adjusted score: exp(-ageWeeks * decayRate)
 // Based on knowledge decay rate δ = 0.17/week (Darr et al.)

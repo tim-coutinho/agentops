@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -526,10 +527,7 @@ func isNoRebaseInProgressMessage(out string) bool {
 }
 
 func renderLandingCommitMessage(template string, cycle, attempt int, goal string) string {
-	msg := strings.TrimSpace(template)
-	if msg == "" {
-		msg = "chore(rpi): autonomous cycle {{cycle}}"
-	}
+	msg := cmp.Or(strings.TrimSpace(template), "chore(rpi): autonomous cycle {{cycle}}")
 	msg = strings.ReplaceAll(msg, "{{cycle}}", strconv.Itoa(cycle))
 	msg = strings.ReplaceAll(msg, "{{attempt}}", strconv.Itoa(attempt))
 	msg = strings.ReplaceAll(msg, "{{goal}}", goal)
@@ -596,10 +594,7 @@ func resolveLandingBranch(cwd, explicit string, timeout time.Duration) (string, 
 }
 
 func shouldRunBDSync(cwd, policy, bdCommand string) (bool, error) {
-	command := strings.TrimSpace(bdCommand)
-	if command == "" {
-		command = "bd"
-	}
+	command := cmp.Or(strings.TrimSpace(bdCommand), "bd")
 	switch policy {
 	case loopBDSyncPolicyNever:
 		return false, nil

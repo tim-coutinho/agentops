@@ -8,7 +8,10 @@ import (
 )
 
 func testdataPath(name string) string {
-	_, file, _, _ := runtime.Caller(0)
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("runtime.Caller failed")
+	}
 	return filepath.Join(filepath.Dir(file), "testdata", name)
 }
 
@@ -192,7 +195,7 @@ func TestLoadGoals_UnsupportedVersion(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "v99.yaml")
 	content := "version: 99\ngoals:\n  - id: test\n    description: d\n    check: echo ok\n    weight: 5\n"
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := LoadGoals(path)
@@ -207,7 +210,7 @@ func TestLoadGoals_MalformedYAML(t *testing.T) {
 	// Use something that parses as YAML but fails struct mapping — actually YAML is permissive.
 	// Use truly broken YAML.
 	content := "version: [\nbad yaml\n"
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := LoadGoals(path)
@@ -279,7 +282,7 @@ goals:
     weight: 1
     type: quality
 `
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		b.Fatalf("write: %v", err)
 	}
 

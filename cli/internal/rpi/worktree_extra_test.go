@@ -233,7 +233,7 @@ func TestMergeWorktree_DirtyRepo(t *testing.T) {
 
 	// Make the repo dirty by writing an untracked file
 	dirtyFile := filepath.Join(repo, "uncommitted.txt")
-	if err := os.WriteFile(dirtyFile, []byte("dirty\n"), 0644); err != nil {
+	if err := os.WriteFile(dirtyFile, []byte("dirty\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	runGit(t, repo, "add", "uncommitted.txt")
@@ -473,7 +473,7 @@ func TestMergeWorktree_DirtyRepoRetryVerbose(t *testing.T) {
 
 	// Make the repo dirty
 	dirtyFile := filepath.Join(repo, "dirty.txt")
-	if err := os.WriteFile(dirtyFile, []byte("dirty\n"), 0644); err != nil {
+	if err := os.WriteFile(dirtyFile, []byte("dirty\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	runGit(t, repo, "add", "dirty.txt")
@@ -1112,7 +1112,8 @@ func TestResolveRemovePaths_InvalidWorktreePath(t *testing.T) {
 	// This is hard to trigger since Abs rarely fails, so we test the
 	// "invalid run id" path instead.
 	repo := initGitRepo(t)
-	_, _, _, err := resolveRemovePaths(repo, "/tmp/not-matching-pattern", "")
+	absPath, _, _, err := resolveRemovePaths(repo, "/tmp/not-matching-pattern", "")
+	_ = absPath // only error matters for this test
 	if err == nil {
 		t.Fatal("expected error for non-matching worktree path")
 	}

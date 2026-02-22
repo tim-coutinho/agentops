@@ -2,11 +2,12 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -94,8 +95,8 @@ func collectLearnings(cwd, query string, limit int) ([]learning, error) {
 	applyCompositeScoringTo(items, types.DefaultLambda)
 
 	// Sort by composite score (highest first) - Two-Phase retrieval
-	sort.Slice(learnings, func(i, j int) bool {
-		return learnings[i].CompositeScore > learnings[j].CompositeScore
+	slices.SortFunc(learnings, func(a, b learning) int {
+		return cmp.Compare(b.CompositeScore, a.CompositeScore)
 	})
 
 	// Limit results

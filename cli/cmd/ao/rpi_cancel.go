@@ -3,12 +3,14 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -126,11 +128,11 @@ func discoverCancelTargets(roots []string, runID string, procs []processInfo) []
 		targets = append(targets, discoverRunRegistryTargets(root, runID, procs, seen)...)
 		targets = append(targets, discoverSupervisorLeaseTargets(root, runID, procs, seen)...)
 	}
-	sort.Slice(targets, func(i, j int) bool {
-		if targets[i].Kind == targets[j].Kind {
-			return targets[i].RunID < targets[j].RunID
+	slices.SortFunc(targets, func(a, b cancelTarget) int {
+		if c := cmp.Compare(a.Kind, b.Kind); c != 0 {
+			return c
 		}
-		return targets[i].Kind < targets[j].Kind
+		return cmp.Compare(a.RunID, b.RunID)
 	})
 	return targets
 }

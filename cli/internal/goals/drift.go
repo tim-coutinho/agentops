@@ -1,6 +1,9 @@
 package goals
 
-import "sort"
+import (
+	"cmp"
+	"slices"
+)
 
 // Drift delta classification constants.
 const (
@@ -21,7 +24,7 @@ type DriftResult struct {
 	GoalID     string   `json:"goal_id"`
 	Before     string   `json:"before"`
 	After      string   `json:"after"`
-	Delta      string   `json:"delta"`       // "improved", "regressed", "unchanged"
+	Delta      string   `json:"delta"` // "improved", "regressed", "unchanged"
 	ValueDelta *float64 `json:"value_delta,omitempty"`
 	Weight     int      `json:"weight"`
 }
@@ -40,12 +43,11 @@ func ComputeDrift(baseline, current *Snapshot) []DriftResult {
 		results = append(results, computeGoalDrift(cur, baseMap))
 	}
 
-	sort.SliceStable(results, func(i, j int) bool {
-		ri, rj := deltaRank(results[i].Delta), deltaRank(results[j].Delta)
-		if ri != rj {
-			return ri < rj
+	slices.SortFunc(results, func(a, b DriftResult) int {
+		if c := cmp.Compare(deltaRank(a.Delta), deltaRank(b.Delta)); c != 0 {
+			return c
 		}
-		return results[i].Weight > results[j].Weight
+		return cmp.Compare(b.Weight, a.Weight)
 	})
 
 	return results

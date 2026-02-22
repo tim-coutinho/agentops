@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -94,8 +94,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		// Get recent sessions (up to 5)
 		if len(sessions) > 0 {
 			// Sort by date descending
-			sort.Slice(sessions, func(i, j int) bool {
-				return sessions[i].Date.After(sessions[j].Date)
+			slices.SortFunc(sessions, func(a, b storage.IndexEntry) int {
+				return b.Date.Compare(a.Date)
 			})
 
 			limit := 5
@@ -148,7 +148,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 func outputStatus(status *statusOutput) error {
 	if GetOutput() == "json" {
-		data, _ := json.MarshalIndent(status, "", "  ")
+		data, err := json.MarshalIndent(status, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal status: %w", err)
+		}
 		fmt.Println(string(data))
 		return nil
 	}

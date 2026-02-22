@@ -505,7 +505,7 @@ func TestHeartbeat_MultipleUpdates(t *testing.T) {
 	runID := "hb000004"
 
 	var timestamps []time.Time
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		updateRunHeartbeat(dir, runID)
 		ts := readRunHeartbeat(dir, runID)
 		if ts.IsZero() {

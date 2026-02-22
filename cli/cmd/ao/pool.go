@@ -551,7 +551,7 @@ func truncateID(id string, max int) string {
 // repeat returns a string repeated n times.
 func repeat(s string, n int) string {
 	result := ""
-	for i := 0; i < n; i++ {
+	for range n {
 		result += s
 	}
 	return result

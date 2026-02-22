@@ -12,7 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -181,8 +181,8 @@ func (p *Pool) ListPaginated(opts ListOptions) (*ListResult, error) {
 	entries = filterByTier(entries, opts.Tier)
 
 	// Sort by added time (newest first)
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].AddedAt.After(entries[j].AddedAt)
+	slices.SortFunc(entries, func(a, b PoolEntry) int {
+		return b.AddedAt.Compare(a.AddedAt)
 	})
 
 	total := len(entries)
@@ -573,8 +573,8 @@ func (p *Pool) ListPendingReview() ([]PoolEntry, error) {
 	}
 
 	// Sort by age (oldest first for urgency)
-	sort.Slice(pending, func(i, j int) bool {
-		return pending[i].AddedAt.Before(pending[j].AddedAt)
+	slices.SortFunc(pending, func(a, b PoolEntry) int {
+		return a.AddedAt.Compare(b.AddedAt)
 	})
 
 	return pending, nil
@@ -705,10 +705,7 @@ func knowledgeTypeHeading(kt types.KnowledgeType) string {
 
 // firstLineTitle extracts and truncates the first line of content for use as a title.
 func firstLineTitle(content string) string {
-	firstLine := content
-	if idx := strings.Index(firstLine, "\n"); idx > 0 {
-		firstLine = firstLine[:idx]
-	}
+	firstLine, _, _ := strings.Cut(content, "\n")
 	if len(firstLine) > 80 {
 		firstLine = truncateAtWordBoundary(firstLine, 77) + "..."
 	}

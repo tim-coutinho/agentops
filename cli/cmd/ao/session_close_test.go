@@ -17,11 +17,11 @@ func TestResolveTranscript(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name            string
-		sessionID       string
-		setupFunc       func(t *testing.T) string // returns expected path
-		expectFallback  bool
-		expectError     bool
+		name           string
+		sessionID      string
+		setupFunc      func(t *testing.T) string // returns expected path
+		expectFallback bool
+		expectError    bool
 	}{
 		{
 			name:      "empty session ID triggers fallback",

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -130,11 +131,8 @@ func migrateLegacyKnowledgeFiles(sourceDir, pendingDir string) (poolMigrateLegac
 }
 
 func nextLegacyDestination(pendingDir, baseName string) (string, error) {
-	ext := filepath.Ext(baseName)
+	ext := cmp.Or(filepath.Ext(baseName), ".md")
 	name := strings.TrimSuffix(baseName, ext)
-	if ext == "" {
-		ext = ".md"
-	}
 
 	candidate := filepath.Join(pendingDir, baseName)
 	if _, err := os.Stat(candidate); os.IsNotExist(err) {

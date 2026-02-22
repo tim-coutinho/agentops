@@ -313,7 +313,10 @@ func TestPhasedState_SaveLoad(t *testing.T) {
 	}
 
 	// Verify JSON round-trip
-	data, _ := json.Marshal(original)
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("marshal original: %v", err)
+	}
 	var roundTrip phasedState
 	if err := json.Unmarshal(data, &roundTrip); err != nil {
 		t.Fatalf("round-trip unmarshal: %v", err)
@@ -1257,7 +1260,10 @@ func TestRunPhasedEngine_AutoCleanupStale_DryRunDoesNotMutate(t *testing.T) {
 		"phase":          2,
 		"started_at":     time.Now().Add(-3 * time.Hour).UTC().Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(filepath.Join(runDir, phasedStateFile), data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -1321,7 +1327,7 @@ func containsStr(s, substr string) bool {
 }
 
 func containsSubstring(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
+	for i := range len(s) - len(sub) + 1 {
 		if s[i:i+len(sub)] == sub {
 			return true
 		}

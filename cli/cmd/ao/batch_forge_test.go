@@ -263,7 +263,10 @@ func TestLoadForgedIndex(t *testing.T) {
 		t.Fatalf("create index file: %v", err)
 	}
 	for _, record := range records {
-		data, _ := json.Marshal(record)
+		data, err := json.Marshal(record)
+		if err != nil {
+			t.Fatalf("marshal record: %v", err)
+		}
 		_, _ = f.Write(append(data, '\n'))
 	}
 	f.Close()
@@ -397,7 +400,7 @@ func TestBatchForgeMaxFlag(t *testing.T) {
 	}
 
 	// Verify we got the first 3
-	for i := 0; i < maxLimit; i++ {
+	for i := range maxLimit {
 		if limited[i].path != candidates[i].path {
 			t.Errorf("expected %s at position %d, got %s", candidates[i].path, i, limited[i].path)
 		}

@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -907,8 +907,8 @@ func findLastSession() (string, error) {
 	}
 
 	// Sort by modification time, most recent first
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].modTime.After(candidates[j].modTime)
+	slices.SortFunc(candidates, func(a, b fileWithTime) int {
+		return b.modTime.Compare(a.modTime)
 	})
 
 	return candidates[0].path, nil

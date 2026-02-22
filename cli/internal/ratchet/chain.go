@@ -269,7 +269,10 @@ func (c *Chain) writeMetadata(f *os.File) error {
 		Started: c.Started,
 		EpicID:  c.EpicID,
 	}
-	metaLine, _ := json.Marshal(meta)
+	metaLine, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("marshal chain metadata: %w", err)
+	}
 	if _, err := f.Write(append(metaLine, '\n')); err != nil {
 		return fmt.Errorf("write chain metadata: %w", err)
 	}

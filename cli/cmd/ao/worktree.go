@@ -1,12 +1,14 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -225,7 +227,7 @@ func findStaleRPISiblingWorktrees(repoRoot string, now time.Time, staleAfter tim
 		})
 	}
 
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].Path < candidates[j].Path })
+	slices.SortFunc(candidates, func(a, b worktreeGCCandidate) int { return cmp.Compare(a.Path, b.Path) })
 	sort.Strings(skippedDirty)
 	return candidates, liveWorktreeRuns, skippedDirty, nil
 }
@@ -308,7 +310,7 @@ func findStaleRPITmuxSessions(now time.Time, staleAfter time.Duration, activeRun
 		}
 		stale = append(stale, sess)
 	}
-	sort.Slice(stale, func(i, j int) bool { return stale[i].Name < stale[j].Name })
+	slices.SortFunc(stale, func(a, b tmuxSessionMeta) int { return cmp.Compare(a.Name, b.Name) })
 	return stale, nil
 }
 

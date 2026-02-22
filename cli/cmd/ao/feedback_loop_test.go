@@ -251,7 +251,10 @@ func TestIntegrationFeedbackLoop(t *testing.T) {
 		"content": "This is a test learning",
 		"utility": 0.5,
 	}
-	learningJSON, _ := json.Marshal(learningData)
+	learningJSON, err := json.Marshal(learningData)
+	if err != nil {
+		t.Fatalf("marshal learning data: %v", err)
+	}
 	learningPath := filepath.Join(learningsDir, "L-test-001.jsonl")
 	if err := os.WriteFile(learningPath, learningJSON, 0644); err != nil {
 		t.Fatalf("write learning: %v", err)

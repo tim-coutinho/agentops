@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -42,7 +42,7 @@ func SaveSnapshot(s *Snapshot, dir string) (string, error) {
 		return "", fmt.Errorf("marshaling snapshot: %w", err)
 	}
 
-	if err := os.WriteFile(filename, data, 0o644); err != nil {
+	if err := os.WriteFile(filename, data, 0o600); err != nil {
 		return "", fmt.Errorf("writing snapshot: %w", err)
 	}
 
@@ -83,7 +83,7 @@ func LoadLatestSnapshot(dir string) (*Snapshot, error) {
 		return nil, fmt.Errorf("no snapshots found in %s", dir)
 	}
 
-	sort.Strings(jsonFiles)
+	slices.Sort(jsonFiles)
 	latest := filepath.Join(dir, jsonFiles[len(jsonFiles)-1])
 
 	return LoadSnapshot(latest)

@@ -58,7 +58,10 @@ func TestDiscoverSupervisorLeaseTargets_LeaseWithInvalidPID(t *testing.T) {
 		RunID: "test-run",
 		PID:   0, // invalid
 	}
-	data, _ := json.Marshal(meta)
+	data, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal meta: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(leaseDir, "supervisor.lock"), data, 0644); err != nil {
 		t.Fatal(err)
 	}

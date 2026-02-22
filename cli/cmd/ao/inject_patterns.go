@@ -1,9 +1,10 @@
 package main
 
 import (
+	"cmp"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -66,8 +67,8 @@ func collectPatterns(cwd, query string, limit int) ([]pattern, error) {
 		items[i] = &patterns[i]
 	}
 	applyCompositeScoringTo(items, types.DefaultLambda)
-	sort.Slice(patterns, func(i, j int) bool {
-		return patterns[i].CompositeScore > patterns[j].CompositeScore
+	slices.SortFunc(patterns, func(a, b pattern) int {
+		return cmp.Compare(b.CompositeScore, a.CompositeScore)
 	})
 	if len(patterns) > limit {
 		patterns = patterns[:limit]
@@ -138,4 +139,3 @@ func parsePatternFile(path string) (pattern, error) {
 
 	return p, nil
 }
-

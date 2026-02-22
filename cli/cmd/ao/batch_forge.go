@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -119,14 +119,14 @@ func runForgeBatch(cmd *cobra.Command, args []string) error {
 	extractor := parser.NewExtractor()
 
 	var (
-		totalProcessed  int
-		totalFailed     int
-		totalDecisions  int
-		totalKnowledge  int
+		totalProcessed   int
+		totalFailed      int
+		totalDecisions   int
+		totalKnowledge   int
 		totalDupsRemoved int
-		allKnowledge    []string
-		allDecisions    []string
-		processedPaths  []string
+		allKnowledge     []string
+		allDecisions     []string
+		processedPaths   []string
 	)
 
 	for i, t := range unforgedTranscripts {
@@ -219,7 +219,10 @@ func runForgeBatch(cmd *cobra.Command, args []string) error {
 			Extracted: totalExtracted,
 			Paths:     processedPaths,
 		}
-		data, _ := json.MarshalIndent(result, "", "  ")
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal batch forge result: %w", err)
+		}
 		fmt.Println(string(data))
 	} else {
 		fmt.Printf("\n--- Batch Forge Summary ---\n")
@@ -307,8 +310,8 @@ func findPendingTranscripts(specificDir string) ([]transcriptCandidate, error) {
 	}
 
 	// Sort by modification time, oldest first (process in chronological order)
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].modTime.Before(candidates[j].modTime)
+	slices.SortFunc(candidates, func(a, b transcriptCandidate) int {
+		return a.modTime.Compare(b.modTime)
 	})
 
 	return candidates, nil

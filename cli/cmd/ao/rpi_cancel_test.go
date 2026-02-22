@@ -76,7 +76,10 @@ func TestDiscoverSupervisorLeaseTargets(t *testing.T) {
 		RunID: "lease-run",
 		PID:   100,
 	}
-	data, _ := json.Marshal(meta)
+	data, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal meta: %v", err)
+	}
 	if err := os.WriteFile(lockPath, data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +111,10 @@ func TestDiscoverSupervisorLeaseTargets_SkipsStaleLease(t *testing.T) {
 		PID:       100,
 		ExpiresAt: time.Now().Add(-5 * time.Minute).UTC().Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(meta)
+	data, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal meta: %v", err)
+	}
 	if err := os.WriteFile(lockPath, data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +170,10 @@ func TestMarkRunInterruptedByCancel(t *testing.T) {
 		Goal:          "test",
 		Phase:         1,
 	}
-	data, _ := json.MarshalIndent(state, "", "  ")
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal state: %v", err)
+	}
 	data = append(data, '\n')
 	if err := os.WriteFile(runStatePath, data, 0644); err != nil {
 		t.Fatal(err)

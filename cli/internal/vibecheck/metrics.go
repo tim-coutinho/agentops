@@ -27,6 +27,7 @@ func ComputeMetrics(events []TimelineEvent) map[string]Metric {
 //   - C: 40-59
 //   - D: 20-39
 //   - F: 0-19
+//
 // sumMetricCredits sums pass/partial credits across all metrics, returning the
 // total and the number of metrics counted.
 func sumMetricCredits(metrics map[string]Metric) (total float64, count int) {

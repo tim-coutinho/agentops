@@ -1,9 +1,10 @@
 package types
 
 import (
+	"cmp"
 	"fmt"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -408,16 +409,14 @@ func matchRules(rules []MemRLPolicyRule, mode MemRLMode, failureClass MemRLFailu
 
 // selectBestRule sorts candidates by specificity > priority > rule ID and returns the best.
 func selectBestRule(candidates []MemRLPolicyRule) MemRLPolicyRule {
-	sort.SliceStable(candidates, func(i, j int) bool {
-		si := ruleSpecificity(candidates[i])
-		sj := ruleSpecificity(candidates[j])
-		if si != sj {
-			return si > sj
+	slices.SortFunc(candidates, func(a, b MemRLPolicyRule) int {
+		if c := cmp.Compare(ruleSpecificity(b), ruleSpecificity(a)); c != 0 {
+			return c
 		}
-		if candidates[i].Priority != candidates[j].Priority {
-			return candidates[i].Priority > candidates[j].Priority
+		if c := cmp.Compare(b.Priority, a.Priority); c != 0 {
+			return c
 		}
-		return candidates[i].RuleID < candidates[j].RuleID
+		return cmp.Compare(a.RuleID, b.RuleID)
 	})
 	return candidates[0]
 }

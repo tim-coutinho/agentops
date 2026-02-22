@@ -1,7 +1,7 @@
 package vibecheck
 
 import (
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -62,8 +62,8 @@ func countSpirals(events []TimelineEvent) int {
 	// Sort oldest first for sequential analysis.
 	sorted := make([]TimelineEvent, len(events))
 	copy(sorted, events)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Timestamp.Before(sorted[j].Timestamp)
+	slices.SortFunc(sorted, func(a, b TimelineEvent) int {
+		return a.Timestamp.Compare(b.Timestamp)
 	})
 
 	var st spiralTracker

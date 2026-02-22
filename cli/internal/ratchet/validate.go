@@ -265,8 +265,8 @@ func (v *Validator) validatePreMortem(path string, result *ValidationResult) {
 // validatePlan checks plan/epic artifact quality.
 func (v *Validator) validatePlan(path string, result *ValidationResult) {
 	// Plans might be beads issues, not files
-	if strings.HasPrefix(path, "epic:") {
-		v.validateEpicIssue(strings.TrimPrefix(path, "epic:"), result)
+	if epicID, ok := strings.CutPrefix(path, "epic:"); ok {
+		v.validateEpicIssue(epicID, result)
 		return
 	}
 

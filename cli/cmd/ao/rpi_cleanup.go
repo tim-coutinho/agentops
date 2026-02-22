@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -326,20 +327,14 @@ func findStaleRunsWithMinAge(root string, minAge time.Duration, now time.Time) [
 				continue
 			}
 			if minAge > 0 {
-				candidateAt := state.TerminatedAt
-				if candidateAt == "" {
-					candidateAt = state.StartedAt
-				}
+				candidateAt := cmp.Or(state.TerminatedAt, state.StartedAt)
 				parsedAt, parseErr := time.Parse(time.RFC3339, candidateAt)
 				if parseErr != nil || now.Sub(parsedAt) < minAge {
 					continue
 				}
 			}
 
-			reason := state.TerminalReason
-			if reason == "" {
-				reason = "terminal status: " + state.TerminalStatus
-			}
+			reason := cmp.Or(state.TerminalReason, "terminal status: "+state.TerminalStatus)
 			stale = append(stale, staleRunEntry{
 				runID:        runID,
 				root:         root,

@@ -13,7 +13,7 @@ import (
 // with no duplicates across 1000 calls.
 func TestGenerateRunID(t *testing.T) {
 	seen := make(map[string]bool)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		id := generateRunID()
 		if len(id) != 12 {
 			t.Fatalf("expected 12-char ID, got %d chars: %q", len(id), id)

@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -91,8 +91,8 @@ func parseGitLog(raw string, delim string) ([]TimelineEvent, error) {
 
 	g.flush()
 
-	sort.Slice(g.events, func(i, j int) bool {
-		return g.events[i].Timestamp.After(g.events[j].Timestamp)
+	slices.SortFunc(g.events, func(a, b TimelineEvent) int {
+		return b.Timestamp.Compare(a.Timestamp)
 	})
 
 	return g.events, nil

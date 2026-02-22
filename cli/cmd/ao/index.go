@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -39,7 +41,7 @@ type indexEntry struct {
 type indexResult struct {
 	Dir     string       `json:"dir"`
 	Entries []indexEntry `json:"entries"`
-	Written bool        `json:"written"`
+	Written bool         `json:"written"`
 	Error   string       `json:"error,omitempty"`
 }
 
@@ -106,8 +108,8 @@ func runIndex(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		sort.Slice(entries, func(i, j int) bool {
-			return entries[i].Date > entries[j].Date
+		slices.SortFunc(entries, func(a, b indexEntry) int {
+			return cmp.Compare(b.Date, a.Date)
 		})
 
 		if checkMode {
@@ -138,7 +140,9 @@ func runIndex(cmd *cobra.Command, args []string) error {
 	if jsonMode {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		_ = enc.Encode(results)
+		if err := enc.Encode(results); err != nil {
+			return fmt.Errorf("encode index results: %w", err)
+		}
 	}
 
 	if checkMode && stale {

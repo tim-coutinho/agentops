@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -311,15 +312,9 @@ func parseLegacyFrontmatterLearning(md string) (learningBlock, bool) {
 		return learningBlock{}, false
 	}
 
-	confidence := strings.TrimSpace(frontmatter["confidence"])
-	if confidence == "" {
-		confidence = "medium"
-	}
+	confidence := cmp.Or(strings.TrimSpace(frontmatter["confidence"]), "medium")
 
-	id := strings.TrimSpace(frontmatter["id"])
-	if id == "" {
-		id = "legacy"
-	}
+	id := cmp.Or(strings.TrimSpace(frontmatter["id"]), "legacy")
 
 	return learningBlock{
 		Title:      title,
@@ -390,10 +385,7 @@ func buildCandidateFromLearningBlock(b learningBlock, srcPath string, fileDate t
 
 	// Stable ID: prefer (file base + learning ID). Otherwise fall back to a content hash.
 	base := strings.TrimSuffix(filepath.Base(srcPath), filepath.Ext(srcPath))
-	learningID := strings.ToLower(strings.TrimSpace(b.ID))
-	if learningID == "" {
-		learningID = "noid"
-	}
+	learningID := cmp.Or(strings.ToLower(strings.TrimSpace(b.ID)), "noid")
 
 	id := slugify(fmt.Sprintf("pend-%s-%s-%s", base, sessionHint, learningID))
 	if len(id) > 120 {
@@ -581,9 +573,5 @@ func slugify(s string) string {
 			}
 		}
 	}
-	out := strings.Trim(b.String(), "-")
-	if out == "" {
-		out = "cand"
-	}
-	return out
+	return cmp.Or(strings.Trim(b.String(), "-"), "cand")
 }

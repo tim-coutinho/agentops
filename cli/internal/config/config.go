@@ -433,17 +433,17 @@ type ResolvedConfig struct {
 }
 
 type resolved struct {
-	Value  any `json:"value"`
-	Source Source      `json:"source"`
+	Value  any    `json:"value"`
+	Source Source `json:"source"`
 }
 
 // configFields holds extracted string fields from a Config for resolution.
 type configFields struct {
-	output, baseDir                          string
-	verbose                                  bool
-	rpiWorktreeMode, rpiRuntimeMode          string
-	rpiRuntimeCommand, rpiAOCommand          string
-	rpiBDCommand, rpiTmuxCommand             string
+	output, baseDir                 string
+	verbose                         bool
+	rpiWorktreeMode, rpiRuntimeMode string
+	rpiRuntimeCommand, rpiAOCommand string
+	rpiBDCommand, rpiTmuxCommand    string
 }
 
 // extractFields pulls resolution-relevant fields from a Config.
@@ -467,12 +467,12 @@ func extractFields(cfg *Config) configFields {
 
 // envFields holds environment variable values for resolution.
 type envFields struct {
-	output, baseDir                          string
-	verbose                                  bool
-	verboseSet                               bool
-	rpiWorktreeMode, rpiRuntimeMode          string
-	rpiRuntimeCommand, rpiAOCommand          string
-	rpiBDCommand, rpiTmuxCommand             string
+	output, baseDir                 string
+	verbose                         bool
+	verboseSet                      bool
+	rpiWorktreeMode, rpiRuntimeMode string
+	rpiRuntimeCommand, rpiAOCommand string
+	rpiBDCommand, rpiTmuxCommand    string
 }
 
 // loadEnvFields reads all resolution-relevant environment variables.

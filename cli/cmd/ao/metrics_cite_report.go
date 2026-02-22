@@ -1,12 +1,13 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -165,8 +166,8 @@ func buildCiteReport(baseDir string, filtered []types.CitationEvent, all []types
 	for p, c := range artifactCounts {
 		sorted = append(sorted, kv{p, c})
 	}
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].count > sorted[j].count
+	slices.SortFunc(sorted, func(a, b kv) int {
+		return cmp.Compare(b.count, a.count)
 	})
 	limit := 10
 	if len(sorted) < limit {

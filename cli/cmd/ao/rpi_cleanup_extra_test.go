@@ -43,13 +43,16 @@ func TestExecuteRPICleanup_DryRunWithStaleRun(t *testing.T) {
 		"worktree_path":  "/nonexistent/worktree",
 		"started_at":     time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal state: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(runDir, phasedStateFile), data, 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Dry run should not modify state
-	err := executeRPICleanup(tmpDir, "", true, false, false, true, 0)
+	err = executeRPICleanup(tmpDir, "", true, false, false, true, 0)
 	if err != nil {
 		t.Errorf("dry run cleanup: %v", err)
 	}
@@ -81,7 +84,10 @@ func TestExecuteRPICleanup_SpecificRunID(t *testing.T) {
 			"worktree_path":  "/nonexistent/path",
 			"started_at":     time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
 		}
-		data, _ := json.Marshal(state)
+		data, marshalErr := json.Marshal(state)
+		if marshalErr != nil {
+			t.Fatalf("marshal state: %v", marshalErr)
+		}
 		if err := os.WriteFile(filepath.Join(runDir, phasedStateFile), data, 0644); err != nil {
 			t.Fatal(err)
 		}
@@ -193,7 +199,10 @@ func TestMarkRunStale_WithFlatStateSync(t *testing.T) {
 		"goal":           "test",
 		"phase":          2,
 	}
-	data, _ := json.Marshal(state)
+	data, err := json.Marshal(state)
+	if err != nil {
+		t.Fatalf("marshal state: %v", err)
+	}
 	if err := os.WriteFile(statePath, data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +214,10 @@ func TestMarkRunStale_WithFlatStateSync(t *testing.T) {
 		"run_id": runID,
 		"phase":  2,
 	}
-	flatData, _ := json.Marshal(flatState)
+	flatData, err := json.Marshal(flatState)
+	if err != nil {
+		t.Fatalf("marshal flat state: %v", err)
+	}
 	if err := os.WriteFile(flatPath, flatData, 0644); err != nil {
 		t.Fatal(err)
 	}

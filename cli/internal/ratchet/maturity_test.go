@@ -226,10 +226,10 @@ func TestCheckMaturityTransition_EstablishedToCandidateDemotion(t *testing.T) {
 func TestCheckMaturityTransition_AntiPatternPriority(t *testing.T) {
 	// Anti-pattern transition takes priority over all other transitions.
 	tests := []struct {
-		name         string
-		data         map[string]any
-		wantTransit  bool
-		wantNew      types.Maturity
+		name        string
+		data        map[string]any
+		wantTransit bool
+		wantNew     types.Maturity
 	}{
 		{
 			name: "provisional becomes anti-pattern",

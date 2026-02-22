@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,10 +60,7 @@ func runRPIVerify(cmd *cobra.Command, args []string) error {
 		if result.Pass {
 			fmt.Printf("PASS records=%d\n", result.RecordCount)
 		} else {
-			msg := result.Message
-			if msg == "" {
-				msg = "unknown"
-			}
+			msg := cmp.Or(result.Message, "unknown")
 			fmt.Printf("FAIL records=%d first_broken_index=%d message=%s\n", result.RecordCount, result.FirstBrokenIndex, msg)
 		}
 	}

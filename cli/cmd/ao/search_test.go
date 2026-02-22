@@ -226,7 +226,7 @@ func splitNonEmpty(s string) []string {
 func splitLines(s string) []string {
 	var lines []string
 	start := 0
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if s[i] == '\n' {
 			lines = append(lines, s[start:i])
 			start = i + 1
@@ -391,12 +391,12 @@ func TestSearchFilesNoData(t *testing.T) {
 
 func TestParseGrepResults(t *testing.T) {
 	tests := []struct {
-		name        string
-		output      string
-		pattern     string
-		query       string
-		useRipgrep  bool
-		wantCount   int
+		name       string
+		output     string
+		pattern    string
+		query      string
+		useRipgrep bool
+		wantCount  int
 	}{
 		{
 			name:       "ripgrep output (no filtering needed)",

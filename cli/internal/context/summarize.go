@@ -1,11 +1,12 @@
 package context
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -15,9 +16,9 @@ type SummaryPriority int
 
 const (
 	PriorityCritical SummaryPriority = iota // Always preserve
-	PriorityHigh                             // Preserve if space allows
-	PriorityMedium                           // Summarize
-	PriorityLow                              // Can drop
+	PriorityHigh                            // Preserve if space allows
+	PriorityMedium                          // Summarize
+	PriorityLow                             // Can drop
 )
 
 // Context item type constants.
@@ -160,8 +161,8 @@ func (s *Summarizer) sortByPriority(items []ContextItem) []ContextItem {
 	copy(sorted, items)
 
 	// Use standard library sort for O(n log n) performance
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Priority < sorted[j].Priority
+	slices.SortFunc(sorted, func(a, b ContextItem) int {
+		return cmp.Compare(a.Priority, b.Priority)
 	})
 
 	return sorted

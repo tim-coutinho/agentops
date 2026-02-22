@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -17,10 +18,7 @@ func preflightRuntimeAvailability(runtimeCommand string) error {
 	if GetDryRun() {
 		return nil
 	}
-	command := strings.TrimSpace(runtimeCommand)
-	if command == "" {
-		command = "claude"
-	}
+	command := cmp.Or(strings.TrimSpace(runtimeCommand), "claude")
 	if _, err := exec.LookPath(command); err != nil {
 		return fmt.Errorf("runtime command %q not found on PATH (required for spawning phase sessions)", command)
 	}

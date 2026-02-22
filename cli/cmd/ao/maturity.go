@@ -626,7 +626,10 @@ func runAntiPatterns(cmd *cobra.Command, args []string) error {
 	}
 
 	if GetOutput() == "json" {
-		data, _ := json.MarshalIndent(antiPatterns, "", "  ")
+		data, err := json.MarshalIndent(antiPatterns, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal anti-patterns: %w", err)
+		}
 		fmt.Println(string(data))
 		return nil
 	}

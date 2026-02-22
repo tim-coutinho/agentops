@@ -57,7 +57,7 @@ func TestAppendRPILedgerRecord(t *testing.T) {
 
 func TestVerifyRPILedgerChain_Success(t *testing.T) {
 	root := t.TempDir()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_, err := AppendRPILedgerRecord(root, RPILedgerAppendInput{
 			RunID:   "run-ok",
 			Phase:   "phase",
@@ -76,7 +76,7 @@ func TestVerifyRPILedgerChain_Success(t *testing.T) {
 
 func TestVerifyRPILedgerChain_TamperFailure(t *testing.T) {
 	root := t.TempDir()
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		_, err := AppendRPILedgerRecord(root, RPILedgerAppendInput{
 			RunID:   "run-tamper",
 			Phase:   "phase",

@@ -45,9 +45,9 @@ func TestAllStepsReturnsNewSlice(t *testing.T) {
 
 func TestParseStep(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		input string
-		want Step
+		want  Step
 	}{
 		// Canonical names
 		{"canonical research", "research", StepResearch},

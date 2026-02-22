@@ -441,7 +441,10 @@ func TestLoadCitations_MalformedLines(t *testing.T) {
 		SessionID:    "sess-001",
 		CitedAt:      time.Now(),
 	}
-	data, _ := json.Marshal(validEvent)
+	data, err := json.Marshal(validEvent)
+	if err != nil {
+		t.Fatalf("marshal citation event: %v", err)
+	}
 	content := string(data) + "\n{invalid json}\n"
 	if err := os.WriteFile(filepath.Join(citationsDir, "citations.jsonl"), []byte(content), 0600); err != nil {
 		t.Fatal(err)

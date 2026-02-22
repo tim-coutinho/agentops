@@ -138,10 +138,10 @@ func makeProgressBar(value float64, width int) string {
 	empty := width - filled
 
 	var sb strings.Builder
-	for i := 0; i < filled; i++ {
+	for range filled {
 		sb.WriteString("█")
 	}
-	for i := 0; i < empty; i++ {
+	for range empty {
 		sb.WriteString("░")
 	}
 	return sb.String()

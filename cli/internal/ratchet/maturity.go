@@ -265,7 +265,7 @@ func updateJSONLFirstLine(path string, updates map[string]any) error {
 	}
 
 	lines[0] = string(newJSON)
-	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
 		return fmt.Errorf("write updated learning: %w", err)
 	}
 	return nil

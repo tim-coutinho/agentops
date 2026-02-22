@@ -188,7 +188,7 @@ func floatEqual(a, b, epsilon float64) bool {
 
 // containsLearningsPath checks if path contains /learnings/
 func containsLearningsPath(path string) bool {
-	for i := 0; i <= len(path)-11; i++ {
+	for i := range len(path) - 11 + 1 {
 		if path[i:i+11] == "/learnings/" {
 			return true
 		}

@@ -105,7 +105,7 @@ func TestLoadRPILedgerRecords_Empty(t *testing.T) {
 func TestLoadRPILedgerRecords_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_, err := AppendRPILedgerRecord(dir, RPILedgerAppendInput{
 			RunID: "run-001", Phase: "research", Action: "event",
 		})
@@ -126,7 +126,7 @@ func TestLoadRPILedgerRecords_RoundTrip(t *testing.T) {
 func TestVerifyRPILedgerChain_ValidChain(t *testing.T) {
 	dir := t.TempDir()
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_, err := AppendRPILedgerRecord(dir, RPILedgerAppendInput{
 			RunID: "run-001", Phase: "research", Action: "event",
 		})
@@ -401,7 +401,7 @@ func TestVerifyRPILedger_Internal(t *testing.T) {
 	}
 
 	// Add valid records
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		_, err := AppendRPILedgerRecord(dir, RPILedgerAppendInput{
 			RunID: "run-001", Phase: "plan", Action: "event",
 		})

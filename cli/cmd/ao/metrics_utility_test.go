@@ -36,7 +36,10 @@ func TestComputeUtilityMetricsIncludesMarkdownAndPatterns(t *testing.T) {
 	}
 
 	jsonl := map[string]any{"id": "L1", "utility": 0.8}
-	line, _ := json.Marshal(jsonl)
+	line, err := json.Marshal(jsonl)
+	if err != nil {
+		t.Fatalf("marshal jsonl: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(learningsDir, "l1.jsonl"), line, 0644); err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -26,13 +26,13 @@ func collectRecentSessions(cwd, query string, limit int) ([]session, error) {
 	files = append(files, mdFiles...)
 
 	// Sort by modification time (newest first)
-	sort.Slice(files, func(i, j int) bool {
-		infoI, _ := os.Stat(files[i])
-		infoJ, _ := os.Stat(files[j])
-		if infoI == nil || infoJ == nil {
-			return false
+	slices.SortFunc(files, func(a, b string) int {
+		infoA, _ := os.Stat(a)
+		infoB, _ := os.Stat(b)
+		if infoA == nil || infoB == nil {
+			return 0
 		}
-		return infoI.ModTime().After(infoJ.ModTime())
+		return infoB.ModTime().Compare(infoA.ModTime())
 	})
 
 	sessions := make([]session, 0, len(files))

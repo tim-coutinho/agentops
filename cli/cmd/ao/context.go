@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -335,17 +337,9 @@ func collectTrackedSessionStatuses(cwd string, watchdog time.Duration) ([]contex
 		mergePersistedAssignment(cwd, &status)
 		statuses = append(statuses, status)
 	}
-	sort.Slice(statuses, func(i, j int) bool {
-		ri := readinessRank(statuses[i].Readiness)
-		rj := readinessRank(statuses[j].Readiness)
-		if ri != rj {
-			return ri < rj
-		}
-		if statuses[i].Status == statuses[j].Status {
-			if statuses[i].IsStale != statuses[j].IsStale {
-				return statuses[i].IsStale
-			}
-			return statuses[i].SessionID < statuses[j].SessionID
+	slices.SortFunc(statuses, func(a, b contextSessionStatus) int {
+		if c := cmp.Compare(readinessRank(a.Readiness), readinessRank(b.Readiness)); c != 0 {
+			return c
 		}
 		rank := func(s string) int {
 			switch s {
@@ -357,7 +351,16 @@ func collectTrackedSessionStatuses(cwd string, watchdog time.Duration) ([]contex
 				return 2
 			}
 		}
-		return rank(statuses[i].Status) < rank(statuses[j].Status)
+		if c := cmp.Compare(rank(a.Status), rank(b.Status)); c != 0 {
+			return c
+		}
+		if a.IsStale != b.IsStale {
+			if a.IsStale {
+				return -1
+			}
+			return 1
+		}
+		return cmp.Compare(a.SessionID, b.SessionID)
 	})
 	return statuses, nil
 }
@@ -444,16 +447,11 @@ func ensureCriticalHandoff(cwd string, status contextSessionStatus, usage transc
 	markerPath := filepath.Join(pendingDir, base+".json")
 
 	changedFiles := gitChangedFiles(cwd, 20)
-	activeBead := strings.TrimSpace(runCommand(cwd, 1200*time.Millisecond, "bd", "current"))
-	if activeBead == "" {
-		activeBead = "none"
-	}
-	if status.LastTask == "" {
-		status.LastTask = "none recorded"
-	}
+	activeBead := cmp.Or(strings.TrimSpace(runCommand(cwd, 1200*time.Millisecond, "bd", "current")), "none")
+	status.LastTask = cmp.Or(status.LastTask, "none recorded")
 
 	md := renderHandoffMarkdown(now, status, usage, activeBead, changedFiles)
-	if err := os.WriteFile(handoffPath, []byte(md), 0644); err != nil {
+	if err := os.WriteFile(handoffPath, []byte(md), 0o600); err != nil {
 		return "", "", fmt.Errorf("write handoff markdown: %w", err)
 	}
 
@@ -472,7 +470,7 @@ func ensureCriticalHandoff(cwd string, status contextSessionStatus, usage transc
 	if err != nil {
 		return "", "", fmt.Errorf("marshal handoff marker: %w", err)
 	}
-	if err := os.WriteFile(markerPath, data, 0644); err != nil {
+	if err := os.WriteFile(markerPath, data, 0o600); err != nil {
 		return "", "", fmt.Errorf("write handoff marker: %w", err)
 	}
 
@@ -480,10 +478,7 @@ func ensureCriticalHandoff(cwd string, status contextSessionStatus, usage transc
 }
 
 func renderHandoffMarkdown(now time.Time, status contextSessionStatus, usage transcriptUsage, activeBead string, changedFiles []string) string {
-	hull := strings.TrimSpace(status.Readiness)
-	if hull == "" {
-		hull = readinessForUsage(status.UsagePercent)
-	}
+	hull := cmp.Or(strings.TrimSpace(status.Readiness), readinessForUsage(status.UsagePercent))
 	remaining := status.RemainingPercent
 	if remaining <= 0 && status.UsagePercent > 0 {
 		remaining = remainingPercent(status.UsagePercent)
@@ -886,7 +881,7 @@ func persistAssignment(cwd string, status contextSessionStatus) error {
 		return err
 	}
 	path := filepath.Join(contextDir, "assignment-"+sanitizeForFilename(status.SessionID)+".json")
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0o600)
 }
 
 func mergePersistedAssignment(cwd string, status *contextSessionStatus) {
@@ -1025,7 +1020,7 @@ func findTeamMemberByName(agentName string) (string, teamConfigMember, bool) {
 	if err != nil {
 		return "", teamConfigMember{}, false
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	slices.SortFunc(entries, func(a, b os.DirEntry) int { return cmp.Compare(a.Name(), b.Name()) })
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -1164,11 +1159,7 @@ func tmuxSessionFromTarget(target string) string {
 }
 
 func displayOrDash(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "-"
-	}
-	return value
+	return cmp.Or(strings.TrimSpace(value), "-")
 }
 
 func gitChangedFiles(cwd string, limit int) []string {
@@ -1210,12 +1201,7 @@ func contextWithTimeout(timeout time.Duration) (context.Context, context.CancelF
 }
 
 func sanitizeForFilename(input string) string {
-	out := filenameSanitizer.ReplaceAllString(strings.TrimSpace(input), "-")
-	out = strings.Trim(out, "-")
-	if out == "" {
-		return "session"
-	}
-	return out
+	return cmp.Or(strings.Trim(filenameSanitizer.ReplaceAllString(strings.TrimSpace(input), "-"), "-"), "session")
 }
 
 func toRepoRelative(cwd, fullPath string) string {

@@ -651,11 +651,11 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 
 	if GetOutput() == "json" {
 		result := map[string]any{
-			"total":          len(tasks),
-			"status_counts":  statusCounts,
+			"total":           len(tasks),
+			"status_counts":   statusCounts,
 			"maturity_counts": maturityCounts,
-			"with_learnings": withLearnings,
-			"tasks":          tasks,
+			"with_learnings":  withLearnings,
+			"tasks":           tasks,
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")

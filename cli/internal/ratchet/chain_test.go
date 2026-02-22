@@ -30,12 +30,18 @@ func writeJSONLChain(t *testing.T, dir string, id string, epicID string, entries
 		Started time.Time `json:"started"`
 		EpicID  string    `json:"epic_id,omitempty"`
 	}{ID: id, Started: time.Now(), EpicID: epicID}
-	line, _ := json.Marshal(meta)
+	line, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal meta: %v", err)
+	}
 	_, _ = f.Write(append(line, '\n'))
 
 	for _, e := range entries {
-		line, _ := json.Marshal(e)
-		_, _ = f.Write(append(line, '\n'))
+		eline, eerr := json.Marshal(e)
+		if eerr != nil {
+			t.Fatalf("marshal entry: %v", eerr)
+		}
+		_, _ = f.Write(append(eline, '\n'))
 	}
 	return path
 }
@@ -160,7 +166,10 @@ func TestLoadChainEmptyJSONL(t *testing.T) {
 		ID      string    `json:"id"`
 		Started time.Time `json:"started"`
 	}{ID: "empty-chain", Started: time.Now()}
-	line, _ := json.Marshal(meta)
+	line, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal meta: %v", err)
+	}
 	_, _ = f.Write(append(line, '\n'))
 	f.Close()
 
@@ -323,10 +332,10 @@ func TestGetLatest(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		step     Step
-		wantNil  bool
-		wantOut  string
+		name    string
+		step    Step
+		wantNil bool
+		wantOut string
 	}{
 		{
 			name:    "returns latest of multiple entries",
@@ -1062,7 +1071,10 @@ func benchWriteChainFile(b *testing.B, dir string, numEntries int) {
 		ID      string    `json:"id"`
 		Started time.Time `json:"started"`
 	}{ID: "bench", Started: time.Now()}
-	metaJSON, _ := json.Marshal(meta)
+	metaJSON, err := json.Marshal(meta)
+	if err != nil {
+		b.Fatalf("marshal meta: %v", err)
+	}
 	var lines []string
 	lines = append(lines, string(metaJSON))
 
@@ -1073,7 +1085,10 @@ func benchWriteChainFile(b *testing.B, dir string, numEntries int) {
 			Output:    "/some/output/path.md",
 			Locked:    true,
 		}
-		entryJSON, _ := json.Marshal(entry)
+		entryJSON, entryErr := json.Marshal(entry)
+		if entryErr != nil {
+			b.Fatalf("marshal entry: %v", entryErr)
+		}
 		lines = append(lines, string(entryJSON))
 	}
 

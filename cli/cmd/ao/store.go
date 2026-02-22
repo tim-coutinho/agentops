@@ -2,11 +2,12 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -71,9 +72,9 @@ type IndexEntry struct {
 
 // SearchResult represents a search match.
 type SearchResult struct {
-	Entry    IndexEntry `json:"entry"`
-	Score    float64    `json:"score"`
-	Snippet  string     `json:"snippet,omitempty"`
+	Entry   IndexEntry `json:"entry"`
+	Score   float64    `json:"score"`
+	Snippet string     `json:"snippet,omitempty"`
 }
 
 var storeCmd = &cobra.Command{
@@ -99,7 +100,7 @@ func init() {
 	rootCmd.AddCommand(storeCmd)
 
 	// index subcommand
-		indexCmd := &cobra.Command{
+	indexCmd := &cobra.Command{
 		Use:   "index <files...>",
 		Short: "Add files to search index",
 		Long: `Add artifacts to the search index.
@@ -115,10 +116,10 @@ Examples:
   ao store index .agents/patterns/error-handling.md
   ao store index --rebuild .agents/`,
 		Args: cobra.MinimumNArgs(1),
-			RunE: runStoreIndex,
-		}
-		indexCmd.Flags().BoolVar(&storeCategorize, "categorize", false, "Extract and store category/tags for retrieval")
-		storeCmd.AddCommand(indexCmd)
+		RunE: runStoreIndex,
+	}
+	indexCmd.Flags().BoolVar(&storeCategorize, "categorize", false, "Extract and store category/tags for retrieval")
+	storeCmd.AddCommand(indexCmd)
 
 	// search subcommand
 	searchCmd := &cobra.Command{
@@ -139,7 +140,7 @@ Examples:
 	storeCmd.AddCommand(searchCmd)
 
 	// rebuild subcommand
-		rebuildCmd := &cobra.Command{
+	rebuildCmd := &cobra.Command{
 		Use:   "rebuild",
 		Short: "Rebuild search index",
 		Long: `Rebuild the search index from scratch.
@@ -153,10 +154,10 @@ Scans all .agents/ directories and re-indexes:
 Examples:
   ao store rebuild
   ao store rebuild --verbose`,
-			RunE: runStoreRebuild,
-		}
-		rebuildCmd.Flags().BoolVar(&storeCategorize, "categorize", false, "Extract and store category/tags for retrieval")
-		storeCmd.AddCommand(rebuildCmd)
+		RunE: runStoreRebuild,
+	}
+	rebuildCmd.Flags().BoolVar(&storeCategorize, "categorize", false, "Extract and store category/tags for retrieval")
+	storeCmd.AddCommand(rebuildCmd)
 
 	// stats subcommand
 	statsCmd := &cobra.Command{
@@ -486,11 +487,11 @@ func searchIndex(baseDir, query string, limit int) ([]SearchResult, error) {
 	}
 
 	// Sort by score (descending) then by utility (descending)
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].Score != results[j].Score {
-			return results[i].Score > results[j].Score
+	slices.SortFunc(results, func(a, b SearchResult) int {
+		if c := cmp.Compare(b.Score, a.Score); c != 0 {
+			return c
 		}
-		return results[i].Entry.Utility > results[j].Entry.Utility
+		return cmp.Compare(b.Entry.Utility, a.Entry.Utility)
 	})
 
 	// Apply limit

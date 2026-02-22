@@ -49,7 +49,10 @@ func TestReadUnconsumedItems_ConsumedOnly(t *testing.T) {
 		},
 		Consumed: true,
 	}
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal entry: %v", err)
+	}
 	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +79,10 @@ func TestReadUnconsumedItems_UnconsumedWithItems(t *testing.T) {
 		},
 		Consumed: false,
 	}
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal entry: %v", err)
+	}
 	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +109,10 @@ func TestReadUnconsumedItems_EmptyItemsArray(t *testing.T) {
 		Items:      []nextWorkItem{},
 		Consumed:   false,
 	}
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal entry: %v", err)
+	}
 	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -134,8 +143,14 @@ func TestReadUnconsumedItems_MultipleEntries(t *testing.T) {
 		Consumed:   false,
 	}
 
-	d1, _ := json.Marshal(consumed)
-	d2, _ := json.Marshal(unconsumed)
+	d1, err := json.Marshal(consumed)
+	if err != nil {
+		t.Fatalf("marshal consumed: %v", err)
+	}
+	d2, err := json.Marshal(unconsumed)
+	if err != nil {
+		t.Fatalf("marshal unconsumed: %v", err)
+	}
 	content := string(d1) + "\n" + string(d2) + "\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -239,7 +254,10 @@ func TestReadUnconsumedItems_MalformedLines(t *testing.T) {
 		Items:      []nextWorkItem{{Title: "Valid", Severity: "high"}},
 		Consumed:   false,
 	}
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal entry: %v", err)
+	}
 	content := "not json at all\n" + string(data) + "\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -270,7 +288,10 @@ func TestReadUnconsumedItems_RepoFilter_Match(t *testing.T) {
 		},
 		Consumed: false,
 	}
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal entry: %v", err)
+	}
 	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +320,10 @@ func TestReadUnconsumedItems_RepoFilter_Exclude(t *testing.T) {
 		},
 		Consumed: false,
 	}
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal entry: %v", err)
+	}
 	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +350,10 @@ func TestReadUnconsumedItems_RepoFilter_Wildcard(t *testing.T) {
 		},
 		Consumed: false,
 	}
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal entry: %v", err)
+	}
 	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +383,10 @@ func TestReadUnconsumedItems_RepoFilter_Legacy(t *testing.T) {
 		},
 		Consumed: false,
 	}
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal entry: %v", err)
+	}
 	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +418,10 @@ func TestReadUnconsumedItems_RepoFilter_EmptyFilter(t *testing.T) {
 		},
 		Consumed: false,
 	}
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal entry: %v", err)
+	}
 	if err := os.WriteFile(path, append(data, '\n'), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -714,8 +747,14 @@ func TestSelectHighestSeverityEntry_UsesParseableQueueIndex(t *testing.T) {
 		Items:      []nextWorkItem{{Title: "Open", Severity: "high"}},
 		Consumed:   false,
 	}
-	consumedData, _ := json.Marshal(consumed)
-	openData, _ := json.Marshal(open)
+	consumedData, err := json.Marshal(consumed)
+	if err != nil {
+		t.Fatalf("marshal consumed: %v", err)
+	}
+	openData, err := json.Marshal(open)
+	if err != nil {
+		t.Fatalf("marshal open: %v", err)
+	}
 	content := string(consumedData) + "\nnot-json\n" + string(openData) + "\n"
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf("write queue: %v", err)
@@ -807,13 +846,16 @@ func TestRPILoop_DryRun_FromQueue(t *testing.T) {
 		Items:      []nextWorkItem{{Title: "Dry run goal", Severity: "high"}},
 		Consumed:   false,
 	}
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal entry: %v", err)
+	}
 	queuePath := filepath.Join(rpiDir, "next-work.jsonl")
 	if err := os.WriteFile(queuePath, append(data, '\n'), 0644); err != nil {
 		t.Fatalf("write queue: %v", err)
 	}
 
-	err := runRPILoop(nil, nil)
+	err = runRPILoop(nil, nil)
 	if err != nil {
 		t.Errorf("expected nil error in dry-run, got: %v", err)
 	}
@@ -1397,7 +1439,10 @@ func setupSingleQueueEntry(t *testing.T, tmpDir string, entry nextWorkEntry) str
 		t.Fatalf("mkdir: %v", err)
 	}
 	queuePath := filepath.Join(rpiDir, "next-work.jsonl")
-	data, _ := json.Marshal(entry)
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal entry: %v", err)
+	}
 	if err := os.WriteFile(queuePath, append(data, '\n'), 0644); err != nil {
 		t.Fatalf("write queue: %v", err)
 	}

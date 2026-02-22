@@ -62,7 +62,10 @@ func runConfig(cmd *cobra.Command, args []string) error {
 	resolved := config.Resolve(GetOutput(), "", GetVerbose())
 
 	if GetOutput() == "json" {
-		data, _ := json.MarshalIndent(resolved, "", "  ")
+		data, err := json.MarshalIndent(resolved, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal config: %w", err)
+		}
 		fmt.Println(string(data))
 		return nil
 	}

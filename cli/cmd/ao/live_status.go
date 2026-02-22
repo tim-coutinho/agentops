@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"strings"
@@ -53,10 +54,7 @@ func WriteLiveStatus(path string, allPhases []PhaseProgress, currentPhase int) e
 }
 
 func normalizeLiveStatusField(s string) string {
-	v := strings.TrimSpace(strings.ReplaceAll(s, "|", "/"))
-	if v == "" {
-		return "-"
-	}
+	v := cmp.Or(strings.TrimSpace(strings.ReplaceAll(s, "|", "/")), "-")
 	const maxLen = 72
 	if len(v) <= maxLen {
 		return v

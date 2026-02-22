@@ -30,7 +30,10 @@ func writeRegistryRun(t *testing.T, rootDir string, spec registryRunSpec) {
 		"phase":          spec.phase,
 		"started_at":     time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(filepath.Join(runDir, phasedStateFile), data, 0644); err != nil {
 		t.Fatalf("write registry state: %v", err)
 	}
@@ -57,7 +60,10 @@ func TestRPIStatusDiscovery(t *testing.T) {
 		"epic_id":        "ag-test",
 		"started_at":     time.Now().Add(-5 * time.Minute).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(filepath.Join(stateDir, "phased-state.json"), data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +145,10 @@ func TestRPIStatusPhaseNames(t *testing.T) {
 			"run_id":         "test-run",
 			"phase":          tt.phase,
 		}
-		data, _ := json.Marshal(state)
+		data, marshalErr := json.Marshal(state)
+		if marshalErr != nil {
+			t.Fatalf("marshal state: %v", marshalErr)
+		}
 		if err := os.WriteFile(filepath.Join(stateDir, "phased-state.json"), data, 0644); err != nil {
 			t.Fatal(err)
 		}
@@ -165,7 +174,10 @@ func TestRPIStatusEmptyRunID(t *testing.T) {
 		"goal":  "no run id",
 		"phase": 1,
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(filepath.Join(stateDir, "phased-state.json"), data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +202,10 @@ func TestRPIStatusCompletedFinalPhase(t *testing.T) {
 		"phase":          3,
 		"started_at":     time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(filepath.Join(stateDir, "phased-state.json"), data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -914,7 +929,10 @@ func TestDiscoverRPIRuns_FallbackFlatState(t *testing.T) {
 		"phase":          2,
 		"started_at":     time.Now().Add(-10 * time.Minute).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(filepath.Join(stateDir, "phased-state.json"), data, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -1358,7 +1376,10 @@ func TestScanRegistryRuns_StaleWorktreeReason(t *testing.T) {
 		"worktree_path":  "/nonexistent/worktree",
 		"started_at":     time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
 	}
-	data, _ := json.Marshal(state)
+	data, marshalErr := json.Marshal(state)
+	if marshalErr != nil {
+		t.Fatalf("marshal state: %v", marshalErr)
+	}
 	if err := os.WriteFile(filepath.Join(runDir, phasedStateFile), data, 0644); err != nil {
 		t.Fatal(err)
 	}

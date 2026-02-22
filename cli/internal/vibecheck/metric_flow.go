@@ -2,7 +2,7 @@ package vibecheck
 
 import (
 	"math"
-	"sort"
+	"slices"
 	"time"
 )
 
@@ -59,8 +59,8 @@ func dailyCommitCounts(events []TimelineEvent) []float64 {
 	// Sort oldest first.
 	sorted := make([]TimelineEvent, len(events))
 	copy(sorted, events)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Timestamp.Before(sorted[j].Timestamp)
+	slices.SortFunc(sorted, func(a, b TimelineEvent) int {
+		return a.Timestamp.Compare(b.Timestamp)
 	})
 
 	// Build a map of day -> count.

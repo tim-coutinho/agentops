@@ -244,14 +244,14 @@ func Load(baseDir, sessionID string) (*BudgetTracker, error) {
 
 // BudgetReport summarizes budget status.
 type BudgetReport struct {
-	SessionID        string       `json:"session_id"`
-	Status           BudgetStatus `json:"status"`
-	UsagePercent     float64      `json:"usage_percent"`
-	TokensUsed       int          `json:"tokens_used"`
-	TokensRemaining  int          `json:"tokens_remaining"`
-	CheckpointCount  int          `json:"checkpoint_count"`
-	SummarizationCount int        `json:"summarization_count"`
-	Recommendation   string       `json:"recommendation"`
+	SessionID          string       `json:"session_id"`
+	Status             BudgetStatus `json:"status"`
+	UsagePercent       float64      `json:"usage_percent"`
+	TokensUsed         int          `json:"tokens_used"`
+	TokensRemaining    int          `json:"tokens_remaining"`
+	CheckpointCount    int          `json:"checkpoint_count"`
+	SummarizationCount int          `json:"summarization_count"`
+	Recommendation     string       `json:"recommendation"`
 }
 
 // GetReport returns a summary report.

@@ -3,11 +3,12 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -402,8 +403,8 @@ func selectHighestSeverityEntry(entries []nextWorkEntry, repoFilter string) *que
 		return nil
 	}
 
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].rank > candidates[j].rank
+	slices.SortFunc(candidates, func(a, b candidate) int {
+		return cmp.Compare(b.rank, a.rank)
 	})
 
 	best := candidates[0]
@@ -520,8 +521,8 @@ func selectHighestSeverityItem(items []nextWorkItem) string {
 		return ""
 	}
 
-	sort.Slice(items, func(i, j int) bool {
-		return severityRank(items[i].Severity) > severityRank(items[j].Severity)
+	slices.SortFunc(items, func(a, b nextWorkItem) int {
+		return cmp.Compare(severityRank(b.Severity), severityRank(a.Severity))
 	})
 
 	return items[0].Title

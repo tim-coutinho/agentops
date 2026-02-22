@@ -90,7 +90,10 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	w := cmd.OutOrStdout()
 
 	if doctorJSON {
-		data, _ := json.MarshalIndent(output, "", "  ")
+		data, err := json.MarshalIndent(output, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal doctor output: %w", err)
+		}
 		fmt.Fprintln(w, string(data))
 		return nil
 	}

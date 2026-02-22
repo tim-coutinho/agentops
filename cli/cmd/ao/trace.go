@@ -71,7 +71,10 @@ func runTrace(cmd *cobra.Command, args []string) error {
 		}
 
 		if GetOutput() == "json" {
-			data, _ := json.MarshalIndent(result, "", "  ")
+			data, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return fmt.Errorf("marshal trace result: %w", err)
+			}
 			fmt.Println(string(data))
 			continue
 		}
@@ -141,7 +144,7 @@ func printTraceGraph(result *provenance.TraceResult) {
 
 func repeatString(s string, n int) string {
 	result := ""
-	for i := 0; i < n; i++ {
+	for range n {
 		result += s
 	}
 	return result

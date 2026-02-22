@@ -139,7 +139,10 @@ func runExtractAll(pendingPath string, pending []PendingExtraction, cwd string) 
 			for i, p := range pending {
 				result.Entries[i] = p.SessionID
 			}
-			data, _ := json.MarshalIndent(result, "", "  ")
+			data, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return fmt.Errorf("marshal extract result: %w", err)
+			}
 			fmt.Println(string(data))
 		} else {
 			fmt.Printf("Would process %d pending extraction(s):\n", len(pending))
@@ -196,7 +199,10 @@ func runExtractAll(pendingPath string, pending []PendingExtraction, cwd string) 
 			Remaining: len(remaining),
 			Entries:   processed,
 		}
-		data, _ := json.MarshalIndent(result, "", "  ")
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal extract batch result: %w", err)
+		}
 		fmt.Println(string(data))
 	} else {
 		fmt.Printf("Processed: %d, Failed: %d, Remaining: %d\n", len(processed), failed, len(remaining))

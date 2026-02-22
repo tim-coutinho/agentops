@@ -1,11 +1,12 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -474,13 +475,13 @@ func runBatchFeedback(cmd *cobra.Command, args []string) error {
 	for sessionID := range sessionCitations {
 		sessionIDs = append(sessionIDs, sessionID)
 	}
-	sort.Slice(sessionIDs, func(i, j int) bool {
-		ti := sessionLatestCitation[sessionIDs[i]]
-		tj := sessionLatestCitation[sessionIDs[j]]
-		if ti.Equal(tj) {
-			return sessionIDs[i] < sessionIDs[j]
+	slices.SortFunc(sessionIDs, func(a, b string) int {
+		ta := sessionLatestCitation[a]
+		tb := sessionLatestCitation[b]
+		if c := tb.Compare(ta); c != 0 {
+			return c
 		}
-		return ti.After(tj)
+		return cmp.Compare(a, b)
 	})
 
 	candidateCount := len(sessionIDs)

@@ -16,11 +16,11 @@ func TestOutputValidateResult_Valid(t *testing.T) {
 	defer func() { goalsJSON = prevGoalsJSON }()
 
 	result := validateResult{
-		Valid:      true,
-		GoalCount:  3,
-		Version:    2,
-		Errors:     nil,
-		Warnings:   nil,
+		Valid:     true,
+		GoalCount: 3,
+		Version:   2,
+		Errors:    nil,
+		Warnings:  nil,
 	}
 	err := outputValidateResult(result)
 

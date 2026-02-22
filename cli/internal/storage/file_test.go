@@ -361,9 +361,9 @@ func TestFileStorage_ReadSession(t *testing.T) {
 
 	now := time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC)
 	session := &Session{
-		ID:       "read-test-session-1",
-		Date:     now,
-		Summary:  "Readable session",
+		ID:        "read-test-session-1",
+		Date:      now,
+		Summary:   "Readable session",
 		Knowledge: []string{"learned something"},
 	}
 

@@ -2,11 +2,12 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -147,8 +148,8 @@ func runInbox(cmd *cobra.Command, args []string) error {
 	}
 
 	// Sort by timestamp descending (newest first)
-	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].Timestamp.After(filtered[j].Timestamp)
+	slices.SortFunc(filtered, func(a, b Message) int {
+		return b.Timestamp.Compare(a.Timestamp)
 	})
 
 	// Apply pagination limit
@@ -161,15 +162,15 @@ func runInbox(cmd *cobra.Command, args []string) error {
 	switch GetOutput() {
 	case "json":
 		output := struct {
-			Messages   []Message `json:"messages"`
-			Total      int       `json:"total"`
-			Showing    int       `json:"showing"`
-			Corrupted  int       `json:"corrupted,omitempty"`
+			Messages  []Message `json:"messages"`
+			Total     int       `json:"total"`
+			Showing   int       `json:"showing"`
+			Corrupted int       `json:"corrupted,omitempty"`
 		}{
-			Messages:   limited,
-			Total:      totalMatching,
-			Showing:    len(limited),
-			Corrupted:  corruptedCount,
+			Messages:  limited,
+			Total:     totalMatching,
+			Showing:   len(limited),
+			Corrupted: corruptedCount,
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -222,10 +223,7 @@ func runMailSend(cmd *cobra.Command, args []string) error {
 	}
 
 	// Determine sender identity
-	from := os.Getenv("AO_AGENT_NAME")
-	if from == "" {
-		from = "unknown"
-	}
+	from := cmp.Or(os.Getenv("AO_AGENT_NAME"), "unknown")
 
 	// Create message
 	msg := Message{

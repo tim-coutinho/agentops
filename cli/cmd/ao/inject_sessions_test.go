@@ -123,13 +123,19 @@ func TestCollectRecentSessions(t *testing.T) {
 	}
 
 	data1 := map[string]any{"summary": "Auth work"}
-	line1, _ := json.Marshal(data1)
+	line1, err := json.Marshal(data1)
+	if err != nil {
+		t.Fatalf("marshal data1: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(sessionsDir, "s1.jsonl"), line1, 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	data2 := map[string]any{"summary": "Database migration"}
-	line2, _ := json.Marshal(data2)
+	line2, err := json.Marshal(data2)
+	if err != nil {
+		t.Fatalf("marshal data2: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(sessionsDir, "s2.jsonl"), line2, 0644); err != nil {
 		t.Fatal(err)
 	}

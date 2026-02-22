@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,7 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -109,7 +110,10 @@ func runSearch(cmd *cobra.Command, args []string) error {
 
 	// Output results
 	if GetOutput() == "json" {
-		data, _ := json.MarshalIndent(results, "", "  ")
+		data, err := json.MarshalIndent(results, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal search results: %w", err)
+		}
 		fmt.Println(string(data))
 		return nil
 	}
@@ -517,8 +521,8 @@ func searchCASS(query, dir string, limit int) ([]searchResult, error) {
 	results = append(results, sessionResults...)
 
 	// Sort by score (maturity-weighted)
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
+	slices.SortFunc(results, func(a, b searchResult) int {
+		return cmp.Compare(b.Score, a.Score)
 	})
 
 	// Limit results

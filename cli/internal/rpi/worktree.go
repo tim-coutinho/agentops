@@ -347,10 +347,11 @@ func handleMergeFailure(repoRoot, mergeSource, shortMergeSource string, ctx cont
 func rpiRunIDFromWorktree(repoRoot, worktreePath string) string {
 	base := filepath.Base(worktreePath)
 	prefix := filepath.Base(repoRoot) + "-rpi-"
-	if !strings.HasPrefix(base, prefix) {
+	runID, ok := strings.CutPrefix(base, prefix)
+	if !ok {
 		return ""
 	}
-	return strings.TrimPrefix(base, prefix)
+	return runID
 }
 
 // RemoveWorktree removes a worktree directory and optionally a legacy branch reference.

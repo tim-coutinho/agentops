@@ -14,10 +14,10 @@ import (
 type FireState struct {
 	EpicID   string   `json:"epic_id"`
 	Rig      string   `json:"rig"`
-	Ready    []string `json:"ready"`    // Issues that can be ignited
-	Burning  []string `json:"burning"`  // Issues in_progress
-	Reaped   []string `json:"reaped"`   // Issues closed
-	Blocked  []string `json:"blocked"`  // Issues waiting on deps
+	Ready    []string `json:"ready"`   // Issues that can be ignited
+	Burning  []string `json:"burning"` // Issues in_progress
+	Reaped   []string `json:"reaped"`  // Issues closed
+	Blocked  []string `json:"blocked"` // Issues waiting on deps
 	ConvoyID string   `json:"convoy_id"`
 }
 

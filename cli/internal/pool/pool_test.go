@@ -2604,7 +2604,7 @@ func TestAtomicMove_WriteTempFileError(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	srcPath := filepath.Join(tmpDir, "source.json")
-	if err := os.WriteFile(srcPath, []byte(`{"test": true}`), 0644); err != nil {
+	if err := os.WriteFile(srcPath, []byte(`{"test": true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2634,7 +2634,7 @@ func TestAtomicMove_RenameError(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	srcPath := filepath.Join(tmpDir, "source.json")
-	if err := os.WriteFile(srcPath, []byte(`{"test": true}`), 0644); err != nil {
+	if err := os.WriteFile(srcPath, []byte(`{"test": true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

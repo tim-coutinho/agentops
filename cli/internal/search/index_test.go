@@ -421,7 +421,7 @@ func TestIndexFile_UnreadableFile(t *testing.T) {
 	if err := os.Chmod(mdFile, 0000); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(mdFile, 0644) })
+	t.Cleanup(func() { _ = os.Chmod(mdFile, 0o600) })
 
 	idx := NewIndex()
 	err := indexFile(idx, mdFile)
@@ -440,7 +440,7 @@ func TestBuildIndex_SkipsUnreadableFiles(t *testing.T) {
 	if err := os.Chmod(secretFile, 0000); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(secretFile, 0644) })
+	t.Cleanup(func() { _ = os.Chmod(secretFile, 0o600) })
 
 	// BuildIndex should succeed, skipping unreadable files
 	idx, err := BuildIndex(dir)
@@ -529,7 +529,7 @@ func TestLoadIndex_MalformedLines(t *testing.T) {
 {invalid json line
 ` + "\n" + `{"term":"also-valid","paths":["c.md"]}
 `
-	if err := os.WriteFile(indexPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(indexPath, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -599,7 +599,7 @@ func TestLoadIndex_ScannerError(t *testing.T) {
 		hugeLine[i] = 'x'
 	}
 	content := `{"term":"valid","paths":["file.md"]}` + "\n" + string(hugeLine) + "\n"
-	if err := os.WriteFile(indexPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(indexPath, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -717,7 +717,7 @@ func TestBuildIndex_WalkError(t *testing.T) {
 
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
@@ -731,7 +731,7 @@ func benchPopulateDir(b *testing.B, dir string, numFiles int) {
 		content += "OAuth authentication tokens for secure API access\n"
 		content += "Database migration strategy and schema versioning\n"
 		path := filepath.Join(dir, filepath.Base(dir)+"-session-"+string(rune('a'+i%26))+".md")
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 			b.Fatalf("write: %v", err)
 		}
 	}

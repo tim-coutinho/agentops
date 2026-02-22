@@ -369,10 +369,10 @@ func TestNonZeroOrDefault(t *testing.T) {
 
 func TestTruncateDisplay(t *testing.T) {
 	tests := []struct {
-		name  string
-		s     string
-		max   int
-		want  string
+		name string
+		s    string
+		max  int
+		want string
 	}{
 		{name: "short string unchanged", s: "hello", max: 10, want: "hello"},
 		{name: "exact length unchanged", s: "hello", max: 5, want: "hello"},
@@ -989,7 +989,7 @@ func TestFindTeamMemberByName(t *testing.T) {
 	t.Run("nonexistent agent returns false", func(t *testing.T) {
 		dir := t.TempDir()
 		teamDir := filepath.Join(dir, ".claude", "teams", "team-b")
-		os.MkdirAll(teamDir, 0755)                                                        //nolint:errcheck // test setup
+		os.MkdirAll(teamDir, 0755) //nolint:errcheck // test setup
 		data, _ := json.Marshal(map[string]any{"members": []map[string]any{{"name": "Bob"}}})
 		os.WriteFile(filepath.Join(teamDir, "config.json"), data, 0644) //nolint:errcheck // test setup
 		old := os.Getenv("HOME")

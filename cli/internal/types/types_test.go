@@ -403,8 +403,8 @@ func TestCandidateSupersessionJSONRoundTrip(t *testing.T) {
 
 func TestCandidateIsExpired_DateFormats(t *testing.T) {
 	tests := []struct {
-		name       string
-		validUntil string
+		name        string
+		validUntil  string
 		wantExpired bool
 	}{
 		{
@@ -838,24 +838,24 @@ func TestPlanManifestEntryJSONRoundTrip(t *testing.T) {
 
 func TestFlywheelMetricsJSONRoundTrip(t *testing.T) {
 	original := FlywheelMetrics{
-		Timestamp:           time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC),
-		PeriodStart:         time.Date(2026, 1, 25, 0, 0, 0, 0, time.UTC),
-		PeriodEnd:           time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
-		Delta:               0.17,
-		Sigma:               0.6,
-		Rho:                 0.4,
-		SigmaRho:            0.24,
-		Velocity:            0.07,
-		AboveEscapeVelocity: true,
-		TotalArtifacts:      50,
-		CitationsThisPeriod: 12,
+		Timestamp:            time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC),
+		PeriodStart:          time.Date(2026, 1, 25, 0, 0, 0, 0, time.UTC),
+		PeriodEnd:            time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
+		Delta:                0.17,
+		Sigma:                0.6,
+		Rho:                  0.4,
+		SigmaRho:             0.24,
+		Velocity:             0.07,
+		AboveEscapeVelocity:  true,
+		TotalArtifacts:       50,
+		CitationsThisPeriod:  12,
 		UniqueCitedArtifacts: 8,
-		NewArtifacts:        5,
-		StaleArtifacts:      3,
-		TierCounts:          map[string]int{"gold": 10, "silver": 20, "bronze": 15},
-		MeanUtility:         0.65,
-		HighUtilityCount:    15,
-		LowUtilityCount:     5,
+		NewArtifacts:         5,
+		StaleArtifacts:       3,
+		TierCounts:           map[string]int{"gold": 10, "silver": 20, "bronze": 15},
+		MeanUtility:          0.65,
+		HighUtilityCount:     15,
+		LowUtilityCount:      5,
 	}
 
 	data, err := json.Marshal(original)

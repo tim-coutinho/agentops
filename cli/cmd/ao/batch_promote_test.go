@@ -252,7 +252,7 @@ func TestOutputBatchResult(t *testing.T) {
 
 // stringContains checks if substr is in s.
 func stringContains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
+	for i := range len(s) - len(substr) + 1 {
 		if s[i:i+len(substr)] == substr {
 			return true
 		}

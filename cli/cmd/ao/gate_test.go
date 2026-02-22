@@ -18,9 +18,9 @@ func TestGatePendingReturnsBronzeCandidates(t *testing.T) {
 
 	// Add candidates of different tiers
 	bronzeCandidate := types.Candidate{
-		ID:      "bronze-pending-1",
-		Tier:    types.TierBronze,
-		Content: "Bronze content awaiting review",
+		ID:       "bronze-pending-1",
+		Tier:     types.TierBronze,
+		Content:  "Bronze content awaiting review",
 		Maturity: types.MaturityProvisional,
 	}
 	silverCandidate := types.Candidate{

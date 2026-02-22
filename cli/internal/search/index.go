@@ -4,11 +4,12 @@ package search
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -108,11 +109,11 @@ func rankResults(scores map[string]int, limit int) []IndexResult {
 		results = append(results, IndexResult{Path: path, Score: score})
 	}
 
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].Score != results[j].Score {
-			return results[i].Score > results[j].Score
+	slices.SortFunc(results, func(a, b IndexResult) int {
+		if c := cmp.Compare(b.Score, a.Score); c != 0 {
+			return c
 		}
-		return results[i].Path < results[j].Path
+		return cmp.Compare(a.Path, b.Path)
 	})
 
 	if limit > 0 && len(results) > limit {
@@ -148,7 +149,7 @@ func writeIndexTerms(w *bufio.Writer, idx *Index) error {
 	for term := range idx.Terms {
 		terms = append(terms, term)
 	}
-	sort.Strings(terms)
+	slices.Sort(terms)
 
 	for _, term := range terms {
 		docs := idx.Terms[term]
@@ -168,7 +169,7 @@ func writeTermEntry(w *bufio.Writer, term string, docs map[string]bool) error {
 	for p := range docs {
 		paths = append(paths, p)
 	}
-	sort.Strings(paths)
+	slices.Sort(paths)
 
 	data, err := json.Marshal(IndexEntry{Term: term, Paths: paths})
 	if err != nil {

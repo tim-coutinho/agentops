@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -64,10 +65,7 @@ var goalsAddCmd = &cobra.Command{
 			goalType = goals.GoalTypeHealth
 		}
 
-		desc := goalsAddDescription
-		if desc == "" {
-			desc = id // Fallback to ID.
-		}
+		desc := cmp.Or(goalsAddDescription, id) // Fallback to ID.
 
 		// Build new goal.
 		newGoal := goals.Goal{

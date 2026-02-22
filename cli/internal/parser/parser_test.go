@@ -539,10 +539,10 @@ func TestParser_ParseToolUse(t *testing.T) {
 				}
 				return
 			}
-				if got == nil {
-					t.Fatal("expected non-nil result")
-					return
-				}
+			if got == nil {
+				t.Fatal("expected non-nil result")
+				return
+			}
 			if got.Name != tc.wantName {
 				t.Errorf("Name = %q, want %q", got.Name, tc.wantName)
 			}

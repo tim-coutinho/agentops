@@ -93,7 +93,10 @@ func TestLoadLatestSnapshot(t *testing.T) {
 			Timestamp: fmt.Sprintf("2026-01-0%dT10:00:00Z", i+1),
 			GitSHA:    fmt.Sprintf("sha%d", i),
 		}
-		data, _ := json.MarshalIndent(snap, "", "  ")
+		data, err := json.MarshalIndent(snap, "", "  ")
+		if err != nil {
+			t.Fatalf("marshal snapshot: %v", err)
+		}
 		if err := os.WriteFile(filepath.Join(dir, ts+".json"), data, 0644); err != nil {
 			t.Fatal(err)
 		}

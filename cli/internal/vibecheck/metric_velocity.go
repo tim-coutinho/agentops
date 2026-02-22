@@ -41,4 +41,3 @@ func MetricVelocity(events []TimelineEvent) Metric {
 		Passed:    velocity >= 3,
 	}
 }
-

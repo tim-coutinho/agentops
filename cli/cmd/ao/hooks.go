@@ -129,7 +129,7 @@ func (c *HooksConfig) SetEventGroups(event string, groups []HookGroup) {
 
 // ClaudeSettings represents the Claude Code settings.json structure.
 type ClaudeSettings struct {
-	Hooks *HooksConfig           `json:"hooks,omitempty"`
+	Hooks *HooksConfig   `json:"hooks,omitempty"`
 	Other map[string]any `json:"-"` // Preserve other settings
 }
 
@@ -728,7 +728,10 @@ func runHooksInstall(cmd *cobra.Command, args []string) error {
 
 	if hooksDryRun {
 		fmt.Println("[dry-run] Would write to", settingsPath)
-		data, _ := json.MarshalIndent(rawSettings, "", "  ")
+		data, err := json.MarshalIndent(rawSettings, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal hooks settings: %w", err)
+		}
 		fmt.Println(string(data))
 		return nil
 	}

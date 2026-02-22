@@ -55,14 +55,14 @@ var (
 
 // ratchetStepInfo holds step information for status output.
 type ratchetStepInfo struct {
-	Step        ratchet.Step       `json:"step"`
-	Status      ratchet.StepStatus `json:"status"`
-	Output      string             `json:"output,omitempty"`
-	Input       string             `json:"input,omitempty"`
-	Time        string             `json:"time,omitempty"`
-	Location    string             `json:"location,omitempty"`
-	Cycle       int                `json:"cycle,omitempty"`
-	ParentEpic  string             `json:"parent_epic,omitempty"`
+	Step       ratchet.Step       `json:"step"`
+	Status     ratchet.StepStatus `json:"status"`
+	Output     string             `json:"output,omitempty"`
+	Input      string             `json:"input,omitempty"`
+	Time       string             `json:"time,omitempty"`
+	Location   string             `json:"location,omitempty"`
+	Cycle      int                `json:"cycle,omitempty"`
+	ParentEpic string             `json:"parent_epic,omitempty"`
 }
 
 // ratchetStatusOutput holds the full status output structure.

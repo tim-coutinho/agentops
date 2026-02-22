@@ -245,7 +245,10 @@ func TestCollectOLConstraints(t *testing.T) {
 		{Pattern: "no-eval", Detection: "eval() usage found in hooks"},
 		{Pattern: "no-force-push", Detection: "git push --force detected"},
 	}
-	data, _ := json.Marshal(constraints)
+	data, err := json.Marshal(constraints)
+	if err != nil {
+		t.Fatalf("marshal constraints: %v", err)
+	}
 	quarantinePath := filepath.Join(tmpDir, ".ol", "constraints", "quarantine.json")
 	if err := os.MkdirAll(filepath.Dir(quarantinePath), 0755); err != nil {
 		t.Fatal(err)
@@ -329,7 +332,10 @@ Always use sync.Mutex for shared state access.
 		"summary": "Use connection pooling for database access",
 		"utility": 0.8,
 	}
-	line, _ := json.Marshal(jsonlData)
+	line, err := json.Marshal(jsonlData)
+	if err != nil {
+		t.Fatalf("marshal jsonl data: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(learningsDir, "db.jsonl"), line, 0644); err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,6 @@
 package vibecheck
 
-import "sort"
+import "slices"
 
 // RunDetectors runs all detectors against the given events and returns
 // the aggregated findings.
@@ -43,7 +43,7 @@ func ClassifyHealth(findings []Finding) string {
 
 // sortOldestFirst sorts events by timestamp ascending (oldest first).
 func sortOldestFirst(events []TimelineEvent) {
-	sort.Slice(events, func(i, j int) bool {
-		return events[i].Timestamp.Before(events[j].Timestamp)
+	slices.SortFunc(events, func(a, b TimelineEvent) int {
+		return a.Timestamp.Compare(b.Timestamp)
 	})
 }
