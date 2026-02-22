@@ -943,9 +943,7 @@ func TestFindTeamMemberByName(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		old := os.Getenv("HOME")
-		os.Setenv("HOME", dir)
-		defer os.Setenv("HOME", old)
+		t.Setenv("HOME", dir)
 
 		teamName, member, ok := findTeamMemberByName("Alice")
 		if !ok {
@@ -973,9 +971,7 @@ func TestFindTeamMemberByName(t *testing.T) {
 		}
 		data, _ := json.Marshal(config)
 		os.WriteFile(filepath.Join(teamDir, "config.json"), data, 0644) //nolint:errcheck // test setup
-		old := os.Getenv("HOME")
-		os.Setenv("HOME", dir)
-		defer os.Setenv("HOME", old)
+		t.Setenv("HOME", dir)
 
 		_, member, ok := findTeamMemberByName("worker-1")
 		if !ok {
@@ -992,9 +988,7 @@ func TestFindTeamMemberByName(t *testing.T) {
 		os.MkdirAll(teamDir, 0755) //nolint:errcheck // test setup
 		data, _ := json.Marshal(map[string]any{"members": []map[string]any{{"name": "Bob"}}})
 		os.WriteFile(filepath.Join(teamDir, "config.json"), data, 0644) //nolint:errcheck // test setup
-		old := os.Getenv("HOME")
-		os.Setenv("HOME", dir)
-		defer os.Setenv("HOME", old)
+		t.Setenv("HOME", dir)
 
 		_, _, ok := findTeamMemberByName("Charlie")
 		if ok {

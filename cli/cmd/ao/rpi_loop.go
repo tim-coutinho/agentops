@@ -566,15 +566,6 @@ func markEntryConsumed(path string, entryIndex int, consumedBy string) error {
 	})
 }
 
-// markItemConsumed marks the first entry matching sourceEpic in path as consumed.
-// Unlike markEntryConsumed (index-based), this function identifies entries by
-// source_epic field, making it safe to call with the epic ID from a run.
-//
-// Semantics:
-//   - Missing file: returns an error (caller should verify file exists before calling).
-//   - Wrong/no match: no-op (idempotent — safe to call even if already consumed).
-//   - Match: sets Consumed=true, ConsumedAt, and ConsumedBy=runID.
-//
 // markEntryFailed records a FailedAt timestamp on the entry at entryIndex without
 // setting Consumed. This leaves the entry recoverable: set consumed=false to retry.
 func markEntryFailed(path string, entryIndex int) error {

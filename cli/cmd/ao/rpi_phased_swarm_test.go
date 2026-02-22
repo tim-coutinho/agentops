@@ -17,10 +17,7 @@ func TestSwarmFirstFlagDefault(t *testing.T) {
 
 	phasedSwarmFirst = true
 
-	state := &phasedState{
-		Goal:       "add auth",
-		SwarmFirst: phasedSwarmFirst,
-	}
+	state := newTestPhasedState().WithGoal("add auth").WithSwarmFirst(phasedSwarmFirst)
 	if !state.SwarmFirst {
 		t.Error("SwarmFirst should be propagated from phasedSwarmFirst flag to state")
 	}
@@ -29,10 +26,7 @@ func TestSwarmFirstFlagDefault(t *testing.T) {
 // TestSwarmFirstInPromptPhase1 verifies that when SwarmFirst=true, phase 1
 // (discovery) prompts include the SWARM-FIRST EXECUTION CONTRACT.
 func TestSwarmFirstInPromptPhase1(t *testing.T) {
-	state := &phasedState{
-		Goal:       "add user authentication",
-		SwarmFirst: true,
-	}
+	state := newTestPhasedState().WithGoal("add user authentication").WithSwarmFirst(true)
 	prompt, err := buildPromptForPhase("", 1, state, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -51,11 +45,7 @@ func TestSwarmFirstInPromptPhase1(t *testing.T) {
 // TestSwarmFirstInPromptPhase2 verifies that when SwarmFirst=true, phase 2
 // (implementation/crank) prompt includes swarm contract.
 func TestSwarmFirstInPromptPhase2(t *testing.T) {
-	state := &phasedState{
-		Goal:       "add auth",
-		EpicID:     "ag-test1",
-		SwarmFirst: true,
-	}
+	state := newTestPhasedState().WithGoal("add auth").WithEpicID("ag-test1").WithSwarmFirst(true)
 	prompt, err := buildPromptForPhase("", 2, state, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -68,11 +58,7 @@ func TestSwarmFirstInPromptPhase2(t *testing.T) {
 // TestSwarmFirstInPromptPhase3 verifies that when SwarmFirst=true, phase 3
 // (validation) prompt includes swarm contract for validation workers.
 func TestSwarmFirstInPromptPhase3(t *testing.T) {
-	state := &phasedState{
-		Goal:       "add auth",
-		EpicID:     "ag-test1",
-		SwarmFirst: true,
-	}
+	state := newTestPhasedState().WithGoal("add auth").WithEpicID("ag-test1").WithSwarmFirst(true)
 	prompt, err := buildPromptForPhase("", 3, state, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -85,11 +71,7 @@ func TestSwarmFirstInPromptPhase3(t *testing.T) {
 // TestSwarmFirstDisabledNoContract verifies that when SwarmFirst=false, phase
 // prompts do NOT include the SWARM-FIRST EXECUTION CONTRACT.
 func TestSwarmFirstDisabledNoContract(t *testing.T) {
-	state := &phasedState{
-		Goal:       "add auth",
-		EpicID:     "ag-test1",
-		SwarmFirst: false,
-	}
+	state := newTestPhasedState().WithGoal("add auth").WithEpicID("ag-test1").WithSwarmFirst(false)
 	for phaseNum := 1; phaseNum <= 3; phaseNum++ {
 		prompt, err := buildPromptForPhase("", phaseNum, state, nil)
 		if err != nil {

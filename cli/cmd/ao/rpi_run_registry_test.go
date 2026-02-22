@@ -13,17 +13,14 @@ import (
 func TestSavePhasedState_Atomic(t *testing.T) {
 	dir := t.TempDir()
 
-	state := &phasedState{
-		SchemaVersion: 1,
-		Goal:          "atomic write test",
-		EpicID:        "ag-atm1",
-		Phase:         2,
-		Cycle:         1,
-		RunID:         "deadbeef",
-		Verdicts:      map[string]string{"pre_mortem": "PASS"},
-		Attempts:      map[string]int{"phase_1": 0},
-		StartedAt:     "2026-02-19T00:00:00Z",
-	}
+	state := newTestPhasedState().
+		WithGoal("atomic write test").
+		WithEpicID("ag-atm1").
+		WithPhase(2).
+		WithCycle(1).
+		WithRunID("deadbeef").
+		WithVerdict("pre_mortem", "PASS").
+		WithAttempt("phase_1", 0)
 
 	if err := savePhasedState(dir, state); err != nil {
 		t.Fatalf("savePhasedState: %v", err)
@@ -68,16 +65,11 @@ func TestSavePhasedState_WritesRunRegistry(t *testing.T) {
 	dir := t.TempDir()
 	runID := "cafe1234"
 
-	state := &phasedState{
-		SchemaVersion: 1,
-		Goal:          "registry write test",
-		Phase:         1,
-		Cycle:         1,
-		RunID:         runID,
-		Verdicts:      make(map[string]string),
-		Attempts:      make(map[string]int),
-		StartedAt:     "2026-02-19T00:00:00Z",
-	}
+	state := newTestPhasedState().
+		WithGoal("registry write test").
+		WithPhase(1).
+		WithCycle(1).
+		WithRunID(runID)
 
 	if err := savePhasedState(dir, state); err != nil {
 		t.Fatalf("savePhasedState: %v", err)
@@ -109,14 +101,10 @@ func TestSavePhasedState_WritesRunRegistry(t *testing.T) {
 func TestSavePhasedState_NoRunID(t *testing.T) {
 	dir := t.TempDir()
 
-	state := &phasedState{
-		SchemaVersion: 1,
-		Goal:          "no run id",
-		Phase:         1,
-		Cycle:         1,
-		Verdicts:      make(map[string]string),
-		Attempts:      make(map[string]int),
-	}
+	state := newTestPhasedState().
+		WithGoal("no run id").
+		WithPhase(1).
+		WithCycle(1)
 
 	if err := savePhasedState(dir, state); err != nil {
 		t.Fatalf("savePhasedState: %v", err)
@@ -140,14 +128,11 @@ func TestSavePhasedState_NoRunID(t *testing.T) {
 func TestLoadPhasedState_FlatPath(t *testing.T) {
 	dir := t.TempDir()
 
-	state := &phasedState{
-		SchemaVersion: 1,
-		Goal:          "load flat test",
-		Phase:         3,
-		Cycle:         1,
-		Verdicts:      map[string]string{"vibe": "PASS"},
-		Attempts:      make(map[string]int),
-	}
+	state := newTestPhasedState().
+		WithGoal("load flat test").
+		WithPhase(3).
+		WithCycle(1).
+		WithVerdict("vibe", "PASS")
 
 	if err := savePhasedState(dir, state); err != nil {
 		t.Fatalf("savePhasedState: %v", err)
@@ -175,15 +160,11 @@ func TestLoadPhasedState_RunRegistryFallback(t *testing.T) {
 	runID := "aabbccdd"
 
 	// Write old flat state (phase 1).
-	oldState := &phasedState{
-		SchemaVersion: 1,
-		Goal:          "old goal",
-		Phase:         1,
-		Cycle:         1,
-		RunID:         runID,
-		Verdicts:      make(map[string]string),
-		Attempts:      make(map[string]int),
-	}
+	oldState := newTestPhasedState().
+		WithGoal("old goal").
+		WithPhase(1).
+		WithCycle(1).
+		WithRunID(runID)
 	if err := savePhasedState(dir, oldState); err != nil {
 		t.Fatalf("savePhasedState (old): %v", err)
 	}
@@ -196,15 +177,13 @@ func TestLoadPhasedState_RunRegistryFallback(t *testing.T) {
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		t.Fatalf("mkdir runDir: %v", err)
 	}
-	newState := &phasedState{
-		SchemaVersion: 1,
-		Goal:          "new goal from registry",
-		Phase:         2,
-		Cycle:         1,
-		RunID:         runID,
-		Verdicts:      map[string]string{"pre_mortem": "PASS"},
-		Attempts:      map[string]int{"phase_1": 1},
-	}
+	newState := newTestPhasedState().
+		WithGoal("new goal from registry").
+		WithPhase(2).
+		WithCycle(1).
+		WithRunID(runID).
+		WithVerdict("pre_mortem", "PASS").
+		WithAttempt("phase_1", 1)
 	registryPath := filepath.Join(runDir, phasedStateFile)
 	// Write via savePhasedState so it uses atomic write.
 	if err := savePhasedState(dir, newState); err != nil {
@@ -267,16 +246,11 @@ func TestRunRegistry_DirectoryLayout(t *testing.T) {
 	dir := t.TempDir()
 	runID := "12345678"
 
-	state := &phasedState{
-		SchemaVersion: 1,
-		Goal:          "registry layout test",
-		Phase:         1,
-		Cycle:         1,
-		RunID:         runID,
-		Verdicts:      make(map[string]string),
-		Attempts:      make(map[string]int),
-		StartedAt:     "2026-02-19T00:00:00Z",
-	}
+	state := newTestPhasedState().
+		WithGoal("registry layout test").
+		WithPhase(1).
+		WithCycle(1).
+		WithRunID(runID)
 
 	if err := savePhasedState(dir, state); err != nil {
 		t.Fatalf("savePhasedState: %v", err)
@@ -318,15 +292,11 @@ func TestRunRegistry_MultipleRuns(t *testing.T) {
 	dir := t.TempDir()
 
 	for _, runID := range []string{"run0001", "run0002", "run0003"} {
-		state := &phasedState{
-			SchemaVersion: 1,
-			Goal:          "goal for " + runID,
-			Phase:         1,
-			Cycle:         1,
-			RunID:         runID,
-			Verdicts:      make(map[string]string),
-			Attempts:      make(map[string]int),
-		}
+		state := newTestPhasedState().
+			WithGoal("goal for " + runID).
+			WithPhase(1).
+			WithCycle(1).
+			WithRunID(runID)
 		if err := savePhasedState(dir, state); err != nil {
 			t.Fatalf("savePhasedState(%s): %v", runID, err)
 		}
@@ -368,15 +338,12 @@ func TestRunRegistry_SurvivesInterruption(t *testing.T) {
 	runID := "deadcafe"
 
 	// Write a valid state first.
-	state := &phasedState{
-		SchemaVersion: 1,
-		Goal:          "interruption test",
-		Phase:         2,
-		Cycle:         1,
-		RunID:         runID,
-		Verdicts:      map[string]string{"pre_mortem": "PASS"},
-		Attempts:      make(map[string]int),
-	}
+	state := newTestPhasedState().
+		WithGoal("interruption test").
+		WithPhase(2).
+		WithCycle(1).
+		WithRunID(runID).
+		WithVerdict("pre_mortem", "PASS")
 	if err := savePhasedState(dir, state); err != nil {
 		t.Fatalf("savePhasedState: %v", err)
 	}

@@ -257,29 +257,37 @@ func setupGitignore(cwd string, dryRun, stealth bool) error {
 	// Check if file is non-empty and doesn't end with newline
 	info, _ := f.Stat()
 	if info.Size() > 0 {
-		// Read last byte to check for trailing newline
-		rf, err := os.Open(targetPath)
-		if err == nil {
-			buf := make([]byte, 1)
-			if _, err := rf.Seek(-1, 2); err != nil {
-				rf.Close()
-				return fmt.Errorf("seek %s: %w", targetPath, err)
-			}
-			if _, err := rf.Read(buf); err != nil {
-				rf.Close()
-				return fmt.Errorf("read last byte %s: %w", targetPath, err)
-			}
-			rf.Close()
-			if buf[0] != '\n' {
-				if _, err := f.WriteString("\n"); err != nil {
-					return fmt.Errorf("write newline to %s: %w", targetPath, err)
-				}
-			}
+		if err := appendNewlineIfMissing(f, targetPath); err != nil {
+			return err
 		}
 	}
 
 	_, err = f.WriteString("\n# AgentOps session artifacts (auto-added by ao init)\n.agents/\n")
 	return err
+}
+
+// appendNewlineIfMissing reads the last byte of targetPath and writes a newline
+// to f if the file does not already end with one.
+func appendNewlineIfMissing(f *os.File, targetPath string) error {
+	rf, err := os.Open(targetPath)
+	if err != nil {
+		return nil // ignore open errors; non-critical
+	}
+	defer rf.Close()
+
+	buf := make([]byte, 1)
+	if _, err := rf.Seek(-1, 2); err != nil {
+		return fmt.Errorf("seek %s: %w", targetPath, err)
+	}
+	if _, err := rf.Read(buf); err != nil {
+		return fmt.Errorf("read last byte %s: %w", targetPath, err)
+	}
+	if buf[0] != '\n' {
+		if _, err := f.WriteString("\n"); err != nil {
+			return fmt.Errorf("write newline to %s: %w", targetPath, err)
+		}
+	}
+	return nil
 }
 
 // fileContainsLine checks if a file contains a line matching the given text.

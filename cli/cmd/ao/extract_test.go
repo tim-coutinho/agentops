@@ -280,7 +280,7 @@ func TestReadPendingExtractions(t *testing.T) {
 	// Add a malformed line
 	f, _ := os.OpenFile(pendingPath, os.O_APPEND|os.O_WRONLY, 0600)
 	_, _ = f.WriteString("invalid json\n")
-	f.Close()
+	_ = f.Close()
 
 	// Read and verify
 	read, err := readPendingExtractions(pendingPath)
@@ -356,7 +356,7 @@ func TestOutputExtractionPrompt(t *testing.T) {
 
 	outputExtractionPrompt(extraction, tempDir, 3000)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = oldStdout
 
 	// Read output

@@ -60,7 +60,7 @@ func TestBuildRPIState_WithMultipleSteps(t *testing.T) {
 }
 
 func TestBuildRPIState_VerbosePrintf(t *testing.T) {
-	// Test that VerbosePrintf does not panic when verbose is false
+	t.Log("smoke: VerbosePrintf should not panic when verbose is false")
 	oldVerbose := verbose
 	verbose = false
 	defer func() { verbose = oldVerbose }()
@@ -68,8 +68,7 @@ func TestBuildRPIState_VerbosePrintf(t *testing.T) {
 }
 
 func TestVerbosePrintf_WhenEnabled(t *testing.T) {
-	// Test that VerbosePrintf calls fmt.Printf when verbose=true
-	// (can't easily capture stdout without pipes, but ensures coverage of that branch)
+	t.Log("smoke: VerbosePrintf should not panic when verbose is true")
 	oldVerbose := verbose
 	verbose = true
 	defer func() { verbose = oldVerbose }()

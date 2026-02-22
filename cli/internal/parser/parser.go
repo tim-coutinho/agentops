@@ -123,8 +123,8 @@ func (p *Parser) Parse(r io.Reader) (*ParseResult, error) {
 			continue
 		}
 
-		hasher.Write(line)
-		hasher.Write([]byte("\n"))
+		_, _ = hasher.Write(line)
+		_, _ = hasher.Write([]byte("\n"))
 
 		p.processLine(line, lineNum, result)
 

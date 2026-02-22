@@ -315,7 +315,7 @@ func TestNoFilesError(t *testing.T) {
 }
 
 func TestForgeWarnf(t *testing.T) {
-	// forgeWarnf should not panic regardless of quiet flag
+	t.Log("smoke: forgeWarnf should not panic regardless of quiet flag")
 	forgeWarnf(true, "should not print: %s", "test")
 	forgeWarnf(false, "test warning (goes to stderr): %s\n", "msg")
 }

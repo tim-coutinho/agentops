@@ -269,7 +269,7 @@ func TestLoadForgedIndex(t *testing.T) {
 		}
 		_, _ = f.Write(append(data, '\n'))
 	}
-	f.Close()
+	_ = f.Close()
 
 	// Load index
 	forgedSet, err = loadForgedIndex(indexPath)

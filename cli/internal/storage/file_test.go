@@ -576,7 +576,7 @@ func TestFileStorage_ListSessions_MalformedLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _ = f.Write([]byte("not-valid-json\n"))
-	f.Close()
+	_ = f.Close()
 
 	// ListSessions should skip malformed lines
 	entries, err := fs.ListSessions()
@@ -633,7 +633,7 @@ func TestFileStorage_QueryProvenance_MalformedLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _ = f.Write([]byte("not valid json\n"))
-	f.Close()
+	_ = f.Close()
 
 	// Query should skip malformed and return the valid one
 	records, err := fs.QueryProvenance("/output/ok.md")
@@ -920,7 +920,7 @@ func TestFileStorage_HasIndexEntry_MalformedJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _ = f.Write([]byte("{bad json\n"))
-	f.Close()
+	_ = f.Close()
 
 	// hasIndexEntry should still find the valid entry even with malformed lines
 	if !fs.hasIndexEntry(indexPath, "find-me") {

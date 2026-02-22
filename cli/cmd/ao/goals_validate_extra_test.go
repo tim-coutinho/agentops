@@ -24,7 +24,7 @@ func TestOutputValidateResult_Valid(t *testing.T) {
 	}
 	err := outputValidateResult(result)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -47,7 +47,7 @@ func TestOutputValidateResult_Invalid(t *testing.T) {
 	}
 	err := outputValidateResult(result)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err == nil {
@@ -74,7 +74,7 @@ func TestOutputValidateResult_JSONMode(t *testing.T) {
 	}
 	err := outputValidateResult(result)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {

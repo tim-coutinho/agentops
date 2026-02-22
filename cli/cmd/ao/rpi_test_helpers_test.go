@@ -63,3 +63,87 @@ func (s *phasedState) WithSwarmFirst(sf bool) *phasedState {
 	s.SwarmFirst = sf
 	return s
 }
+
+// WithTestFirst sets the TestFirst field.
+func (s *phasedState) WithTestFirst(tf bool) *phasedState {
+	s.TestFirst = tf
+	return s
+}
+
+// WithCycle sets the Cycle field.
+func (s *phasedState) WithCycle(c int) *phasedState {
+	s.Cycle = c
+	return s
+}
+
+// WithSchemaVersion sets the SchemaVersion field.
+func (s *phasedState) WithSchemaVersion(v int) *phasedState {
+	s.SchemaVersion = v
+	return s
+}
+
+// WithStartedAt sets the StartedAt timestamp string.
+func (s *phasedState) WithStartedAt(t string) *phasedState {
+	s.StartedAt = t
+	return s
+}
+
+// WithWorktreePath sets the WorktreePath field.
+func (s *phasedState) WithWorktreePath(p string) *phasedState {
+	s.WorktreePath = p
+	return s
+}
+
+// WithOrchestratorPID sets the OrchestratorPID field.
+func (s *phasedState) WithOrchestratorPID(pid int) *phasedState {
+	s.OrchestratorPID = pid
+	return s
+}
+
+// WithVerdicts sets the Verdicts map.
+func (s *phasedState) WithVerdicts(v map[string]string) *phasedState {
+	s.Verdicts = v
+	return s
+}
+
+// WithVerdict adds a single verdict entry to the Verdicts map.
+func (s *phasedState) WithVerdict(key, val string) *phasedState {
+	if s.Verdicts == nil {
+		s.Verdicts = make(map[string]string)
+	}
+	s.Verdicts[key] = val
+	return s
+}
+
+// WithAttempts sets the Attempts map.
+func (s *phasedState) WithAttempts(a map[string]int) *phasedState {
+	s.Attempts = a
+	return s
+}
+
+// WithAttempt adds a single attempt entry to the Attempts map.
+func (s *phasedState) WithAttempt(key string, count int) *phasedState {
+	if s.Attempts == nil {
+		s.Attempts = make(map[string]int)
+	}
+	s.Attempts[key] = count
+	return s
+}
+
+// WithTerminalStatus sets the TerminalStatus field.
+func (s *phasedState) WithTerminalStatus(status string) *phasedState {
+	s.TerminalStatus = status
+	return s
+}
+
+// WithTerminalReason sets the TerminalReason field.
+func (s *phasedState) WithTerminalReason(reason string) *phasedState {
+	s.TerminalReason = reason
+	return s
+}
+
+// WithMaxRetries sets Opts.MaxRetries.
+func (s *phasedState) WithMaxRetries(n int) *phasedState {
+	s.Opts.MaxRetries = n
+	return s
+}

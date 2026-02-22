@@ -589,16 +589,12 @@ func TestHandleGateRetry_ExhaustsRetries(t *testing.T) {
 	phasedMaxRetries = 2
 	phasedLiveStatus = false
 
-	state := &phasedState{
-		SchemaVersion: 1,
-		Goal:          "test goal",
-		EpicID:        "ag-test1",
-		Phase:         1,
-		Cycle:         1,
-		RunID:         "retry-exhaust",
-		Verdicts:      make(map[string]string),
-		Attempts:      map[string]int{"phase_1": 2}, // already at max
-	}
+	state := newTestPhasedState().
+		WithEpicID("ag-test1").
+		WithPhase(1).
+		WithCycle(1).
+		WithRunID("retry-exhaust").
+		WithAttempt("phase_1", 2) // already at max
 
 	gateErr := &gateFailError{
 		Phase:   1,
@@ -629,11 +625,7 @@ func TestHandleGateRetry_ExhaustsRetries(t *testing.T) {
 func TestResolveGateRetryAction_ModeOffParity(t *testing.T) {
 	t.Setenv(types.MemRLModeEnvVar, string(types.MemRLModeOff))
 
-	state := &phasedState{
-		Opts: phasedEngineOptions{
-			MaxRetries: 3,
-		},
-	}
+	state := newTestPhasedState().WithMaxRetries(3)
 	gateErr := &gateFailError{
 		Phase:   3,
 		Verdict: "FAIL",
@@ -657,11 +649,7 @@ func TestResolveGateRetryAction_ModeOffParity(t *testing.T) {
 func TestResolveGateRetryAction_EnforceCrankBlockedEscalatesEarly(t *testing.T) {
 	t.Setenv(types.MemRLModeEnvVar, string(types.MemRLModeEnforce))
 
-	state := &phasedState{
-		Opts: phasedEngineOptions{
-			MaxRetries: 3,
-		},
-	}
+	state := newTestPhasedState().WithMaxRetries(3)
 	gateErr := &gateFailError{
 		Phase:   2,
 		Verdict: "BLOCKED",
@@ -740,15 +728,11 @@ func TestLoadLatestRunRegistryState_PicksMostRecent(t *testing.T) {
 	}
 
 	for i, r := range runs {
-		state := &phasedState{
-			SchemaVersion: 1,
-			Goal:          r.goal,
-			Phase:         r.phase,
-			Cycle:         1,
-			RunID:         r.id,
-			Verdicts:      make(map[string]string),
-			Attempts:      make(map[string]int),
-		}
+		state := newTestPhasedState().
+			WithGoal(r.goal).
+			WithPhase(r.phase).
+			WithCycle(1).
+			WithRunID(r.id)
 		if err := savePhasedState(dir, state); err != nil {
 			t.Fatalf("savePhasedState(%s): %v", r.id, err)
 		}
@@ -799,15 +783,11 @@ func TestLoadLatestRunRegistryState_SkipsMalformedEntries(t *testing.T) {
 	}
 
 	// Create a good run dir.
-	goodState := &phasedState{
-		SchemaVersion: 1,
-		Goal:          "good goal",
-		Phase:         2,
-		Cycle:         1,
-		RunID:         "good-run",
-		Verdicts:      make(map[string]string),
-		Attempts:      make(map[string]int),
-	}
+	goodState := newTestPhasedState().
+		WithGoal("good goal").
+		WithPhase(2).
+		WithCycle(1).
+		WithRunID("good-run")
 	if err := savePhasedState(dir, goodState); err != nil {
 		t.Fatalf("savePhasedState: %v", err)
 	}

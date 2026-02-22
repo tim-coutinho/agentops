@@ -47,7 +47,7 @@ func writeJSONLChain(t *testing.T, dir string, id string, epicID string, entries
 }
 
 // helper to write a legacy YAML chain file.
-func writeLegacyChain(t *testing.T, dir string, content string) string {
+func writeLegacyChain(t *testing.T, dir string, content string) {
 	t.Helper()
 	legacyDir := filepath.Join(dir, ".agents", "provenance")
 	if err := os.MkdirAll(legacyDir, 0700); err != nil {
@@ -57,7 +57,6 @@ func writeLegacyChain(t *testing.T, dir string, content string) string {
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	return path
 }
 
 func TestLoadChainJSONL(t *testing.T) {
@@ -171,7 +170,7 @@ func TestLoadChainEmptyJSONL(t *testing.T) {
 		t.Fatalf("marshal meta: %v", err)
 	}
 	_, _ = f.Write(append(line, '\n'))
-	f.Close()
+	_ = f.Close()
 
 	chain, err := LoadChain(tmp)
 	if err != nil {

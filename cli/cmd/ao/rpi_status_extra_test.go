@@ -26,7 +26,7 @@ func TestWriteRPIStatusJSON(t *testing.T) {
 	}
 	err := writeRPIStatusJSON(output)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -58,7 +58,7 @@ func TestRenderRPIStatusTable_EmptyOutput(t *testing.T) {
 
 	err := renderRPIStatusTable(dir, output)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -82,7 +82,7 @@ func TestRenderRPIStatusTable_WithActiveRuns(t *testing.T) {
 
 	err := renderRPIStatusTable(dir, output)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
