@@ -51,32 +51,8 @@ if command -v go >/dev/null 2>&1 && [[ -f cli/go.mod ]]; then
     fi
 fi
 
-# --- 2. Go race tests on changed packages (120s timeout, warn-only) ---
-if [[ -x scripts/validate-go-fast.sh ]]; then
-    race_output="$(mktemp)"
-    race_rc=0
-    if command -v timeout >/dev/null 2>&1; then
-        timeout 120 scripts/validate-go-fast.sh > "$race_output" 2>&1 || race_rc=$?
-    elif command -v gtimeout >/dev/null 2>&1; then
-        # macOS: coreutils installed via Homebrew provides gtimeout.
-        gtimeout 120 scripts/validate-go-fast.sh > "$race_output" 2>&1 || race_rc=$?
-    else
-        scripts/validate-go-fast.sh > "$race_output" 2>&1 || race_rc=$?
-    fi
-
-    if [[ "$race_rc" -eq 0 ]]; then
-        pass "go test -race (changed scope)"
-    elif [[ "$race_rc" -eq 124 ]]; then
-        # Exit code 124 = timeout reached. Warn but don't block.
-        echo "  WARNING: race tests timed out after 120s — not blocking push"
-        pass "go test -race (timed out, non-blocking)"
-    else
-        fail "go test -race (changed scope)"
-        # Show failure details to help debugging.
-        tail -20 "$race_output" 2>/dev/null | sed 's/^/    /'
-    fi
-    rm -f "$race_output"
-fi
+# --- 2. Go race tests — skipped locally, CI runs them ---
+pass "go test -race (deferred to CI)"
 
 # --- 3. Embedded hooks sync ---
 stale=0
