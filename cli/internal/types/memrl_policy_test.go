@@ -424,3 +424,100 @@ func TestValidateMemRLPolicyContract_AllErrors(t *testing.T) {
 		}
 	})
 }
+
+func TestBucketMemRLAttempt_AllPaths(t *testing.T) {
+	tests := []struct {
+		name        string
+		attempt     int
+		maxAttempts int
+		want        MemRLAttemptBucket
+	}{
+		{"zero max attempts", 1, 0, MemRLAttemptBucketOverflow},
+		{"negative max attempts", 1, -1, MemRLAttemptBucketOverflow},
+		{"attempt 0 initial", 0, 3, MemRLAttemptBucketInitial},
+		{"attempt 1 initial", 1, 3, MemRLAttemptBucketInitial},
+		{"attempt 2 middle", 2, 3, MemRLAttemptBucketMiddle},
+		{"attempt equals max final", 3, 3, MemRLAttemptBucketFinal},
+		{"attempt exceeds max overflow", 4, 3, MemRLAttemptBucketOverflow},
+		{"max 1, attempt 1 initial", 1, 1, MemRLAttemptBucketInitial},
+		{"max 2, attempt 1 initial", 1, 2, MemRLAttemptBucketInitial},
+		{"max 2, attempt 2 final", 2, 2, MemRLAttemptBucketFinal},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := BucketMemRLAttempt(tt.attempt, tt.maxAttempts)
+			if got != tt.want {
+				t.Errorf("BucketMemRLAttempt(%d, %d) = %q, want %q", tt.attempt, tt.maxAttempts, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEvaluateMemRLPolicy_InvalidMode(t *testing.T) {
+	contract := DefaultMemRLPolicyContract()
+	input := MemRLPolicyInput{
+		Mode:            MemRLMode("invalid_mode"),
+		FailureClass:    MemRLFailureClassVibeFail,
+		AttemptBucket:   MemRLAttemptBucketInitial,
+		MetadataPresent: true,
+	}
+
+	decision := EvaluateMemRLPolicy(contract, input)
+	// Invalid mode should fall back to contract.DefaultMode
+	if decision.Mode != contract.DefaultMode {
+		t.Errorf("expected mode %q (default), got %q", contract.DefaultMode, decision.Mode)
+	}
+}
+
+func TestEvaluateMemRLPolicy_EmptyBucketComputed(t *testing.T) {
+	contract := DefaultMemRLPolicyContract()
+	input := MemRLPolicyInput{
+		Mode:            MemRLModeObserve,
+		FailureClass:    MemRLFailureClassVibeFail,
+		AttemptBucket:   "", // empty, should be computed from attempt
+		Attempt:         1,
+		MaxAttempts:     3,
+		MetadataPresent: true,
+	}
+
+	decision := EvaluateMemRLPolicy(contract, input)
+	// Bucket should be computed from attempt 1 -> initial
+	if decision.AttemptBucket != MemRLAttemptBucketInitial {
+		t.Errorf("expected computed bucket %q, got %q", MemRLAttemptBucketInitial, decision.AttemptBucket)
+	}
+}
+
+func TestEvaluateMemRLPolicy_MetadataInferred(t *testing.T) {
+	contract := DefaultMemRLPolicyContract()
+	input := MemRLPolicyInput{
+		Mode:            MemRLModeObserve,
+		FailureClass:    MemRLFailureClassVibeFail,
+		AttemptBucket:   MemRLAttemptBucketInitial,
+		MetadataPresent: false, // should be inferred to true
+	}
+
+	decision := EvaluateMemRLPolicy(contract, input)
+	// MetadataPresent should be inferred to true since FailureClass and bucket are set
+	if !decision.MetadataPresent {
+		t.Error("expected MetadataPresent to be inferred as true")
+	}
+}
+
+func TestEvaluateMemRLPolicy_NoMatchingRule(t *testing.T) {
+	// Create a minimal contract with no rules
+	contract := DefaultMemRLPolicyContract()
+	contract.Rules = nil // remove all rules
+
+	input := MemRLPolicyInput{
+		Mode:            MemRLModeObserve,
+		FailureClass:    MemRLFailureClassVibeFail,
+		AttemptBucket:   MemRLAttemptBucketInitial,
+		MetadataPresent: true,
+	}
+
+	decision := EvaluateMemRLPolicy(contract, input)
+	if decision.RuleID != "default.no_matching_rule" {
+		t.Errorf("expected rule_id 'default.no_matching_rule', got %q", decision.RuleID)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -1004,6 +1005,128 @@ func TestFileStorage_ReadSessionFile_FileNotExist(t *testing.T) {
 	_, err := fs.readSessionFile(filepath.Join(tmpDir, "nonexistent.jsonl"))
 	if err == nil {
 		t.Error("expected error for nonexistent session file")
+	}
+}
+
+func TestAtomicWrite_ReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnlyDir := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnlyDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnlyDir, 0700) })
+
+	fs := NewFileStorage(WithBaseDir(tmpDir))
+	err := fs.atomicWrite(filepath.Join(readOnlyDir, "sub", "file.json"), func(w io.Writer) error {
+		_, e := w.Write([]byte("test"))
+		return e
+	})
+	if err == nil {
+		t.Error("expected error when directory is read-only")
+	}
+}
+
+func TestAtomicWrite_WriteFuncError(t *testing.T) {
+	tmpDir := t.TempDir()
+	fs := NewFileStorage(WithBaseDir(tmpDir))
+
+	expectedErr := fmt.Errorf("write func error")
+	err := fs.atomicWrite(filepath.Join(tmpDir, "test.json"), func(w io.Writer) error {
+		return expectedErr
+	})
+	if err == nil {
+		t.Error("expected error from writeFunc")
+	}
+	if !strings.Contains(err.Error(), "write content") {
+		t.Errorf("expected 'write content' error, got: %v", err)
+	}
+}
+
+func TestAppendJSONL_ReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnlyDir := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnlyDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnlyDir, 0700) })
+
+	fs := NewFileStorage(WithBaseDir(tmpDir))
+	err := fs.appendJSONL(filepath.Join(readOnlyDir, "sub", "file.jsonl"), map[string]string{"key": "value"})
+	if err == nil {
+		t.Error("expected error when directory is read-only for appendJSONL")
+	}
+}
+
+func TestListSessions_PermissionError(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+	indexDir := filepath.Join(baseDir, IndexDir)
+	if err := os.MkdirAll(indexDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create index file and make it unreadable
+	indexPath := filepath.Join(indexDir, IndexFile)
+	if err := os.WriteFile(indexPath, []byte(`{"session_id":"test"}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(indexPath, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(indexPath, 0600) })
+
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	_, err := fs.ListSessions()
+	if err == nil {
+		t.Error("expected error when index file is unreadable")
+	}
+}
+
+func TestQueryProvenance_PermissionError(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+	provDir := filepath.Join(baseDir, ProvenanceDir)
+	if err := os.MkdirAll(provDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create provenance file and make it unreadable
+	provPath := filepath.Join(provDir, ProvenanceFile)
+	if err := os.WriteFile(provPath, []byte(`{"artifact_path":"test"}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(provPath, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(provPath, 0600) })
+
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	_, err := fs.QueryProvenance("test")
+	if err == nil {
+		t.Error("expected error when provenance file is unreadable")
+	}
+}
+
+func TestAppendJSONL_OpenFileError(t *testing.T) {
+	tmpDir := t.TempDir()
+	fs := NewFileStorage(WithBaseDir(tmpDir))
+
+	// Create the directory but make it readable (so MkdirAll succeeds) but not writable
+	targetDir := filepath.Join(tmpDir, "append-target")
+	if err := os.MkdirAll(targetDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(targetDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(targetDir, 0700) })
+
+	err := fs.appendJSONL(filepath.Join(targetDir, "test.jsonl"), map[string]string{"key": "value"})
+	if err == nil {
+		t.Error("expected error when directory is not writable for appendJSONL")
+	}
+	if !strings.Contains(err.Error(), "open file") {
+		t.Errorf("expected 'open file' error, got: %v", err)
 	}
 }
 
