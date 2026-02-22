@@ -560,3 +560,35 @@ func TestEvaluateMemRLPolicy_PriorityTiebreaker(t *testing.T) {
 		t.Errorf("expected skip action, got %q", decision.Action)
 	}
 }
+
+// --- Benchmarks ---
+
+func BenchmarkEvaluateMemRLPolicy(b *testing.B) {
+	contract := DefaultMemRLPolicyContract()
+	input := MemRLPolicyInput{
+		Mode:         MemRLModeEnforce,
+		FailureClass: MemRLFailureClassVibeFail,
+		Attempt:      2,
+		MaxAttempts:  5,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		EvaluateMemRLPolicy(contract, input)
+	}
+}
+
+func BenchmarkValidateMemRLPolicyContract(b *testing.B) {
+	contract := DefaultMemRLPolicyContract()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = ValidateMemRLPolicyContract(contract)
+	}
+}
+
+func BenchmarkBucketMemRLAttempt(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		BucketMemRLAttempt(i%10+1, 10)
+	}
+}
