@@ -324,22 +324,29 @@ func (p *Parser) parseToolResult(block map[string]any) *types.ToolCall {
 		toolCall.Error = "tool error"
 	}
 
-	// Extract result content
-	switch content := block["content"].(type) {
+	toolCall.Output = p.extractToolResultContent(block["content"])
+	return toolCall
+}
+
+// extractToolResultContent extracts text from a tool_result content field,
+// which may be a plain string or an array of text blocks.
+func (p *Parser) extractToolResultContent(content any) string {
+	switch c := content.(type) {
 	case string:
-		toolCall.Output = p.truncate(content)
+		return p.truncate(c)
 	case []any:
-		// Content can be an array of text blocks
-		for _, item := range content {
+		var out string
+		for _, item := range c {
 			if itemMap, ok := item.(map[string]any); ok {
 				if text, ok := itemMap["text"].(string); ok {
-					toolCall.Output += p.truncate(text)
+					out += p.truncate(text)
 				}
 			}
 		}
+		return out
+	default:
+		return ""
 	}
-
-	return toolCall
 }
 
 // truncate limits content to MaxContentLength characters.
