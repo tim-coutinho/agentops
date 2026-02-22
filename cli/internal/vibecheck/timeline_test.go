@@ -130,3 +130,37 @@ func TestParseTimeline_NoTrailingNewline(t *testing.T) {
 		t.Errorf("expected 1 file changed, got %d", events[0].FilesChanged)
 	}
 }
+
+func TestParseGitLog_ConsecutiveHeaders(t *testing.T) {
+	// Exercise the "flush pending event without trailing blank line" path
+	// (line 67-69): two header lines back-to-back without a blank separator.
+	raw := `abc111|||2026-02-15T10:00:00-05:00|||Alice|||feat: first commit
+def222|||2026-02-15T09:00:00-05:00|||Bob|||feat: second commit
+`
+
+	events, err := parseGitLog(raw, "|||")
+	if err != nil {
+		t.Fatalf("parseGitLog returned error: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+	// Sorted newest first.
+	if events[0].SHA != "abc111" {
+		t.Errorf("expected first event SHA abc111, got %s", events[0].SHA)
+	}
+	if events[1].SHA != "def222" {
+		t.Errorf("expected second event SHA def222, got %s", events[1].SHA)
+	}
+}
+
+func TestParseGitLog_InvalidTimestamp(t *testing.T) {
+	// Exercise the timestamp parse error path (line 72-74).
+	raw := `abc111|||not-a-valid-timestamp|||Alice|||feat: bad ts
+`
+
+	_, err := parseGitLog(raw, "|||")
+	if err == nil {
+		t.Fatal("expected error for invalid timestamp")
+	}
+}

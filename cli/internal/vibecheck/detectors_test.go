@@ -323,3 +323,33 @@ func TestDetectClassifyHealth_Healthy(t *testing.T) {
 		t.Errorf("expected healthy, got %s", health)
 	}
 }
+
+func TestHasFileOverlap_EmptyLists(t *testing.T) {
+	// Exercise the len(a) == 0 || len(b) == 0 early return path (line 74-76).
+	if hasFileOverlap(nil, []string{"auth.go"}) {
+		t.Error("expected false when a is nil")
+	}
+	if hasFileOverlap([]string{"auth.go"}, nil) {
+		t.Error("expected false when b is nil")
+	}
+	if hasFileOverlap([]string{}, []string{"auth.go"}) {
+		t.Error("expected false when a is empty")
+	}
+	if hasFileOverlap([]string{"auth.go"}, []string{}) {
+		t.Error("expected false when b is empty")
+	}
+}
+
+func TestDetectTestsLie_NonFixFollowUp(t *testing.T) {
+	// Exercise the !isFixMessage continue path (line 117-118).
+	// Success claim followed by a non-fix commit within window, then nothing else.
+	events := []TimelineEvent{
+		makeEvent("aaa", 0, "feat: auth working now", []string{"auth.go"}, 10, 2),
+		makeEvent("bbb", 10, "feat: add dashboard", []string{"auth.go"}, 20, 0), // NOT a fix
+	}
+
+	findings := DetectTestsLie(events)
+	if len(findings) != 0 {
+		t.Errorf("expected no findings when follow-up is not a fix, got %d", len(findings))
+	}
+}

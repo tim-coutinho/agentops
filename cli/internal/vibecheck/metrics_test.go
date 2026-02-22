@@ -648,3 +648,76 @@ func TestMeanStddev_EmptySlice(t *testing.T) {
 		t.Errorf("expected (0, 0) for empty slice, got (%f, %f)", mean, stddev)
 	}
 }
+
+func TestComputeOverallRating_ClampAbove100(t *testing.T) {
+	// Exercise the total > 100 clamping path (line 54-56).
+	// Create 5 metrics that all pass plus have high values to push total > 100.
+	// Each passed metric gets 20 points, and 5 * 20 = 100.
+	// To exceed 100, use fewer than 5 metrics (e.g., 3 passed).
+	// The normalization adjusts: total / count * 5 = 60 / 3 * 5 = 100.
+	// That equals 100 exactly, not > 100. Need a different approach.
+	//
+	// Actually, with count != 5, total = total / count * 5.
+	// If count = 2 and both pass: total = 40, normalized = 40/2*5 = 100.
+	// If count = 1 and it passes: total = 20, normalized = 20/1*5 = 100.
+	// These equal 100, not > 100. The only way to exceed 100 is if
+	// partial credit + passed sums exceed expectations, which won't happen
+	// with the capped partial credit formula.
+	//
+	// With count = 4, all pass: total=80, normalized = 80/4*5 = 100. Still exact.
+	// With count = 3, all pass: total=60, normalized = 60/3*5 = 100. Still exact.
+	// With count = 6, all pass: total=120, normalized = 120/6*5 = 100. Still exact.
+	//
+	// The > 100 and < 0 clamps seem unreachable with normal inputs.
+	// Let's verify this by testing the boundary instead.
+
+	// Boundary test: 5 metrics all pass => score exactly 100.
+	metrics := map[string]Metric{
+		"velocity": {Name: "velocity", Value: 5, Threshold: 3, Passed: true},
+		"rework":   {Name: "rework", Value: 10, Threshold: 30, Passed: true},
+		"trust":    {Name: "trust", Value: 80, Threshold: 50, Passed: true},
+		"flow":     {Name: "flow", Value: 90, Threshold: 50, Passed: true},
+		"spirals":  {Name: "spirals", Value: 0, Threshold: 5, Passed: true},
+	}
+	score, grade := ComputeOverallRating(metrics)
+	if score != 100 {
+		t.Errorf("expected score 100 for all passing metrics, got %f", score)
+	}
+	if grade != "A" {
+		t.Errorf("expected grade A, got %s", grade)
+	}
+}
+
+func TestMetricPartialCredit_ReworkValueAbove100(t *testing.T) {
+	// Exercise the ratio < 0 path (line 79-81) in metricPartialCredit.
+	// For "rework" with value >= threshold: ratio = (100 - value) / (100 - threshold)
+	// If value = 110, threshold = 50: ratio = (100-110)/(100-50) = -10/50 = -0.2 < 0 => return 0
+	m := Metric{
+		Name:      "rework",
+		Value:     110, // Above 100 -- makes ratio negative
+		Threshold: 50,
+		Passed:    false,
+	}
+	credit := metricPartialCredit(m)
+	if credit != 0 {
+		t.Errorf("expected 0 partial credit for rework value>100, got %f", credit)
+	}
+}
+
+func TestMetricPartialCredit_VelocityNegativeThreshold(t *testing.T) {
+	// Exercise the return 0 path (line 95) in metricPartialCredit.
+	// For "velocity" with threshold <= 0 but != 0 (negative).
+	// The top-level check `if m.Threshold == 0` returns early,
+	// so a negative threshold falls through to the switch case,
+	// where `if m.Threshold > 0` is false, reaching line 95.
+	m := Metric{
+		Name:      "velocity",
+		Value:     3,
+		Threshold: -1, // negative threshold triggers the else path
+		Passed:    false,
+	}
+	credit := metricPartialCredit(m)
+	if credit != 0 {
+		t.Errorf("expected 0 partial credit for negative threshold, got %f", credit)
+	}
+}
