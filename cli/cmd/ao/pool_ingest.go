@@ -266,6 +266,40 @@ func parseLearningBlocks(md string) []learningBlock {
 	return blocks
 }
 
+// parseYAMLFrontmatter parses a raw YAML frontmatter block into a string map.
+func parseYAMLFrontmatter(raw string) map[string]string {
+	fm := make(map[string]string)
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(parts[0]))
+		val := strings.TrimSpace(parts[1])
+		fm[key] = strings.Trim(val, `"'`)
+	}
+	return fm
+}
+
+// extractFirstHeadingText finds the first non-empty, non-heading-marker text line from body.
+func extractFirstHeadingText(body string) string {
+	for _, line := range strings.Split(body, "\n") {
+		l := strings.TrimSpace(line)
+		if l == "" {
+			continue
+		}
+		l = strings.TrimSpace(strings.TrimPrefix(l, "#"))
+		if l != "" {
+			return l
+		}
+	}
+	return ""
+}
+
 func parseLegacyFrontmatterLearning(md string) (learningBlock, bool) {
 	fmMatch := reFrontmatter.FindStringSubmatchIndex(md)
 	if len(fmMatch) < 4 {
@@ -278,20 +312,7 @@ func parseLegacyFrontmatterLearning(md string) (learningBlock, bool) {
 		return learningBlock{}, false
 	}
 
-	frontmatter := make(map[string]string)
-	for _, line := range strings.Split(fmRaw, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.ToLower(strings.TrimSpace(parts[0]))
-		val := strings.TrimSpace(parts[1])
-		frontmatter[key] = strings.Trim(val, `"'`)
-	}
+	frontmatter := parseYAMLFrontmatter(fmRaw)
 
 	// Legacy /learn files include type/source/date frontmatter. Require type to
 	// avoid treating arbitrary markdown files as candidates.
@@ -300,87 +321,109 @@ func parseLegacyFrontmatterLearning(md string) (learningBlock, bool) {
 		return learningBlock{}, false
 	}
 
-	title := ""
-	for _, line := range strings.Split(body, "\n") {
-		l := strings.TrimSpace(line)
-		if l == "" {
-			continue
-		}
-		l = strings.TrimPrefix(l, "#")
-		l = strings.TrimSpace(l)
-		if l != "" {
-			title = l
-			break
-		}
-	}
+	title := extractFirstHeadingText(body)
 	if title == "" {
 		return learningBlock{}, false
 	}
 
-	confidence := cmp.Or(strings.TrimSpace(frontmatter["confidence"]), "medium")
-
-	id := cmp.Or(strings.TrimSpace(frontmatter["id"]), "legacy")
-
 	return learningBlock{
 		Title:      title,
-		ID:         id,
+		ID:         cmp.Or(strings.TrimSpace(frontmatter["id"]), "legacy"),
 		Category:   category,
-		Confidence: confidence,
+		Confidence: cmp.Or(strings.TrimSpace(frontmatter["confidence"]), "medium"),
 		Body:       body,
 	}, true
 }
 
+// dateStrategy is a function that attempts to extract a date from its inputs.
+type dateStrategy func(md, path string) (time.Time, bool)
+
+// dateFromFrontmatter extracts a date from YAML frontmatter.
+func dateFromFrontmatter(md, _ string) (time.Time, bool) {
+	fm := reFrontmatter.FindStringSubmatch(md)
+	if len(fm) != 2 {
+		return time.Time{}, false
+	}
+	m := reDateYAML.FindStringSubmatch(fm[1])
+	if len(m) != 2 {
+		return time.Time{}, false
+	}
+	t, err := time.Parse("2006-01-02", strings.TrimSpace(m[1]))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t.UTC(), true
+}
+
+// dateFromMarkdownField extracts a date from a **Date** markdown field.
+func dateFromMarkdownField(md, _ string) (time.Time, bool) {
+	m := reDateMD.FindStringSubmatch(md)
+	if len(m) != 2 {
+		return time.Time{}, false
+	}
+	t, err := time.Parse("2006-01-02", strings.TrimSpace(m[1]))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t.UTC(), true
+}
+
+// dateFromFilenamePrefix extracts a YYYY-MM-DD date from the filename prefix.
+func dateFromFilenamePrefix(_, path string) (time.Time, bool) {
+	base := filepath.Base(path)
+	if len(base) < 10 {
+		return time.Time{}, false
+	}
+	t, err := time.Parse("2006-01-02", base[:10])
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t.UTC(), true
+}
+
+// dateFromFileMtime uses the file's modification time as a fallback.
+func dateFromFileMtime(_, path string) (time.Time, bool) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return info.ModTime().UTC(), true
+}
+
+// dateStrategies defines the ordered list of date extraction strategies.
+var dateStrategies = []dateStrategy{
+	dateFromFrontmatter,
+	dateFromMarkdownField,
+	dateFromFilenamePrefix,
+	dateFromFileMtime,
+}
+
 func parsePendingFileHeader(md, path string) (fileDate time.Time, sessionHint string) {
-	// 1) frontmatter date
-	if fm := reFrontmatter.FindStringSubmatch(md); len(fm) == 2 {
-		if m := reDateYAML.FindStringSubmatch(fm[1]); len(m) == 2 {
-			if t, err := time.Parse("2006-01-02", strings.TrimSpace(m[1])); err == nil {
-				fileDate = t.UTC()
-			}
+	for _, strategy := range dateStrategies {
+		if t, ok := strategy(md, path); ok {
+			fileDate = t
+			break
 		}
 	}
-
-	// 2) markdown **Date**
 	if fileDate.IsZero() {
-		if m := reDateMD.FindStringSubmatch(md); len(m) == 2 {
-			if t, err := time.Parse("2006-01-02", strings.TrimSpace(m[1])); err == nil {
-				fileDate = t.UTC()
-			}
-		}
+		fileDate = time.Now().UTC()
 	}
 
-	// 3) filename prefix YYYY-MM-DD
-	if fileDate.IsZero() {
-		base := filepath.Base(path)
-		if len(base) >= 10 {
-			if t, err := time.Parse("2006-01-02", base[:10]); err == nil {
-				fileDate = t.UTC()
-			}
-		}
-	}
+	sessionHint = extractSessionHint(md, path)
+	return fileDate, sessionHint
+}
 
-	// Session hint: look for ag-xxxx in the first ~2KB (fast).
+// extractSessionHint finds an ag-xxxx session ID in the first ~2KB of the content,
+// falling back to the filename base.
+func extractSessionHint(md, path string) string {
 	head := md
 	if len(head) > 2048 {
 		head = head[:2048]
 	}
 	if m := reSessionHint.FindString(head); m != "" {
-		sessionHint = m
-	} else {
-		// fallback: file base (safe slug)
-		sessionHint = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		return m
 	}
-
-	if fileDate.IsZero() {
-		// best-effort fallback: use file mtime (UTC)
-		if info, err := os.Stat(path); err == nil {
-			fileDate = info.ModTime().UTC()
-		} else {
-			fileDate = time.Now().UTC()
-		}
-	}
-
-	return fileDate, sessionHint
+	return strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 }
 
 func buildCandidateFromLearningBlock(b learningBlock, srcPath string, fileDate time.Time, sessionHint string) (types.Candidate, types.Scoring, bool) {
@@ -564,29 +607,22 @@ func rubricWeightedSum(r types.RubricScores, w taxonomy.RubricWeights) float64 {
 		r.Confidence*w.Confidence
 }
 
+// isSlugAlphanumeric returns true if the rune should be kept as-is in a slug.
+func isSlugAlphanumeric(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+}
+
 func slugify(s string) string {
 	s = strings.ToLower(s)
 	var b strings.Builder
 	lastDash := false
 	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z':
+		if isSlugAlphanumeric(r) {
 			b.WriteRune(r)
 			lastDash = false
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-			lastDash = false
-		case r == '-' || r == '_':
-			if !lastDash {
-				b.WriteRune('-')
-				lastDash = true
-			}
-		default:
-			// collapse everything else to dash
-			if !lastDash {
-				b.WriteRune('-')
-				lastDash = true
-			}
+		} else if !lastDash {
+			b.WriteRune('-')
+			lastDash = true
 		}
 	}
 	return cmp.Or(strings.Trim(b.String(), "-"), "cand")
