@@ -188,14 +188,52 @@ func (c *Chain) Save() error {
 		return ErrChainNoPath
 	}
 
-	// Ensure directory exists
+	return c.withLockedFile(os.O_RDWR|os.O_CREATE|os.O_TRUNC, func(f *os.File) error {
+		if err := c.writeMetadata(f); err != nil {
+			return err
+		}
+		return c.writeEntries(f)
+	})
+}
+
+// Append adds a new entry to the chain with file locking.
+// This is atomic and safe for concurrent access.
+func (c *Chain) Append(entry ChainEntry) error {
+	if c.path == "" {
+		return ErrChainNoPath
+	}
+
+	return c.withLockedFile(os.O_WRONLY|os.O_CREATE|os.O_APPEND, func(f *os.File) error {
+		// Write metadata header if file is new
+		stat, _ := f.Stat()
+		if stat.Size() == 0 {
+			if err := c.writeMetadata(f); err != nil {
+				return err
+			}
+		}
+
+		line, err := json.Marshal(entry)
+		if err != nil {
+			return fmt.Errorf("marshal entry: %w", err)
+		}
+		if _, err := f.Write(append(line, '\n')); err != nil {
+			return fmt.Errorf("write entry: %w", err)
+		}
+
+		c.Entries = append(c.Entries, entry)
+		return nil
+	})
+}
+
+// withLockedFile opens the chain file with the given flags, acquires an exclusive
+// lock, and calls fn. The file is closed and lock released on return.
+func (c *Chain) withLockedFile(flags int, fn func(*os.File) error) error {
 	dir := filepath.Dir(c.path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create chain directory: %w", err)
 	}
 
-	// Open file with exclusive lock
-	f, err := os.OpenFile(c.path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+	f, err := os.OpenFile(c.path, flags, 0600)
 	if err != nil {
 		return fmt.Errorf("open chain file: %w", err)
 	}
@@ -203,7 +241,6 @@ func (c *Chain) Save() error {
 		_ = f.Close() //nolint:errcheck // sync already done via lock release
 	}()
 
-	// Acquire exclusive lock
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
 		return fmt.Errorf("lock chain file: %w", err)
 	}
@@ -211,7 +248,11 @@ func (c *Chain) Save() error {
 		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) //nolint:errcheck // unlock best-effort
 	}()
 
-	// Write chain metadata on first line
+	return fn(f)
+}
+
+// writeMetadata serializes and writes the chain metadata header line.
+func (c *Chain) writeMetadata(f *os.File) error {
 	meta := struct {
 		ID      string    `json:"id"`
 		Started time.Time `json:"started"`
@@ -225,8 +266,11 @@ func (c *Chain) Save() error {
 	if _, err := f.Write(append(metaLine, '\n')); err != nil {
 		return fmt.Errorf("write chain metadata: %w", err)
 	}
+	return nil
+}
 
-	// Write each entry
+// writeEntries serializes and writes all chain entries.
+func (c *Chain) writeEntries(f *os.File) error {
 	for _, entry := range c.Entries {
 		line, err := json.Marshal(entry)
 		if err != nil {
@@ -236,69 +280,6 @@ func (c *Chain) Save() error {
 			return fmt.Errorf("write chain entry: %w", err)
 		}
 	}
-
-	return nil
-}
-
-// Append adds a new entry to the chain with file locking.
-// This is atomic and safe for concurrent access.
-func (c *Chain) Append(entry ChainEntry) error {
-	if c.path == "" {
-		return ErrChainNoPath
-	}
-
-	// Ensure directory exists
-	dir := filepath.Dir(c.path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("create chain directory: %w", err)
-	}
-
-	// Open file for append with exclusive lock
-	f, err := os.OpenFile(c.path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
-	if err != nil {
-		return fmt.Errorf("open chain file: %w", err)
-	}
-	defer func() {
-		_ = f.Close() //nolint:errcheck // sync already done via lock release
-	}()
-
-	// Acquire exclusive lock
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		return fmt.Errorf("lock chain file: %w", err)
-	}
-	defer func() {
-		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) //nolint:errcheck // unlock best-effort
-	}()
-
-	// Check if file is empty (needs metadata)
-	stat, _ := f.Stat()
-	if stat.Size() == 0 {
-		meta := struct {
-			ID      string    `json:"id"`
-			Started time.Time `json:"started"`
-			EpicID  string    `json:"epic_id,omitempty"`
-		}{
-			ID:      c.ID,
-			Started: c.Started,
-			EpicID:  c.EpicID,
-		}
-		metaLine, _ := json.Marshal(meta)
-		if _, err := f.Write(append(metaLine, '\n')); err != nil {
-			return fmt.Errorf("write chain metadata: %w", err)
-		}
-	}
-
-	// Write entry
-	line, err := json.Marshal(entry)
-	if err != nil {
-		return fmt.Errorf("marshal entry: %w", err)
-	}
-	if _, err := f.Write(append(line, '\n')); err != nil {
-		return fmt.Errorf("write entry: %w", err)
-	}
-
-	// Update in-memory state
-	c.Entries = append(c.Entries, entry)
 	return nil
 }
 
