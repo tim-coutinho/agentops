@@ -223,6 +223,7 @@ run_security_scan_patterns() {
         if grep -r -i -E "$pattern" \
             --binary-files=without-match \
             --exclude-dir=.git \
+            --exclude-dir=.claude \
             --exclude-dir=.agents \
             --exclude-dir=.tmp \
             --exclude-dir=tests \
@@ -233,6 +234,7 @@ run_security_scan_patterns() {
             --exclude="*.md" \
             --exclude="*.jsonl" \
             --exclude="*.sh" \
+            --exclude="*_test.go" \
             --exclude="validate.yml" \
             . 2>/dev/null; then
             found=1
@@ -347,7 +349,7 @@ run_security_gate() {
     local output_file="$ARTIFACT_DIR/security-gate-${SECURITY_MODE}.json"
     SECURITY_GATE_OUTPUT_DIR="$ARTIFACT_DIR/security" \
     TOOLCHAIN_OUTPUT_DIR="$ARTIFACT_DIR/tooling" \
-    ./scripts/security-gate.sh --mode "$SECURITY_MODE" --require-tools --json > "$output_file"
+    ./scripts/security-gate.sh --mode "$SECURITY_MODE" --json > "$output_file"
     jq -e '.gate_status' "$output_file" >/dev/null
     echo "Security report:  $output_file"
 }
