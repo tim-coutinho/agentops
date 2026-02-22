@@ -173,45 +173,12 @@ func (p *Pool) List(opts ListOptions) ([]PoolEntry, error) {
 
 // ListPaginated returns pool entries with pagination metadata.
 func (p *Pool) ListPaginated(opts ListOptions) (*ListResult, error) {
-	var entries []PoolEntry
-
-	// Scan all pool directories
-	dirs := map[types.PoolStatus]string{
-		types.PoolStatusPending:  filepath.Join(p.PoolPath, PendingDir),
-		types.PoolStatusStaged:   filepath.Join(p.PoolPath, StagedDir),
-		types.PoolStatusArchived: filepath.Join(p.PoolPath, ValidatedDir),
-		types.PoolStatusRejected: filepath.Join(p.PoolPath, RejectedDir),
+	entries, err := p.collectEntries(opts.Status)
+	if err != nil {
+		return nil, err
 	}
 
-	for status, dir := range dirs {
-		// Skip if filtering by status and this doesn't match
-		if opts.Status != "" && opts.Status != status {
-			continue
-		}
-
-		dirEntries, err := p.scanDirectory(dir, status)
-		if err != nil {
-			if os.IsNotExist(err) {
-				// Directory doesn't exist yet, expected for new pools
-				continue
-			}
-			// Other errors (permission, disk) should be reported
-			return nil, fmt.Errorf("scan %s: %w", dir, err)
-		}
-
-		entries = append(entries, dirEntries...)
-	}
-
-	// Filter by tier if specified
-	if opts.Tier != "" {
-		filtered := make([]PoolEntry, 0)
-		for _, e := range entries {
-			if e.Candidate.Tier == opts.Tier {
-				filtered = append(filtered, e)
-			}
-		}
-		entries = filtered
-	}
+	entries = filterByTier(entries, opts.Tier)
 
 	// Sort by added time (newest first)
 	sort.Slice(entries, func(i, j int) bool {
@@ -219,25 +186,66 @@ func (p *Pool) ListPaginated(opts ListOptions) (*ListResult, error) {
 	})
 
 	total := len(entries)
-
-	// Apply offset
-	if opts.Offset > 0 {
-		if opts.Offset >= len(entries) {
-			entries = nil
-		} else {
-			entries = entries[opts.Offset:]
-		}
-	}
-
-	// Apply limit
-	if opts.Limit > 0 && len(entries) > opts.Limit {
-		entries = entries[:opts.Limit]
-	}
+	entries = paginate(entries, opts.Offset, opts.Limit)
 
 	return &ListResult{
 		Entries: entries,
 		Total:   total,
 	}, nil
+}
+
+// collectEntries scans all pool directories, optionally filtering by status.
+func (p *Pool) collectEntries(statusFilter types.PoolStatus) ([]PoolEntry, error) {
+	dirs := map[types.PoolStatus]string{
+		types.PoolStatusPending:  filepath.Join(p.PoolPath, PendingDir),
+		types.PoolStatusStaged:   filepath.Join(p.PoolPath, StagedDir),
+		types.PoolStatusArchived: filepath.Join(p.PoolPath, ValidatedDir),
+		types.PoolStatusRejected: filepath.Join(p.PoolPath, RejectedDir),
+	}
+
+	var entries []PoolEntry
+	for status, dir := range dirs {
+		if statusFilter != "" && statusFilter != status {
+			continue
+		}
+		dirEntries, err := p.scanDirectory(dir, status)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("scan %s: %w", dir, err)
+		}
+		entries = append(entries, dirEntries...)
+	}
+	return entries, nil
+}
+
+// filterByTier returns only entries matching the given tier; returns all if tier is empty.
+func filterByTier(entries []PoolEntry, tier types.Tier) []PoolEntry {
+	if tier == "" {
+		return entries
+	}
+	filtered := make([]PoolEntry, 0, len(entries))
+	for _, e := range entries {
+		if e.Candidate.Tier == tier {
+			filtered = append(filtered, e)
+		}
+	}
+	return filtered
+}
+
+// paginate applies offset and limit to a slice of entries.
+func paginate(entries []PoolEntry, offset, limit int) []PoolEntry {
+	if offset > 0 {
+		if offset >= len(entries) {
+			return nil
+		}
+		entries = entries[offset:]
+	}
+	if limit > 0 && len(entries) > limit {
+		entries = entries[:limit]
+	}
+	return entries
 }
 
 // scanDirectory reads all entries from a pool directory.
