@@ -1,0 +1,168 @@
+package goals
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestAppendAndLoadHistory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "history.jsonl")
+
+	entry1 := HistoryEntry{
+		Timestamp:    "2026-01-01T10:00:00Z",
+		GoalsPassing: 5,
+		GoalsTotal:   8,
+		Score:        62.5,
+		SnapshotPath: "/tmp/snap1.json",
+		GitSHA:       "abc123",
+	}
+	entry2 := HistoryEntry{
+		Timestamp:    "2026-01-02T10:00:00Z",
+		GoalsPassing: 7,
+		GoalsTotal:   8,
+		Score:        87.5,
+		SnapshotPath: "/tmp/snap2.json",
+		GitSHA:       "def456",
+	}
+
+	if err := AppendHistory(entry1, path); err != nil {
+		t.Fatalf("AppendHistory entry1: %v", err)
+	}
+	if err := AppendHistory(entry2, path); err != nil {
+		t.Fatalf("AppendHistory entry2: %v", err)
+	}
+
+	entries, err := LoadHistory(path)
+	if err != nil {
+		t.Fatalf("LoadHistory: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].GitSHA != "abc123" {
+		t.Errorf("entry[0].GitSHA = %q, want abc123", entries[0].GitSHA)
+	}
+	if entries[1].Score != 87.5 {
+		t.Errorf("entry[1].Score = %f, want 87.5", entries[1].Score)
+	}
+}
+
+func TestLoadHistory_NonExistentFile(t *testing.T) {
+	entries, err := LoadHistory("/nonexistent/history.jsonl")
+	if err != nil {
+		t.Fatalf("expected no error for missing file, got: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected empty slice for missing file, got %d entries", len(entries))
+	}
+}
+
+func TestLoadHistory_EmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	emptyPath := filepath.Join(dir, "empty.jsonl")
+	if err := os.WriteFile(emptyPath, []byte{}, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := LoadHistory(emptyPath)
+	if err != nil {
+		t.Fatalf("LoadHistory empty file: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries for empty file, got %d", len(entries))
+	}
+}
+
+func TestQueryHistory_FiltersByTime(t *testing.T) {
+	entries := []HistoryEntry{
+		{Timestamp: "2026-01-01T10:00:00Z", GoalsPassing: 1},
+		{Timestamp: "2026-01-02T10:00:00Z", GoalsPassing: 2},
+		{Timestamp: "2026-01-03T10:00:00Z", GoalsPassing: 3},
+	}
+
+	since, _ := time.Parse(time.RFC3339, "2026-01-02T00:00:00Z")
+	result := QueryHistory(entries, "", since)
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 entries >= 2026-01-02, got %d", len(result))
+	}
+	if result[0].GoalsPassing != 2 {
+		t.Errorf("first result GoalsPassing = %d, want 2", result[0].GoalsPassing)
+	}
+}
+
+func TestQueryHistory_NoMatches(t *testing.T) {
+	entries := []HistoryEntry{
+		{Timestamp: "2025-01-01T10:00:00Z", GoalsPassing: 1},
+	}
+	since, _ := time.Parse(time.RFC3339, "2026-01-01T00:00:00Z")
+	result := QueryHistory(entries, "", since)
+	if len(result) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(result))
+	}
+}
+
+func TestQueryHistory_SkipsMalformedTimestamps(t *testing.T) {
+	entries := []HistoryEntry{
+		{Timestamp: "not-a-timestamp", GoalsPassing: 99},
+		{Timestamp: "2026-01-02T10:00:00Z", GoalsPassing: 5},
+	}
+	since, _ := time.Parse(time.RFC3339, "2026-01-01T00:00:00Z")
+	result := QueryHistory(entries, "", since)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry (skipping malformed), got %d", len(result))
+	}
+	if result[0].GoalsPassing != 5 {
+		t.Errorf("GoalsPassing = %d, want 5", result[0].GoalsPassing)
+	}
+}
+
+func TestQueryHistory_EmptyEntries(t *testing.T) {
+	since := time.Now()
+	result := QueryHistory([]HistoryEntry{}, "", since)
+	if len(result) != 0 {
+		t.Errorf("expected empty result, got %d", len(result))
+	}
+}
+
+func TestQueryHistory_GoalIDParameterIgnored(t *testing.T) {
+	// goalID is currently unused but accepted; ensure no panic
+	entries := []HistoryEntry{
+		{Timestamp: "2026-01-01T10:00:00Z", GoalsPassing: 1},
+	}
+	since, _ := time.Parse(time.RFC3339, "2025-01-01T00:00:00Z")
+	result := QueryHistory(entries, "some-goal-id", since)
+	if len(result) != 1 {
+		t.Errorf("goalID filter should be ignored, expected 1 entry, got %d", len(result))
+	}
+}
+
+func TestAppendHistory_GoalsAdded(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "history.jsonl")
+
+	entry := HistoryEntry{
+		Timestamp:    "2026-01-01T10:00:00Z",
+		GoalsPassing: 3,
+		GoalsTotal:   5,
+		GoalsAdded:   2,
+		Score:        60.0,
+	}
+	if err := AppendHistory(entry, path); err != nil {
+		t.Fatalf("AppendHistory: %v", err)
+	}
+
+	entries, err := LoadHistory(path)
+	if err != nil {
+		t.Fatalf("LoadHistory: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].GoalsAdded != 2 {
+		t.Errorf("GoalsAdded = %d, want 2", entries[0].GoalsAdded)
+	}
+}

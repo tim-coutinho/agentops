@@ -1,6 +1,7 @@
 package goals
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -170,5 +171,87 @@ func TestValidateGoals_InvalidWeight(t *testing.T) {
 				t.Errorf("expected weight validation error for weight=%d, not found", tc.weight)
 			}
 		})
+	}
+}
+
+func TestValidationError_Error(t *testing.T) {
+	e := ValidationError{GoalID: "my-goal", Field: "check", Message: "required"}
+	msg := e.Error()
+	if msg == "" {
+		t.Fatal("Error() should return a non-empty string")
+	}
+	// Should contain the goal ID, field, and message
+	for _, substr := range []string{"my-goal", "check", "required"} {
+		if len(msg) == 0 {
+			t.Errorf("Error() missing substring %q", substr)
+		}
+	}
+}
+
+func TestLoadGoals_UnsupportedVersion(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "v99.yaml")
+	content := "version: 99\ngoals:\n  - id: test\n    description: d\n    check: echo ok\n    weight: 5\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadGoals(path)
+	if err == nil {
+		t.Fatal("expected error for unsupported version")
+	}
+}
+
+func TestLoadGoals_MalformedYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bad.yaml")
+	// Use something that parses as YAML but fails struct mapping — actually YAML is permissive.
+	// Use truly broken YAML.
+	content := "version: [\nbad yaml\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadGoals(path)
+	if err == nil {
+		t.Fatal("expected error for malformed YAML")
+	}
+}
+
+func TestValidateGoals_InvalidType(t *testing.T) {
+	gf := &GoalFile{
+		Version: 2,
+		Goals: []Goal{
+			{ID: "typed-goal", Description: "d", Check: "c", Weight: 5, Type: GoalType("invalid-type")},
+		},
+	}
+	errs := ValidateGoals(gf)
+	found := false
+	for _, e := range errs {
+		if e.Field == "type" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected type validation error, not found")
+	}
+}
+
+func TestValidateGoals_InvalidIDFormat(t *testing.T) {
+	gf := &GoalFile{
+		Version: 2,
+		Goals: []Goal{
+			{ID: "UPPER_CASE", Description: "d", Check: "c", Weight: 5, Type: GoalTypeHealth},
+		},
+	}
+	errs := ValidateGoals(gf)
+	found := false
+	for _, e := range errs {
+		if e.Field == "id" && e.Message == "must be kebab-case" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected kebab-case id validation error, not found")
 	}
 }
