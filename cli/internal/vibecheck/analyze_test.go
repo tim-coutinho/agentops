@@ -1,6 +1,7 @@
 package vibecheck
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -149,6 +150,9 @@ func TestAnalyzeMissingRepoPath(t *testing.T) {
 	result, err := Analyze(opts)
 	if err == nil {
 		t.Fatal("expected error for missing RepoPath, got nil")
+	}
+	if !errors.Is(err, ErrRepoPathRequired) {
+		t.Errorf("expected ErrRepoPathRequired, got %v", err)
 	}
 	if result != nil {
 		t.Fatal("expected nil result for error case")

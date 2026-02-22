@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -460,8 +461,28 @@ func TestFileStorage_ReadSessionFile_EmptyJSONL(t *testing.T) {
 	if err == nil {
 		t.Fatal("readSessionFile(empty) expected error, got nil")
 	}
-	if !contains(err.Error(), "empty session file") {
-		t.Errorf("readSessionFile(empty) error = %v, want 'empty session file'", err)
+	if !errors.Is(err, ErrEmptySessionFile) {
+		t.Errorf("readSessionFile(empty) error = %v, want ErrEmptySessionFile", err)
+	}
+}
+
+func TestWriteSession_SentinelErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+	fs := NewFileStorage(
+		WithBaseDir(baseDir),
+		WithFormatters(&jsonlFormatter{}),
+	)
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := fs.WriteSession(&Session{ID: ""})
+	if err == nil {
+		t.Fatal("expected error for empty session ID")
+	}
+	if !errors.Is(err, ErrSessionIDRequired) {
+		t.Errorf("expected ErrSessionIDRequired, got %v", err)
 	}
 }
 

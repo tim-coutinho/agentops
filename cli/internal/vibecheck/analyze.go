@@ -22,7 +22,7 @@ type AnalyzeOptions struct {
 func Analyze(opts AnalyzeOptions) (*VibeCheckResult, error) {
 	// Validate inputs
 	if opts.RepoPath == "" {
-		return nil, fmt.Errorf("RepoPath is required")
+		return nil, ErrRepoPathRequired
 	}
 
 	// Parse timeline from git log

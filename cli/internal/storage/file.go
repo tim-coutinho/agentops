@@ -100,7 +100,7 @@ func (fs *FileStorage) Init() error {
 // Returns the path to the primary session file.
 func (fs *FileStorage) WriteSession(session *Session) (string, error) {
 	if session.ID == "" {
-		return "", fmt.Errorf("session ID is required")
+		return "", ErrSessionIDRequired
 	}
 
 	fs.mu.Lock()
@@ -371,7 +371,7 @@ func (fs *FileStorage) readSessionFile(path string) (*Session, error) {
 			}
 			return &session, nil
 		}
-		return nil, fmt.Errorf("empty session file")
+		return nil, ErrEmptySessionFile
 	}
 
 	// For markdown format, we'd need to parse YAML frontmatter
