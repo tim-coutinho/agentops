@@ -183,52 +183,56 @@ func (e *Extractor) Extract(msg types.TranscriptMessage) []ExtractionResult {
 		return nil
 	}
 
-	content := msg.Content
-	results := make([]ExtractionResult, 0)
-
+	var results []ExtractionResult
 	for _, pattern := range e.Patterns {
-		// Check keywords first (cheaper)
-		for _, keyword := range pattern.Keywords {
-			if idx := strings.Index(strings.ToLower(content), strings.ToLower(keyword)); idx >= 0 {
-				results = append(results, ExtractionResult{
-					Type:           pattern.Type,
-					Score:          pattern.MinScore + 0.1, // Keyword match bonus
-					MatchedKeyword: keyword,
-					StartIndex:     idx,
-					EndIndex:       idx + len(keyword),
-				})
-				break // One match per pattern type
-			}
-		}
-
-		// Check regex patterns for stronger matches
-		for _, re := range pattern.Patterns {
-			if loc := re.FindStringIndex(content); loc != nil {
-				results = append(results, ExtractionResult{
-					Type:           pattern.Type,
-					Score:          pattern.MinScore + 0.2, // Pattern match bonus
-					MatchedPattern: re.String(),
-					StartIndex:     loc[0],
-					EndIndex:       loc[1],
-				})
-				break // One match per pattern type
-			}
-		}
+		results = append(results, matchPattern(msg.Content, pattern)...)
 	}
 
-	// Deduplicate by type, keeping highest score
+	return deduplicateByType(results)
+}
+
+// matchPattern returns extraction results from keyword and regex matching for a single pattern.
+func matchPattern(content string, pattern ExtractionPattern) []ExtractionResult {
+	var results []ExtractionResult
+	for _, keyword := range pattern.Keywords {
+		if idx := strings.Index(strings.ToLower(content), strings.ToLower(keyword)); idx >= 0 {
+			results = append(results, ExtractionResult{
+				Type:           pattern.Type,
+				Score:          pattern.MinScore + 0.1,
+				MatchedKeyword: keyword,
+				StartIndex:     idx,
+				EndIndex:       idx + len(keyword),
+			})
+			break
+		}
+	}
+	for _, re := range pattern.Patterns {
+		if loc := re.FindStringIndex(content); loc != nil {
+			results = append(results, ExtractionResult{
+				Type:           pattern.Type,
+				Score:          pattern.MinScore + 0.2,
+				MatchedPattern: re.String(),
+				StartIndex:     loc[0],
+				EndIndex:       loc[1],
+			})
+			break
+		}
+	}
+	return results
+}
+
+// deduplicateByType keeps only the highest-scoring result per knowledge type.
+func deduplicateByType(results []ExtractionResult) []ExtractionResult {
 	seen := make(map[types.KnowledgeType]ExtractionResult)
 	for _, r := range results {
 		if existing, ok := seen[r.Type]; !ok || r.Score > existing.Score {
 			seen[r.Type] = r
 		}
 	}
-
 	final := make([]ExtractionResult, 0, len(seen))
 	for _, r := range seen {
 		final = append(final, r)
 	}
-
 	return final
 }
 

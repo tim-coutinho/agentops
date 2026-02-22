@@ -269,7 +269,6 @@ func (v *Validator) validatePreMortem(path string, result *ValidationResult) {
 func (v *Validator) validatePlan(path string, result *ValidationResult) {
 	// Plans might be beads issues, not files
 	if strings.HasPrefix(path, "epic:") {
-		// This is an epic ID, validate via beads
 		v.validateEpicIssue(strings.TrimPrefix(path, "epic:"), result)
 		return
 	}
@@ -282,30 +281,28 @@ func (v *Validator) validatePlan(path string, result *ValidationResult) {
 	}
 
 	text := string(content)
-
-	// Handle TOML formula files separately
 	if strings.HasSuffix(path, ".toml") {
 		v.validateFormulaToml(text, result)
 		return
 	}
 
-	// Check for schema_version field (lenient mode: warning only)
+	v.validatePlanContent(text, result)
+}
+
+// validatePlanContent checks a markdown plan for required sections.
+func (v *Validator) validatePlanContent(text string, result *ValidationResult) {
 	if !v.hasFrontmatterField(text, "schema_version") {
 		result.Warnings = append(result.Warnings,
 			"Missing schema_version field in frontmatter - new artifacts should include schema_version: 1")
 	}
-
-	// Check for required plan elements
 	if !strings.Contains(text, "## Objective") && !strings.Contains(text, "## Goal") {
 		result.Warnings = append(result.Warnings,
 			"Missing objective/goal section")
 	}
-
 	if !strings.Contains(text, "## Tasks") && !strings.Contains(text, "## Issues") {
 		result.Warnings = append(result.Warnings,
 			"Missing tasks/issues breakdown")
 	}
-
 	if !strings.Contains(text, "## Success Criteria") && !strings.Contains(text, "## Acceptance") {
 		result.Warnings = append(result.Warnings,
 			"Missing success criteria")

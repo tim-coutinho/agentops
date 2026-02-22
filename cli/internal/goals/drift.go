@@ -21,35 +21,9 @@ func ComputeDrift(baseline, current *Snapshot) []DriftResult {
 		baseMap[m.GoalID] = m
 	}
 
-	var results []DriftResult
+	results := make([]DriftResult, 0, len(current.Goals))
 	for _, cur := range current.Goals {
-		dr := DriftResult{
-			GoalID: cur.GoalID,
-			After:  cur.Result,
-			Weight: cur.Weight,
-		}
-
-		base, found := baseMap[cur.GoalID]
-		if !found {
-			dr.Before = "new"
-			dr.Delta = "unchanged"
-		} else {
-			dr.Before = base.Result
-			switch {
-			case base.Result == "fail" && cur.Result == "pass":
-				dr.Delta = "improved"
-			case base.Result == "pass" && cur.Result == "fail":
-				dr.Delta = "regressed"
-			default:
-				dr.Delta = "unchanged"
-			}
-			if base.Value != nil && cur.Value != nil {
-				vd := *cur.Value - *base.Value
-				dr.ValueDelta = &vd
-			}
-		}
-
-		results = append(results, dr)
+		results = append(results, computeGoalDrift(cur, baseMap))
 	}
 
 	sort.SliceStable(results, func(i, j int) bool {
@@ -61,6 +35,37 @@ func ComputeDrift(baseline, current *Snapshot) []DriftResult {
 	})
 
 	return results
+}
+
+// computeGoalDrift computes the drift result for a single goal measurement.
+func computeGoalDrift(cur Measurement, baseMap map[string]Measurement) DriftResult {
+	dr := DriftResult{
+		GoalID: cur.GoalID,
+		After:  cur.Result,
+		Weight: cur.Weight,
+	}
+
+	base, found := baseMap[cur.GoalID]
+	if !found {
+		dr.Before = "new"
+		dr.Delta = "unchanged"
+		return dr
+	}
+
+	dr.Before = base.Result
+	switch {
+	case base.Result == "fail" && cur.Result == "pass":
+		dr.Delta = "improved"
+	case base.Result == "pass" && cur.Result == "fail":
+		dr.Delta = "regressed"
+	default:
+		dr.Delta = "unchanged"
+	}
+	if base.Value != nil && cur.Value != nil {
+		vd := *cur.Value - *base.Value
+		dr.ValueDelta = &vd
+	}
+	return dr
 }
 
 // deltaRank returns a sort key: regressed=0, improved=1, unchanged=2.
