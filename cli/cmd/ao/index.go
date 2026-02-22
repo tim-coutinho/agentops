@@ -156,7 +156,7 @@ func scanDirectory(dirPath string) ([]indexEntry, error) {
 		return nil, err
 	}
 
-	var entries []indexEntry
+	entries := make([]indexEntry, 0, len(dirEntries))
 	for _, de := range dirEntries {
 		if de.IsDir() {
 			continue

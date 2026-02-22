@@ -36,7 +36,7 @@ func collectLearnings(cwd, query string, limit int) ([]learning, error) {
 	jsonlFiles, _ := filepath.Glob(filepath.Join(learningsDir, "*.jsonl"))
 	files = append(files, jsonlFiles...)
 
-	var learnings []learning
+	learnings := make([]learning, 0, len(files))
 	queryLower := strings.ToLower(query)
 	now := time.Now()
 

@@ -593,7 +593,7 @@ func extractKeywords(content string) []string {
 		}
 	}
 
-	var result []string
+	result := make([]string, 0, len(keywords))
 	for kw := range keywords {
 		result = append(result, kw)
 	}

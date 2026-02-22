@@ -82,7 +82,7 @@ func loadSessionCitations(cwd, sessionID, citationType string) ([]types.Citation
 		targetAliases[alias] = true
 	}
 
-	var sessionCitations []types.CitationEvent
+	sessionCitations := make([]types.CitationEvent, 0, len(allCitations))
 	for _, c := range allCitations {
 		c.SessionID = canonicalSessionID(c.SessionID)
 		c.ArtifactPath = canonicalArtifactPath(cwd, c.ArtifactPath)
@@ -135,7 +135,7 @@ func deduplicateCitations(baseDir string, citations []types.CitationEvent) []typ
 
 // processUniqueCitations updates learning utilities and returns feedback events.
 func processUniqueCitations(cwd, sessionID, transcriptPath string, citations []types.CitationEvent, reward, alpha float64) ([]FeedbackEvent, int, int) {
-	var events []FeedbackEvent
+	events := make([]FeedbackEvent, 0, len(citations))
 	updatedCount, failedCount := 0, 0
 
 	for _, citation := range citations {

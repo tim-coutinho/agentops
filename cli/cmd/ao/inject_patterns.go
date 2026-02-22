@@ -27,7 +27,7 @@ func collectPatterns(cwd, query string, limit int) ([]pattern, error) {
 		return nil, err
 	}
 
-	var patterns []pattern
+	patterns := make([]pattern, 0, len(files))
 	queryLower := strings.ToLower(query)
 	now := time.Now()
 

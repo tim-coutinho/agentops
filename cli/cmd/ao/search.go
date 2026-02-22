@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -268,8 +269,8 @@ func executeGrepWithFallback(cmd *exec.Cmd, useRipgrep bool, query, dir string) 
 
 // parseGrepResults converts grep output lines into search results.
 func parseGrepResults(output []byte, pattern, query string, useRipgrep bool) []searchResult {
-	var results []searchResult
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	results := make([]searchResult, 0, len(lines))
 
 	for _, line := range lines {
 		if line == "" {
@@ -394,7 +395,13 @@ func searchSmartConnections(query, dir string, limit int) ([]searchResult, error
 	searchURL := fmt.Sprintf("%s/search?query=%s&limit=%d",
 		scAPIBase, url.QueryEscape(query), limit)
 
-	resp, err := client.Get(searchURL)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build search request: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		// API not available - fall back to file search
 		VerbosePrintf("Smart Connections API not available: %v\n", err)
@@ -423,7 +430,7 @@ func searchSmartConnections(query, dir string, limit int) ([]searchResult, error
 	}
 
 	// Convert to searchResult format
-	var results []searchResult
+	results := make([]searchResult, 0, len(scResponse.Results))
 	for _, r := range scResponse.Results {
 		context := r.Content
 		if context == "" && r.Title != "" {

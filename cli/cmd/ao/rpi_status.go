@@ -788,7 +788,7 @@ func scanRegistryRuns(root string) []rpiRunInfo {
 		return nil
 	}
 
-	var runs []rpiRunInfo
+	runs := make([]rpiRunInfo, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue

@@ -299,7 +299,7 @@ func loadMessages(cwd string) (messages []Message, corruptedCount int, err error
 }
 
 func filterMessages(messages []Message, since, from string, unreadOnly bool) ([]Message, string) {
-	var filtered []Message
+	filtered := make([]Message, 0, len(messages))
 	var durationWarning string
 
 	// Parse since duration with validation

@@ -35,7 +35,7 @@ func collectRecentSessions(cwd, query string, limit int) ([]session, error) {
 		return infoI.ModTime().After(infoJ.ModTime())
 	})
 
-	var sessions []session
+	sessions := make([]session, 0, len(files))
 	queryLower := strings.ToLower(query)
 
 	for _, file := range files {

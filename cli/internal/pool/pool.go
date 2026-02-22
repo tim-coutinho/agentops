@@ -250,13 +250,12 @@ func paginate(entries []PoolEntry, offset, limit int) []PoolEntry {
 
 // scanDirectory reads all entries from a pool directory.
 func (p *Pool) scanDirectory(dir string, status types.PoolStatus) ([]PoolEntry, error) {
-	var entries []PoolEntry
-
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
 
+	entries := make([]PoolEntry, 0, len(files))
 	for _, file := range files {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") {
 			continue

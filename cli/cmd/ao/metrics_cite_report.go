@@ -161,7 +161,7 @@ func buildCiteReport(baseDir string, filtered []types.CitationEvent, all []types
 		path  string
 		count int
 	}
-	var sorted []kv
+	sorted := make([]kv, 0, len(artifactCounts))
 	for p, c := range artifactCounts {
 		sorted = append(sorted, kv{p, c})
 	}
