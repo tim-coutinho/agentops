@@ -14,26 +14,6 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ao-extract.sh",
-            "timeout": 8
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ao-inject.sh",
-            "timeout": 8
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ao-ratchet-status.sh",
-            "timeout": 4
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ao-maturity-scan.sh",
-            "timeout": 6
-          },
-          {
-            "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/stop-team-guard.sh --cleanup",
             "timeout": 2
           }
@@ -43,26 +23,6 @@
     "SessionEnd": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ao-forge.sh",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ao-session-outcome.sh",
-            "timeout": 6
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ao-feedback-loop.sh",
-            "timeout": 8
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ao-task-sync.sh",
-            "timeout": 8
-          },
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-end-maintenance.sh",

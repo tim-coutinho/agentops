@@ -36,6 +36,14 @@ run_ao_quick() {
 run_maintenance_locked() {
     command -v ao >/dev/null 2>&1 || return 0
 
+    # --- Light ops (consolidated from ao-forge, ao-session-outcome, ao-feedback-loop, ao-task-sync) ---
+    run_ao_quick 6 forge transcript --last-session --queue --quiet || log_hook_fail "ao forge"
+    run_ao_quick 4 session-outcome || log_hook_fail "ao session-outcome"
+    run_ao_quick 6 feedback-loop --session "${CLAUDE_SESSION_ID:-}" || log_hook_fail "ao feedback-loop"
+    run_ao_quick 4 task-sync || log_hook_fail "ao task-sync"
+    run_ao_quick 4 maturity --scan || log_hook_fail "ao maturity --scan"
+
+    # --- Heavy ops ---
     run_ao_quick "${AGENTOPS_BATCH_FEEDBACK_TIMEOUT:-8}" \
         batch-feedback \
         --days "${AGENTOPS_BATCH_FEEDBACK_DAYS:-2}" \

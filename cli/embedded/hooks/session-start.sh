@@ -153,6 +153,8 @@ AGENTS_FILE_COUNT=$(find "$ROOT/.agents" -type f 2>/dev/null | wc -l | tr -d ' '
 # Process pending extraction queue (closes forge → extract loop)
 if command -v ao &>/dev/null; then
     run_ao_quick "${AGENTOPS_SESSION_START_EXTRACT_TIMEOUT:-5}" extract || true
+    # Inject prior knowledge (was separate ao-inject.sh hook, consolidated here)
+    run_ao_quick "${AGENTOPS_SESSION_START_INJECT_TIMEOUT:-5}" inject --apply-decay --format markdown --max-tokens 1000 || true
 fi
 
 # Get flywheel status (brief one-liner for visibility)
