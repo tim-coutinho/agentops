@@ -119,6 +119,14 @@ sort -u "$tmp_pairs" > "$tmp_unique"
 
 echo "Running lightweight Go race checks on changed scope..."
 
+# Duration monitoring: warn if any package exceeds this threshold (seconds).
+SLOW_THRESHOLD_SECS="${SLOW_THRESHOLD_SECS:-45}"
+
+tmp_json="$(mktemp)"
+trap 'rm -f "$tmp_files" "$tmp_pairs" "$tmp_unique" "$tmp_json"' EXIT
+
+race_exit=0
+
 while IFS=$'\t' read -r module_root _; do
     [[ -z "$module_root" ]] && continue
 
@@ -136,8 +144,55 @@ while IFS=$'\t' read -r module_root _; do
     echo "packages: ${patterns[*]}"
     (
         cd "$module_root"
-        go test -race -count=1 "${patterns[@]}"
-    )
+        go test -race -count=1 -json "${patterns[@]}" 2>&1
+    ) > "$tmp_json" || race_exit=$?
+
+    # Display human-readable summary from JSON output.
+    if [[ -s "$tmp_json" ]]; then
+        # Show pass/fail lines for each package.
+        while IFS= read -r line; do
+            action="$(printf '%s' "$line" | jq -r '.Action // empty' 2>/dev/null)" || continue
+            pkg="$(printf '%s' "$line" | jq -r '.Package // empty' 2>/dev/null)" || continue
+            elapsed="$(printf '%s' "$line" | jq -r '.Elapsed // empty' 2>/dev/null)" || continue
+
+            case "$action" in
+                pass|fail)
+                    if [[ -n "$elapsed" && -n "$pkg" ]]; then
+                        status_label="ok"
+                        [[ "$action" == "fail" ]] && status_label="FAIL"
+                        printf '  %-4s  %-60s  %.1fs\n' "$status_label" "$pkg" "$elapsed"
+
+                        # Warn if package exceeded the slow threshold.
+                        elapsed_int="${elapsed%.*}"
+                        if [[ -n "$elapsed_int" ]] && (( elapsed_int >= SLOW_THRESHOLD_SECS )); then
+                            echo "  WARNING: $pkg took ${elapsed}s (threshold: ${SLOW_THRESHOLD_SECS}s)"
+                        fi
+                    fi
+                    ;;
+            esac
+        done < "$tmp_json"
+
+        # Surface any DATA RACE output embedded in JSON.
+        if grep -q 'DATA RACE' "$tmp_json" 2>/dev/null; then
+            echo ""
+            echo "  WARNING: DATA RACE detected — see full output above"
+        fi
+    fi
+
+    if [[ "$race_exit" -ne 0 ]]; then
+        # Print raw output lines for failed tests to aid debugging.
+        echo ""
+        echo "--- failure output ---"
+        while IFS= read -r line; do
+            action="$(printf '%s' "$line" | jq -r '.Action // empty' 2>/dev/null)" || continue
+            output="$(printf '%s' "$line" | jq -r '.Output // empty' 2>/dev/null)" || continue
+            if [[ "$action" == "output" && -n "$output" ]]; then
+                printf '%s' "$output"
+            fi
+        done < "$tmp_json"
+        echo "--- end failure output ---"
+        exit 1
+    fi
 done < <(cut -f1 "$tmp_unique" | sort -u)
 
 echo ""
