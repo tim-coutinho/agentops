@@ -215,3 +215,80 @@ func TestAppendHistory_GoalsAdded(t *testing.T) {
 		t.Errorf("GoalsAdded = %d, want 2", entries[0].GoalsAdded)
 	}
 }
+
+func TestAppendHistory_ReadOnlyDir(t *testing.T) {
+	tmp := t.TempDir()
+	readOnly := filepath.Join(tmp, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	entry := HistoryEntry{
+		Timestamp:    "2026-01-01T00:00:00Z",
+		GoalsPassing: 1,
+		GoalsTotal:   2,
+		Score:        0.5,
+	}
+	err := AppendHistory(entry, filepath.Join(readOnly, "history.jsonl"))
+	if err == nil {
+		t.Error("expected error when appending to read-only directory")
+	}
+}
+
+func TestLoadHistory_UnreadableFile(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "history.jsonl")
+
+	// Write valid data
+	if err := os.WriteFile(path, []byte(`{"timestamp":"2026-01-01T00:00:00Z"}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make file unreadable
+	if err := os.Chmod(path, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0600) })
+
+	_, err := LoadHistory(path)
+	if err == nil {
+		t.Error("expected error when loading unreadable history file")
+	}
+}
+
+func TestLoadHistory_MalformedJSONLine(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "history.jsonl")
+
+	// Write malformed JSON
+	if err := os.WriteFile(path, []byte("{invalid json\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadHistory(path)
+	if err == nil {
+		t.Error("expected error when loading malformed JSON history")
+	}
+}
+
+func TestLoadHistory_EmptyLines(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "history.jsonl")
+
+	// Write valid JSON with empty lines interspersed
+	content := `{"timestamp":"2026-01-01T00:00:00Z","goals_passing":1,"goals_total":2,"score":0.5}
+` + "\n" + `{"timestamp":"2026-01-02T00:00:00Z","goals_passing":2,"goals_total":2,"score":1.0}
+`
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := LoadHistory(path)
+	if err != nil {
+		t.Fatalf("LoadHistory: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Errorf("expected 2 entries (skipping empty line), got %d", len(entries))
+	}
+}
