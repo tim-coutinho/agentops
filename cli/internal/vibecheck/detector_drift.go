@@ -18,26 +18,36 @@ var configFilePatterns = []*regexp.Regexp{
 // driftMinEdits is the minimum number of config-file edits to trigger a finding.
 const driftMinEdits = 3
 
+// isConfigFile returns true if the path matches any known config/instruction file pattern.
+func isConfigFile(path string) bool {
+	for _, p := range configFilePatterns {
+		if p.MatchString(path) {
+			return true
+		}
+	}
+	return false
+}
+
+// countConfigEdits tallies how many commits touch each config file.
+func countConfigEdits(events []TimelineEvent) map[string]int {
+	fileCounts := make(map[string]int)
+	for _, ev := range events {
+		for _, f := range ev.Files {
+			if isConfigFile(f) {
+				fileCounts[f]++
+			}
+		}
+	}
+	return fileCounts
+}
+
 // DetectInstructionDrift detects commits that repeatedly modify instruction
 // or config files (CLAUDE.md, SKILL.md, etc.), suggesting instructions are
 // being changed too often instead of stabilizing.
 func DetectInstructionDrift(events []TimelineEvent) []Finding {
-	// Track per config-file-pattern how many commits touch it.
-	fileCounts := make(map[string]int)
-
-	for _, ev := range events {
-		for _, f := range ev.Files {
-			for _, p := range configFilePatterns {
-				if p.MatchString(f) {
-					fileCounts[f]++
-					break
-				}
-			}
-		}
-	}
+	fileCounts := countConfigEdits(events)
 
 	var findings []Finding
-
 	for file, count := range fileCounts {
 		if count >= driftMinEdits {
 			findings = append(findings, Finding{
@@ -48,6 +58,5 @@ func DetectInstructionDrift(events []TimelineEvent) []Finding {
 			})
 		}
 	}
-
 	return findings
 }

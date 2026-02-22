@@ -27,39 +27,41 @@ func ComputeMetrics(events []TimelineEvent) map[string]Metric {
 //   - C: 40-59
 //   - D: 20-39
 //   - F: 0-19
-func ComputeOverallRating(metrics map[string]Metric) (float64, string) {
-	if len(metrics) == 0 {
-		return 0, "F"
-	}
-
-	total := 0.0
-	count := 0
+// sumMetricCredits sums pass/partial credits across all metrics, returning the
+// total and the number of metrics counted.
+func sumMetricCredits(metrics map[string]Metric) (total float64, count int) {
 	for _, m := range metrics {
 		count++
 		if m.Passed {
 			total += 20
 		} else {
-			// Partial credit: ratio of value to threshold (clamped to [0, 20]).
-			partial := metricPartialCredit(m)
-			total += partial
+			total += metricPartialCredit(m)
 		}
 	}
+	return total, count
+}
 
-	// Normalize if we somehow have a different number of metrics.
+// clampScore normalizes and clamps a raw score to [0, 100].
+func clampScore(total float64, count int) float64 {
 	if count != 5 {
 		total = total / float64(count) * 5
 	}
-
-	// Clamp to [0, 100].
 	if total > 100 {
-		total = 100
+		return 100
 	}
 	if total < 0 {
-		total = 0
+		return 0
 	}
+	return total
+}
 
-	grade := scoreToGrade(total)
-	return total, grade
+func ComputeOverallRating(metrics map[string]Metric) (float64, string) {
+	if len(metrics) == 0 {
+		return 0, "F"
+	}
+	total, count := sumMetricCredits(metrics)
+	score := clampScore(total, count)
+	return score, scoreToGrade(score)
 }
 
 // partialCreditLowerIsBetter computes 0-20 partial credit when lower values

@@ -185,6 +185,23 @@ func writeTermEntry(w *bufio.Writer, term string, docs map[string]bool) error {
 	return err
 }
 
+// parseIndexEntry unmarshals a single JSONL line into the index.
+// Returns false if the line is empty or malformed (skip, no error).
+func parseIndexEntry(idx *Index, line string) {
+	if line == "" {
+		return
+	}
+	var entry IndexEntry
+	if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		return // skip malformed lines
+	}
+	docs := make(map[string]bool, len(entry.Paths))
+	for _, p := range entry.Paths {
+		docs[p] = true
+	}
+	idx.Terms[entry.Term] = docs
+}
+
 // LoadIndex reads an index from a JSONL file.
 func LoadIndex(path string) (*Index, error) {
 	f, err := os.Open(path)
@@ -201,19 +218,7 @@ func LoadIndex(path string) (*Index, error) {
 	scanner.Buffer(buf, 1024*1024)
 
 	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
-		}
-		var entry IndexEntry
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			continue // skip malformed lines
-		}
-		docs := make(map[string]bool, len(entry.Paths))
-		for _, p := range entry.Paths {
-			docs[p] = true
-		}
-		idx.Terms[entry.Term] = docs
+		parseIndexEntry(idx, scanner.Text())
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -257,15 +262,13 @@ func indexFile(idx *Index, path string) error {
 	return scanner.Err()
 }
 
-// tokenize splits text into lowercase word tokens.
-// Strips punctuation and filters out very short (< 2 char) tokens.
-func tokenize(text string) []string {
-	lower := strings.ToLower(text)
-	words := strings.FieldsFunc(lower, func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_'
-	})
+// isTokenSeparator returns true for characters that split words during tokenization.
+func isTokenSeparator(r rune) bool {
+	return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_'
+}
 
-	// Filter short tokens and deduplicate within this call
+// dedupeTokens filters out short (< 2 char) tokens and removes duplicates, preserving order.
+func dedupeTokens(words []string) []string {
 	result := make([]string, 0, len(words))
 	seen := make(map[string]bool, len(words))
 	for _, w := range words {
@@ -276,4 +279,11 @@ func tokenize(text string) []string {
 		result = append(result, w)
 	}
 	return result
+}
+
+// tokenize splits text into lowercase word tokens.
+// Strips punctuation and filters out very short (< 2 char) tokens.
+func tokenize(text string) []string {
+	words := strings.FieldsFunc(strings.ToLower(text), isTokenSeparator)
+	return dedupeTokens(words)
 }
