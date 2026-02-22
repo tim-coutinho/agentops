@@ -92,6 +92,8 @@ func statusIcon(status ratchet.StepStatus) string {
 		return "⊘"
 	case ratchet.StatusInProgress:
 		return "◐"
+	case ratchet.StatusPending:
+		return "○"
 	default:
 		return "○"
 	}

@@ -455,7 +455,8 @@ func extractMessageKnowledge(msg types.TranscriptMessage, extractor *parser.Extr
 		switch result.Type {
 		case types.KnowledgeTypeDecision:
 			state.decisions = append(state.decisions, text)
-		case types.KnowledgeTypeSolution, types.KnowledgeTypeLearning:
+		case types.KnowledgeTypeSolution, types.KnowledgeTypeLearning,
+			types.KnowledgeTypeFailure, types.KnowledgeTypeReference:
 			state.knowledge = append(state.knowledge, text)
 		}
 	}

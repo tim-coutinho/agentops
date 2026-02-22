@@ -438,6 +438,9 @@ func promotionDir(baseDir string, knowledgeType types.KnowledgeType) string {
 	switch knowledgeType {
 	case types.KnowledgeTypeDecision:
 		return filepath.Join(baseDir, ".agents", "patterns")
+	case types.KnowledgeTypeSolution, types.KnowledgeTypeLearning,
+		types.KnowledgeTypeFailure, types.KnowledgeTypeReference:
+		return filepath.Join(baseDir, ".agents", "learnings")
 	default:
 		return filepath.Join(baseDir, ".agents", "learnings")
 	}
@@ -692,6 +695,10 @@ func knowledgeTypeHeading(kt types.KnowledgeType) string {
 		return "# Decision: "
 	case types.KnowledgeTypeSolution:
 		return "# Solution: "
+	case types.KnowledgeTypeFailure:
+		return "# Failure: "
+	case types.KnowledgeTypeReference:
+		return "# Reference: "
 	default:
 		return "# Knowledge: "
 	}

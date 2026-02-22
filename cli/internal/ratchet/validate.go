@@ -177,6 +177,10 @@ func (v *Validator) validateStep(step Step, artifactPath string, result *Validat
 		v.validatePlan(artifactPath, result)
 	case StepPostMortem:
 		v.validatePostMortem(artifactPath, result)
+	case StepImplement, StepCrank, StepVibe:
+		// These steps have no artifact validation rules (yet).
+		result.Warnings = append(result.Warnings,
+			"No artifact validation rules for step: "+string(step))
 	default:
 		result.Warnings = append(result.Warnings,
 			"No validation rules for step: "+string(step))
@@ -375,6 +379,8 @@ func (v *Validator) ValidateForPromotion(artifactPath string, targetTier Tier) (
 // checkTierRequirements applies tier-specific promotion checks.
 func (v *Validator) checkTierRequirements(artifactPath string, targetTier Tier, result *ValidationResult) {
 	switch targetTier {
+	case TierObservation:
+		// Observation tier has no promotion requirements.
 	case TierLearning:
 		v.requireMinCitations(artifactPath, 2, result)
 	case TierPattern:

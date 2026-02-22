@@ -513,6 +513,8 @@ func GetKnowledgeTier() KnowledgeTier {
 		return KnowledgeTierStrict
 	case KnowledgeTierMinimal:
 		return KnowledgeTierMinimal
+	case KnowledgeTierStandard:
+		return KnowledgeTierStandard
 	default:
 		return KnowledgeTierStandard
 	}
