@@ -1840,7 +1840,9 @@ func TestCountSessionRefs(t *testing.T) {
 
 func TestCountSessionRefs_NoSessionsDirs(t *testing.T) {
 	v, _ := helperNewValidator(t)
-	// No .agents/ao/sessions/ exists at all
+	// Override townDir so the locator does not find real sessions in ~/gt
+	v.locator.townDir = t.TempDir()
+	// No .agents/ao/sessions/ exists at all in any search location
 	artifact := "/some/nonexistent/artifact.md"
 	count := v.countSessionRefs(artifact)
 	if count != 0 {
