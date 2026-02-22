@@ -38,6 +38,42 @@ func ParseTimeline(repoPath string, since time.Time) ([]TimelineEvent, error) {
 	return parseGitLog(stdout.String(), delim)
 }
 
+// gitLogParser accumulates events while scanning git log output line by line.
+type gitLogParser struct {
+	events  []TimelineEvent
+	current *TimelineEvent
+	delim   string
+}
+
+// flush appends the current event (if any) to the events slice and resets current.
+func (g *gitLogParser) flush() {
+	if g.current != nil {
+		g.events = append(g.events, *g.current)
+		g.current = nil
+	}
+}
+
+// processLine handles a single line of git log output.
+func (g *gitLogParser) processLine(line string) error {
+	if strings.TrimSpace(line) == "" {
+		g.flush()
+		return nil
+	}
+
+	if ev, err := tryParseHeader(line, g.delim); ev != nil {
+		g.flush()
+		g.current = ev
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	if g.current != nil {
+		parseNumstat(line, g.current)
+	}
+	return nil
+}
+
 // parseGitLog parses the combined --format + --numstat output from git log.
 //
 // The format alternates between a header line (fields separated by delim) and
@@ -45,45 +81,21 @@ func ParseTimeline(repoPath string, since time.Time) ([]TimelineEvent, error) {
 // Commits are separated by blank lines.
 func parseGitLog(raw string, delim string) ([]TimelineEvent, error) {
 	scanner := bufio.NewScanner(strings.NewReader(raw))
-
-	var events []TimelineEvent
-	var current *TimelineEvent
+	g := &gitLogParser{delim: delim}
 
 	for scanner.Scan() {
-		line := scanner.Text()
-
-		if strings.TrimSpace(line) == "" {
-			if current != nil {
-				events = append(events, *current)
-				current = nil
-			}
-			continue
-		}
-
-		if ev, err := tryParseHeader(line, delim); ev != nil {
-			if current != nil {
-				events = append(events, *current)
-			}
-			current = ev
-			continue
-		} else if err != nil {
+		if err := g.processLine(scanner.Text()); err != nil {
 			return nil, err
 		}
-
-		if current != nil {
-			parseNumstat(line, current)
-		}
 	}
 
-	if current != nil {
-		events = append(events, *current)
-	}
+	g.flush()
 
-	sort.Slice(events, func(i, j int) bool {
-		return events[i].Timestamp.After(events[j].Timestamp)
+	sort.Slice(g.events, func(i, j int) bool {
+		return g.events[i].Timestamp.After(g.events[j].Timestamp)
 	})
 
-	return events, nil
+	return g.events, nil
 }
 
 // tryParseHeader attempts to parse a git log header line. Returns (event, nil) on success,
