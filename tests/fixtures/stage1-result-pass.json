@@ -1,0 +1,12 @@
+{
+  "quest_id": "ol-572",
+  "bead_id": "ol-572.3",
+  "worktree": "/tmp/worktree/ol-572",
+  "passed": true,
+  "steps": [
+    {"name": "go vet", "exit_code": 0, "passed": true, "duration": "1.2s"},
+    {"name": "go test", "exit_code": 0, "passed": true, "duration": "3.4s"},
+    {"name": "golangci-lint", "exit_code": 0, "passed": true, "duration": "5.1s"}
+  ],
+  "summary": "all steps passed"
+}

@@ -1,0 +1,10 @@
+{
+  "quest_id": "ol-999",
+  "bead_id": "ol-999.1",
+  "worktree": "/tmp/worktree/ol-999",
+  "passed": true,
+  "steps": [
+    {"name": "go test", "exit_code": 0, "passed": true, "duration": "2.0s"
+  ],
+  "summary": "truncated output
+}

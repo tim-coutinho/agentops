@@ -1,0 +1,1 @@
+Load the retro skill and extract learnings from recent git commits and completed work. Check .agents/learnings/ for existing context.

@@ -1,0 +1,1 @@
+Load the research skill and research the testing infrastructure in this repo. Use --auto mode. Do inline exploration only, do not spawn agents. Focus on tests/ directory structure.

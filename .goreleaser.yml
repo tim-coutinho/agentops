@@ -1,0 +1,52 @@
+version: 2
+project_name: ao
+
+builds:
+  - id: ao
+    dir: cli
+    hooks:
+      pre:
+        - make -C cli sync-hooks
+    main: ./cmd/ao
+    binary: ao
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: ao
+    name_template: ao-{{ .Os }}-{{ .Arch }}
+    wrap_in_directory: false
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  disable: true
+
+release:
+  # Release notes are generated from CHANGELOG.md by scripts/extract-release-notes.sh
+  # and passed via --release-notes in the workflow. GoReleaser's auto-changelog is disabled.
+  name_template: "{{ .Tag }}"
+
+brews:
+  - name: agentops
+    directory: Formula
+    homepage: https://github.com/boshu2/agentops
+    description: Knowledge Flywheel CLI for AI-assisted development
+    license: Apache-2.0
+    install: |
+      bin.install "ao"
+    test: |
+      system "#{bin}/ao version"
+    repository:
+      owner: boshu2
+      name: homebrew-agentops
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"

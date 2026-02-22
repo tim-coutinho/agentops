@@ -1,0 +1,1 @@
+Use /forge to create a new artifact

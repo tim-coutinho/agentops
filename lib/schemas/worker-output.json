@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["done", "failed", "timeout"],
+      "description": "Worker completion status"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Brief description of what was accomplished"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of files created or modified"
+    },
+    "errors": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Error messages if status is failed"
+    },
+    "token_usage": {
+      "type": "object",
+      "properties": {
+        "input": {"type": "integer"},
+        "output": {"type": "integer"}
+      },
+      "required": ["input", "output"],
+      "additionalProperties": false
+    },
+    "duration_ms": {
+      "type": "integer",
+      "description": "Execution duration in milliseconds"
+    }
+  },
+  "required": ["status", "summary", "artifacts", "errors", "token_usage", "duration_ms"],
+  "additionalProperties": false
+}

@@ -1,0 +1,343 @@
+#!/usr/bin/env bash
+# ralph — Goal → Full RPI → PR
+# "Ralph Wiggum" pattern: each phase gets a fresh context window.
+#
+# Usage:
+#   ralph "Add dark mode support"
+#   ralph --skip-pre-mortem "Fix typo in README"
+#   ralph --branch feat/dark-mode "Add dark mode"
+#   ralph --spec spec.md "Add dark mode"
+#   ralph --dry-run "Add dark mode"
+#   ralph --resume .agents/ralph/<slug>.checkpoint
+#   ralph --max-budget 20 --phase-timeout 900 "Big feature"
+
+set -euo pipefail
+
+# ── Phase order (for checkpoint skip logic) ───────────────────────────────────
+PHASES=(plan pre-mortem branch crank vibe post-mortem pr)
+
+# ── Defaults ──────────────────────────────────────────────────────────────────
+SKIP_PRE_MORTEM=false
+DRY_RUN=false
+BRANCH=""
+GOAL=""
+RESUME_FILE=""
+RESUME_AFTER=""
+SPEC_FILE=""
+SPEC_CONTENT=""
+MAX_BUDGET=10
+PHASE_TIMEOUT=600
+
+# ── Parse args ────────────────────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-pre-mortem) SKIP_PRE_MORTEM=true; shift ;;
+    --branch)          BRANCH="$2"; shift 2 ;;
+    --dry-run)         DRY_RUN=true; shift ;;
+    --resume)          RESUME_FILE="$2"; shift 2 ;;
+    --spec)            SPEC_FILE="$2"; shift 2 ;;
+    --max-budget)      MAX_BUDGET="$2"; shift 2 ;;
+    --phase-timeout)   PHASE_TIMEOUT="$2"; shift 2 ;;
+    --help|-h)
+      sed -n '2,13p' "$0"
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+    *)
+      GOAL="$1"; shift
+      ;;
+  esac
+done
+
+# ── Resume from checkpoint ────────────────────────────────────────────────────
+if [[ -n "$RESUME_FILE" ]]; then
+  if [[ ! -f "$RESUME_FILE" ]]; then
+    echo "Checkpoint file not found: $RESUME_FILE" >&2
+    exit 1
+  fi
+  # Validate checkpoint is under .agents/ralph/ and has expected header
+  case "$RESUME_FILE" in
+    .agents/ralph/*.checkpoint|*/.agents/ralph/*.checkpoint) ;;
+    *) echo "Refusing to source checkpoint outside .agents/ralph/: $RESUME_FILE" >&2; exit 1 ;;
+  esac
+  if ! head -1 "$RESUME_FILE" | grep -q '^# Ralph checkpoint'; then
+    echo "Invalid checkpoint file (missing header): $RESUME_FILE" >&2
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  source "$RESUME_FILE"
+  # LAST_PHASE is set by the checkpoint file
+  RESUME_AFTER="${LAST_PHASE:-}"
+  echo "Resuming after phase: $RESUME_AFTER"
+fi
+
+if [[ -z "$GOAL" ]]; then
+  echo "Usage: ralph [options] \"<goal>\"" >&2
+  exit 1
+fi
+
+# ── Load spec ─────────────────────────────────────────────────────────────────
+if [[ -n "$SPEC_FILE" ]]; then
+  if [[ ! -f "$SPEC_FILE" ]]; then
+    echo "Spec file not found: $SPEC_FILE" >&2
+    exit 1
+  fi
+  SPEC_CONTENT=$(cat "$SPEC_FILE")
+fi
+
+# ── Derived values ────────────────────────────────────────────────────────────
+BRANCH="${BRANCH:-feat/ralph-$(date +%s)}"
+BASE_BRANCH="${BASE_BRANCH:-$(git branch --show-current)}"
+WORKDIR="${WORKDIR:-$(pwd)}"
+SLUG="${SLUG:-$(echo "$GOAL" | tr ' ' '-' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]//g' | head -c 40)}"
+RALPH_DIR=".agents/ralph"
+RALPH_LOG="${RALPH_LOG:-$RALPH_DIR/$(date +%Y-%m-%d)-$SLUG.log}"
+CHECKPOINT_FILE="$RALPH_DIR/$SLUG.checkpoint"
+
+mkdir -p "$RALPH_DIR"
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+log() { echo "=== $1 ===" | tee -a "$RALPH_LOG"; }
+die() { echo "FATAL: $1" | tee -a "$RALPH_LOG" >&2; exit 1; }
+
+should_skip() {
+  local phase="$1"
+  if [[ -z "$RESUME_AFTER" ]]; then
+    return 1  # no resume, don't skip
+  fi
+  for p in "${PHASES[@]}"; do
+    if [[ "$p" == "$phase" ]]; then
+      return 0  # haven't passed RESUME_AFTER yet, skip
+    fi
+    if [[ "$p" == "$RESUME_AFTER" ]]; then
+      return 1  # passed RESUME_AFTER, run this and all subsequent
+    fi
+  done
+  return 1
+}
+
+save_checkpoint() {
+  local last_phase="$1"
+  cat > "$CHECKPOINT_FILE" <<CKPT
+# Ralph checkpoint — source this to resume
+GOAL=$(printf '%q' "$GOAL")
+BRANCH=$(printf '%q' "$BRANCH")
+BASE_BRANCH=$(printf '%q' "$BASE_BRANCH")
+WORKDIR=$(printf '%q' "$WORKDIR")
+SLUG=$(printf '%q' "$SLUG")
+SKIP_PRE_MORTEM=$(printf '%q' "$SKIP_PRE_MORTEM")
+SPEC_FILE=$(printf '%q' "$SPEC_FILE")
+RALPH_LOG=$(printf '%q' "$RALPH_LOG")
+LAST_PHASE=$(printf '%q' "$last_phase")
+CKPT
+  echo "Checkpoint saved: $CHECKPOINT_FILE" | tee -a "$RALPH_LOG"
+}
+
+spec_context() {
+  if [[ -n "$SPEC_CONTENT" ]]; then
+    printf '\n\nThe acceptance spec is:\n%s' "$SPEC_CONTENT"
+  fi
+}
+
+read_verdict() {
+  local file="$1"
+  if [[ -f "$file" ]]; then
+    cat "$file"
+  else
+    echo "UNKNOWN"
+  fi
+}
+
+run_phase() {
+  local phase_name="$1"
+  local prompt="$2"
+
+  if should_skip "$phase_name"; then
+    log "Skipping $phase_name (resuming)"
+    return 0
+  fi
+
+  log "Phase: $phase_name"
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "[dry-run] Would run claude -p with prompt:" | tee -a "$RALPH_LOG"
+    echo "  $prompt" | tee -a "$RALPH_LOG"
+    echo "" | tee -a "$RALPH_LOG"
+    save_checkpoint "$phase_name"
+    return 0
+  fi
+
+  timeout "$PHASE_TIMEOUT" bash -c \
+    'set -o pipefail; claude -p \
+      --max-budget-usd "$1" \
+      --allowedTools "Bash,Read,Write,Edit,Glob,Grep,Skill,Task,WebFetch" \
+      --permission-mode bypassPermissions \
+      "$2" 2>&1 | tee -a "$3"' \
+    _ "$MAX_BUDGET" "$prompt" "$RALPH_LOG"
+
+  local exit_code=${PIPESTATUS[0]}
+  if [[ $exit_code -eq 124 ]]; then
+    save_checkpoint "$phase_name"
+    die "Phase $phase_name timed out after ${PHASE_TIMEOUT}s (gutter detected). Resume with: ralph --resume $CHECKPOINT_FILE"
+  fi
+  if [[ $exit_code -ne 0 ]]; then
+    save_checkpoint "$phase_name"
+    die "Phase $phase_name failed (exit $exit_code). Resume with: ralph --resume $CHECKPOINT_FILE"
+  fi
+
+  save_checkpoint "$phase_name"
+}
+
+# ── Banner ────────────────────────────────────────────────────────────────────
+echo "" | tee -a "$RALPH_LOG"
+log "Ralph Loop starting"
+echo "  Goal:       $GOAL" | tee -a "$RALPH_LOG"
+echo "  Branch:     $BRANCH" | tee -a "$RALPH_LOG"
+echo "  Base:       $BASE_BRANCH" | tee -a "$RALPH_LOG"
+echo "  Skip PM:    $SKIP_PRE_MORTEM" | tee -a "$RALPH_LOG"
+echo "  Dry run:    $DRY_RUN" | tee -a "$RALPH_LOG"
+echo "  Spec:       ${SPEC_FILE:-(none)}" | tee -a "$RALPH_LOG"
+echo "  Timeout:    ${PHASE_TIMEOUT}s" | tee -a "$RALPH_LOG"
+echo "  Budget:     \$${MAX_BUDGET}/phase" | tee -a "$RALPH_LOG"
+echo "  Resume:     ${RESUME_AFTER:-(fresh)}" | tee -a "$RALPH_LOG"
+echo "  Log:        $RALPH_LOG" | tee -a "$RALPH_LOG"
+echo "" | tee -a "$RALPH_LOG"
+
+# ── Phase 1: Plan ─────────────────────────────────────────────────────────────
+run_phase "plan" \
+  "You are working in $WORKDIR. The goal is: $GOAL$(spec_context)
+
+Run /plan to decompose this goal into trackable issues.
+Create a plan document under .agents/plans/.
+When done, write the path to the plan file into $RALPH_DIR/plan-path.txt (just the path, nothing else)."
+
+PLAN_PATH="$RALPH_DIR/plan-path.txt"
+
+# ── Phase 2: Pre-mortem (optional) ────────────────────────────────────────────
+if [[ "$SKIP_PRE_MORTEM" == "true" ]]; then
+  if ! should_skip "pre-mortem"; then
+    log "Skipping pre-mortem (--skip-pre-mortem)"
+    echo "SKIP" > "$RALPH_DIR/pre-mortem-verdict.txt"
+    save_checkpoint "pre-mortem"
+  fi
+else
+  PLAN_FILE=""
+  if [[ -f "$PLAN_PATH" ]]; then
+    PLAN_FILE=$(cat "$PLAN_PATH")
+  fi
+
+  run_phase "pre-mortem" \
+    "You are working in $WORKDIR.
+Run /pre-mortem on the plan${PLAN_FILE:+ at $PLAN_FILE}.$(spec_context)
+After the council finishes, write exactly one word — PASS, WARN, or FAIL — into $RALPH_DIR/pre-mortem-verdict.txt."
+
+  if ! should_skip "pre-mortem"; then
+    PRE_MORTEM=$(read_verdict "$RALPH_DIR/pre-mortem-verdict.txt")
+    if [[ "$PRE_MORTEM" == "FAIL" ]]; then
+      die "Pre-mortem verdict: FAIL — aborting. See $RALPH_LOG for details."
+    fi
+    log "Pre-mortem verdict: $PRE_MORTEM"
+  fi
+fi
+
+# ── Create branch ─────────────────────────────────────────────────────────────
+if ! should_skip "branch"; then
+  if [[ "$DRY_RUN" != "true" ]]; then
+    log "Creating branch: $BRANCH"
+    git checkout -b "$BRANCH" 2>/dev/null || git checkout "$BRANCH"
+  fi
+  save_checkpoint "branch"
+fi
+
+# ── Phase 3: Crank ────────────────────────────────────────────────────────────
+PLAN_FILE=""
+if [[ -f "$PLAN_PATH" ]]; then
+  PLAN_FILE=$(cat "$PLAN_PATH")
+fi
+
+run_phase "crank" \
+  "You are working in $WORKDIR on branch $BRANCH. The goal is: $GOAL.
+${PLAN_FILE:+The plan is at $PLAN_FILE.}$(spec_context)
+Run /crank to implement all planned work. Commit all changes when done."
+
+# ── Phase 4: Vibe ─────────────────────────────────────────────────────────────
+run_phase "vibe" \
+  "You are working in $WORKDIR on branch $BRANCH.
+Run /vibe to validate the implementation.$(spec_context)
+After the council finishes, write exactly one word — PASS, WARN, or FAIL — into $RALPH_DIR/vibe-verdict.txt."
+
+if ! should_skip "vibe"; then
+  VIBE=$(read_verdict "$RALPH_DIR/vibe-verdict.txt")
+  if [[ "$VIBE" == "FAIL" ]]; then
+    die "Vibe verdict: FAIL — aborting before PR. See $RALPH_LOG for details."
+  fi
+  if [[ "$VIBE" == "WARN" ]]; then
+    log "Vibe verdict: WARN — continuing with warnings"
+  fi
+fi
+
+# ── Phase 5: Post-mortem ──────────────────────────────────────────────────────
+run_phase "post-mortem" \
+  "You are working in $WORKDIR on branch $BRANCH.
+Run /post-mortem to wrap up. Extract learnings.
+Write exactly one word — PASS, WARN, or FAIL — into $RALPH_DIR/post-mortem-verdict.txt."
+
+# ── Phase 6: PR ───────────────────────────────────────────────────────────────
+if should_skip "pr"; then
+  log "Skipping PR (resuming)"
+else
+  log "Creating PR"
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo "[dry-run] Would create PR with title: $(echo "$GOAL" | head -c 70)"
+    echo "[dry-run] Done."
+    exit 0
+  fi
+
+  # Push branch
+  git push -u origin "$BRANCH"
+
+  # Build PR body
+  PLAN_FILE=""
+  if [[ -f "$PLAN_PATH" ]]; then
+    PLAN_FILE=$(cat "$PLAN_PATH")
+  fi
+
+  PR_BODY="## Goal
+$GOAL
+
+## Council Verdicts
+- Pre-mortem: $(read_verdict "$RALPH_DIR/pre-mortem-verdict.txt")
+- Vibe: $(read_verdict "$RALPH_DIR/vibe-verdict.txt")
+- Post-mortem: $(read_verdict "$RALPH_DIR/post-mortem-verdict.txt")
+"
+
+  if [[ -n "$SPEC_CONTENT" ]]; then
+    PR_BODY+="
+## Spec
+$SPEC_CONTENT
+"
+  fi
+
+  PR_BODY+="
+## Plan
+$(cat "$PLAN_FILE" 2>/dev/null || echo "See .agents/plans/")
+
+## Reports
+See \`.agents/council/\` for full council reports."
+
+  PR_URL=$(gh pr create \
+    --base "$BASE_BRANCH" \
+    --title "$(echo "$GOAL" | head -c 70)" \
+    --body "$PR_BODY")
+
+  save_checkpoint "pr"
+  log "Done"
+  echo ""
+  echo "PR: $PR_URL"
+fi
+
+echo "Log: $RALPH_LOG"

@@ -1,0 +1,50 @@
+# Role Profile: Software Development
+# Full-stack development, backend, frontend, APIs, applications
+
+name: software-dev
+version: 4.0.0
+description: |
+  Software development across the stack. Build applications (backend APIs, frontends,
+  full-stack features), write code in Python, Go, Rust, TypeScript, Java, review code,
+  generate tests, and deploy with CI/CD pipelines.
+
+# Skills from skills/ directory
+skills:
+  - path: skills/languages/SKILL.md
+    description: Python, Go, Rust, Java, TypeScript, Shell patterns
+    knowledge_areas: 6
+
+  - path: skills/development/SKILL.md
+    description: Backend, frontend, fullstack, mobile, deployment, AI
+    knowledge_areas: 8
+
+  - path: skills/code-quality/SKILL.md
+    description: Code review, improvement, test generation
+    knowledge_areas: 3
+
+  - path: skills/validation/SKILL.md
+    description: Assumption validation, test strategies
+    knowledge_areas: 4
+
+  - path: skills/data/SKILL.md
+    description: Data engineering, ML, MLOps
+    knowledge_areas: 4
+
+# Commands commonly used with this profile
+commands:
+  - /research
+  - /plan
+  - /implement
+  - /code-review
+  - /generate-tests
+
+# Keywords that trigger this profile
+trigger_patterns:
+  - "build"
+  - "implement"
+  - "feature"
+  - "api"
+  - "frontend"
+  - "backend"
+  - "code"
+  - "test"

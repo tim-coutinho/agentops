@@ -1,0 +1,22 @@
+{
+  "team_id": "test-run-001",
+  "repo_path": ".",
+  "agents": [
+    {
+      "name": "test-agent-1",
+      "prompt": "Echo hello world",
+      "files": ["test-output.txt"],
+      "output_file": "result.json",
+      "sandbox_level": "workspace-write",
+      "timeout_ms": 30000
+    },
+    {
+      "name": "test-agent-2",
+      "prompt": "Echo goodbye world",
+      "files": ["test-output-2.txt"],
+      "output_file": "result.json",
+      "sandbox_level": "read-only",
+      "timeout_ms": 30000
+    }
+  ]
+}

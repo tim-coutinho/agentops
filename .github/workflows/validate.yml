@@ -1,0 +1,409 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  doc-release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run doc-release stabilization gate
+        run: |
+          chmod +x tests/docs/validate-doc-release.sh
+          ./tests/docs/validate-doc-release.sh
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Run smoke tests
+        run: |
+          chmod +x tests/smoke-test.sh
+          ./tests/smoke-test.sh --verbose
+
+  hook-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run hook preflight checks
+        run: |
+          chmod +x scripts/validate-hook-preflight.sh
+          ./scripts/validate-hook-preflight.sh
+
+  embedded-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify embedded hooks are in sync
+        run: |
+          chmod +x scripts/validate-embedded-sync.sh
+          ./scripts/validate-embedded-sync.sh
+
+  cli-docs-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Verify CLI docs are up to date
+        run: |
+          chmod +x scripts/generate-cli-reference.sh
+          ./scripts/generate-cli-reference.sh --check
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck
+        run: |
+          echo "=== Running ShellCheck ==="
+          find . -name "*.sh" -type f \
+            -not -path "./.git/*" \
+            -print0 | xargs -0 -r shellcheck --severity=error || {
+              echo "ShellCheck found errors"
+              exit 1
+            }
+          echo "✅ ShellCheck passed"
+
+  markdownlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install markdownlint-cli
+        run: npm install -g markdownlint-cli
+
+      - name: Run markdownlint on tracked markdown files
+        run: |
+          echo "=== Running markdownlint ==="
+          git ls-files '*.md' | xargs -r markdownlint
+          echo "✅ markdownlint passed"
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Scan for secrets
+        run: |
+          echo "=== Scanning for secrets ==="
+          # Common secret patterns
+          patterns=(
+            "password.*=.*['\"][^'\"]{8,}['\"]"
+            "api[_-]?key.*=.*['\"][^'\"]{16,}['\"]"
+            "secret.*=.*['\"][^'\"]{8,}['\"]"
+            "(access|auth|refresh|bearer)[_-]?token.*=.*['\"][^'\"]{16,}['\"]"
+            "AWS[_A-Z]*=.*['\"][A-Z0-9]{16,}['\"]"
+          )
+
+          found=0
+          for pattern in "${patterns[@]}"; do
+            if grep -r -i -E "$pattern" \
+                --exclude-dir=.git \
+                --exclude-dir=tests \
+                --exclude-dir=testdata \
+                --exclude-dir=cli/testdata \
+                --exclude="*.md" \
+                --exclude="*.jsonl" \
+                --exclude="*.sh" \
+                --exclude="validate.yml" \
+                . 2>/dev/null; then
+              found=1
+            fi
+          done
+
+          if [[ $found -eq 1 ]]; then
+            echo "⚠️ Potential secrets found - review above"
+            exit 1
+          fi
+          echo "✅ No secrets detected"
+
+      - name: Check for dangerous patterns
+        run: |
+          echo "=== Checking for dangerous patterns ==="
+          # Patterns that could be dangerous in scripts
+          # Note: validate.sh files use eval safely for CLI validation
+          dangerous=(
+            "rm -rf /"
+            "curl.*\| *sh"
+            "curl.*\| *bash"
+            "wget.*\| *sh"
+          )
+
+          found=0
+          for pattern in "${dangerous[@]}"; do
+            if grep -r -E "$pattern" \
+                --include="*.sh" \
+                --exclude-dir=.git \
+                --exclude-dir=tests \
+                --exclude-dir=cli/testdata \
+                --exclude="install-opencode.sh" \
+                --exclude="ci-local-release.sh" \
+                . 2>/dev/null; then
+              echo "Found: $pattern"
+              found=1
+            fi
+          done
+
+          if [[ $found -eq 1 ]]; then
+            echo "⚠️ Dangerous patterns found"
+            exit 1
+          fi
+          echo "✅ No dangerous patterns"
+
+  security-toolchain-gate:
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install scanner tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install semgrep
+          GOBIN=/usr/local/bin go install github.com/securego/gosec/v2/cmd/gosec@latest
+          GOBIN=/usr/local/bin go install github.com/zricethezav/gitleaks/v8@latest
+
+      - name: Run security toolchain gate
+        run: |
+          chmod +x scripts/security-gate.sh
+          ./scripts/security-gate.sh --mode quick
+
+      - name: Upload security gate artifacts
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: security-gate
+          path: .agents/security/
+          retention-days: 7
+
+  plugin-load-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate manifests against versioned schemas
+        run: |
+          chmod +x scripts/validate-manifests.sh
+          ./scripts/validate-manifests.sh --repo-root "$GITHUB_WORKSPACE"
+
+      - name: Check for broken symlinks
+        run: |
+          echo "=== Checking for symlinks ==="
+
+          # Symlinks break when plugins installed standalone from GitHub
+          symlinks=$(find . -type l -not -path "./.git/*" 2>/dev/null || true)
+          if [[ -n "$symlinks" ]]; then
+            echo "❌ Found symlinks that will break standalone installation:"
+            echo "$symlinks"
+            echo ""
+            echo "Replace symlinks with actual files for standalone plugin compatibility."
+            exit 1
+          fi
+
+          echo "✅ No symlinks found"
+
+      - name: Test plugin directory structure
+        run: |
+          echo "=== Testing plugin structure (unified) ==="
+
+          failed=0
+
+          # Check skills/ directory at root
+          if [[ -d "skills" ]]; then
+            skill_count=0
+            for skill in skills/*/; do
+              [[ ! -d "$skill" ]] && continue
+              skill_name=$(basename "$skill")
+
+              # Each skill must have SKILL.md
+              if [[ ! -f "${skill}SKILL.md" ]]; then
+                echo "❌ $skill_name: missing SKILL.md"
+                failed=1
+                continue
+              fi
+
+              # SKILL.md must have YAML frontmatter with name field
+              if ! head -1 "${skill}SKILL.md" | grep -q "^---$"; then
+                echo "❌ $skill_name: SKILL.md missing YAML frontmatter"
+                failed=1
+                continue
+              fi
+
+              if ! grep -q "^name:" "${skill}SKILL.md"; then
+                echo "❌ $skill_name: SKILL.md missing 'name' in frontmatter"
+                failed=1
+                continue
+              fi
+
+              skill_count=$((skill_count + 1))
+            done
+            echo "✅ $skill_count skills valid"
+          else
+            echo "❌ No skills/ directory found"
+            failed=1
+          fi
+
+          # Check agents/ directory (optional)
+          if [[ -d "agents" ]]; then
+            agent_count=$(find agents -name "*.md" -type f | wc -l | tr -d ' ')
+            echo "✅ $agent_count agents found"
+          fi
+
+          # Check hooks/ directory (optional)
+          if [[ -f "hooks/hooks.json" ]]; then
+            if jq empty "hooks/hooks.json" 2>/dev/null; then
+              echo "✅ hooks.json valid"
+            else
+              echo "❌ hooks.json invalid JSON"
+              failed=1
+            fi
+          fi
+
+          [[ $failed -eq 1 ]] && exit 1
+          echo ""
+          echo "✅ Plugin structure valid"
+
+  go-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Build ao CLI
+        run: |
+          echo "=== Building ao CLI ==="
+          cd cli
+          go build -o /tmp/ao-test ./cmd/ao
+          echo "✅ ao CLI builds successfully"
+
+      - name: Run Go tests with race detection and coverage
+        run: |
+          echo "=== Running Go tests ==="
+          cd cli
+          go test -race -coverprofile=coverage.out -covermode=atomic ./... -v
+          echo ""
+          echo "=== Coverage Summary ==="
+          go tool cover -func=coverage.out | tail -1
+          echo "✅ Go tests passed"
+
+      - name: Enforce Go complexity budget on changed files
+        run: |
+          echo "=== Enforcing Go complexity budget ==="
+          GOBIN=/usr/local/bin go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            BASE_REF="origin/${{ github.base_ref }}"
+          else
+            BASE_REF="HEAD~1"
+          fi
+          ./scripts/check-go-complexity.sh --base "$BASE_REF" --warn 15 --fail 25
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: go-coverage
+          path: cli/coverage.out
+          retention-days: 7
+
+  e2e-install-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run E2E install test
+        run: |
+          chmod +x tests/e2e-install-test.sh
+          ./tests/e2e-install-test.sh
+
+  summary:
+    needs: [doc-release-gate, smoke-test, hook-preflight, embedded-sync, cli-docs-parity, shellcheck, markdownlint, security-scan, security-toolchain-gate, plugin-load-test, go-build, e2e-install-test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          echo "=== CI Summary ==="
+          echo "doc-release-gate: ${{ needs.doc-release-gate.result }}"
+          echo "smoke-test: ${{ needs.smoke-test.result }}"
+          echo "hook-preflight: ${{ needs.hook-preflight.result }}"
+          echo "embedded-sync: ${{ needs.embedded-sync.result }}"
+          echo "cli-docs-parity: ${{ needs.cli-docs-parity.result }}"
+          echo "shellcheck: ${{ needs.shellcheck.result }}"
+          echo "markdownlint: ${{ needs.markdownlint.result }}"
+          echo "security-scan: ${{ needs.security-scan.result }}"
+          echo "security-toolchain-gate: ${{ needs.security-toolchain-gate.result }}"
+          echo "plugin-load-test: ${{ needs.plugin-load-test.result }}"
+          echo "go-build: ${{ needs.go-build.result }}"
+          echo "e2e-install-test: ${{ needs.e2e-install-test.result }}"
+
+          if [[ "${{ needs.doc-release-gate.result }}" != "success" ]] || \
+             [[ "${{ needs.smoke-test.result }}" != "success" ]] || \
+             [[ "${{ needs.hook-preflight.result }}" != "success" ]] || \
+             [[ "${{ needs.embedded-sync.result }}" != "success" ]] || \
+             [[ "${{ needs.cli-docs-parity.result }}" != "success" ]] || \
+             [[ "${{ needs.shellcheck.result }}" != "success" ]] || \
+             [[ "${{ needs.markdownlint.result }}" != "success" ]] || \
+             [[ "${{ needs.security-scan.result }}" != "success" ]] || \
+             [[ "${{ needs.security-toolchain-gate.result }}" != "success" ]] || \
+             [[ "${{ needs.plugin-load-test.result }}" != "success" ]] || \
+             [[ "${{ needs.go-build.result }}" != "success" ]] || \
+             [[ "${{ needs.e2e-install-test.result }}" != "success" ]]; then
+            echo ""
+            echo "❌ Some checks failed"
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ All checks passed"

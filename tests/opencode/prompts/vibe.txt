@@ -1,0 +1,1 @@
+Load the vibe skill with --quick and review the file skills/status/SKILL.md for quality. Report verdict: PASS, WARN, or FAIL.

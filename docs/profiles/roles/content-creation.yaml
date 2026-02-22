@@ -1,0 +1,46 @@
+# Role Profile: Content Creation
+# Documentation, writing, research, pattern extraction, tutorials
+
+name: content-creation
+version: 4.0.0
+description: |
+  Content creation, research, and knowledge synthesis. Write documentation (technical
+  and non-technical), extract patterns from completed work, conduct research and
+  analysis, create tutorials and examples, synthesize learnings.
+
+# Skills from skills/ directory
+skills:
+  - path: skills/documentation/SKILL.md
+    description: Create, optimize, Diátaxis audit, API documentation
+    knowledge_areas: 4
+
+  - path: skills/research/SKILL.md
+    description: Code, docs, history, archive, structure, specifications
+    knowledge_areas: 6
+
+  - path: skills/meta/SKILL.md
+    description: Context, observer, memory, retrospective analysis
+    knowledge_areas: 6
+
+  - path: skills/specialized/SKILL.md
+    description: Accessibility, customer support, UI/UX
+    knowledge_areas: 6
+
+# Commands commonly used with this profile
+commands:
+  - /research
+  - /research-multi
+  - /learn
+  - /retro
+  - /update-docs
+  - /create-architecture-documentation
+
+# Keywords that trigger this profile
+trigger_patterns:
+  - "document"
+  - "write"
+  - "research"
+  - "pattern"
+  - "tutorial"
+  - "explain"
+  - "analyze"

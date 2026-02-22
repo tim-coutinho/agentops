@@ -1,0 +1,1 @@
+What could go wrong with this implementation? Simulate potential failures

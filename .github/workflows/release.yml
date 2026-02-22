@@ -1,0 +1,177 @@
+name: Release Publisher
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v1.0.12)'
+        required: true
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Resolve version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION="$INPUT_TAG"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+
+          if [[ -z "$VERSION" ]]; then
+            echo "ERROR: could not determine release version"
+            exit 1
+          fi
+
+          if [[ "$VERSION" != v* ]]; then
+            VERSION="v$VERSION"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version: $VERSION"
+
+      - name: Verify tag still exists
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git fetch --tags --force
+          if ! git rev-parse "$VERSION^{commit}" > /dev/null 2>&1; then
+            echo "ERROR: Tag $VERSION does not resolve to a commit"
+            exit 1
+          fi
+          COMMIT=$(git rev-parse "$VERSION^{commit}")
+          echo "Tag $VERSION verified (commit: ${COMMIT:0:8})"
+
+      - name: Validate Homebrew token
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: |
+          if [[ -z "$HOMEBREW_TAP_GITHUB_TOKEN" ]]; then
+            echo "ERROR: HOMEBREW_TAP_GITHUB_TOKEN not set"
+            exit 1
+          fi
+
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token $HOMEBREW_TAP_GITHUB_TOKEN" \
+            "https://api.github.com/repos/boshu2/homebrew-agentops")
+
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "ERROR: Homebrew token invalid or expired (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+          echo "Homebrew token validated"
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${VERSION}$" | head -1)
+          chmod +x scripts/extract-release-notes.sh
+          scripts/extract-release-notes.sh "$VERSION" "$PREV_TAG"
+
+      - name: Delete existing release (idempotent re-runs)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if gh release view "$VERSION" > /dev/null 2>&1; then
+            echo "Deleting existing release for $VERSION..."
+            gh release delete "$VERSION" --yes
+            echo "deleted"
+          else
+            echo "No existing release for $VERSION"
+          fi
+
+      - name: Publish with GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      - name: Set release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release edit "$VERSION" --notes-file release-notes.md
+          echo "Release notes applied to $VERSION ($(wc -l < release-notes.md) lines)"
+
+      - name: Install scanner tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install semgrep
+          GOBIN=/usr/local/bin go install github.com/securego/gosec/v2/cmd/gosec@latest
+          GOBIN=/usr/local/bin go install github.com/zricethezav/gitleaks/v8@latest
+
+      - name: Generate SBOM and security report assets
+        run: |
+          mkdir -p release-artifacts
+
+          # CycloneDX SBOM for Go module dependencies
+          GOBIN=/usr/local/bin go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.9.0
+          (cd cli && cyclonedx-gomod mod -licenses -json -output ../release-artifacts/sbom-cyclonedx-go-mod.json)
+
+          # Security report for release consumers (non-blocking at publish stage)
+          chmod +x scripts/security-gate.sh
+          set +e
+          ./scripts/security-gate.sh --mode full --json > release-artifacts/security-gate-summary.json
+          SECURITY_RC=$?
+          set -e
+          echo "security-gate exit code: $SECURITY_RC"
+
+          if ! jq empty release-artifacts/security-gate-summary.json > /dev/null 2>&1; then
+            jq -n --arg note "security-gate output was not valid JSON" '{parse_error:true,note:$note}' > release-artifacts/security-gate-summary.json
+          fi
+
+      - name: Upload SBOM and security report to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release upload "$VERSION" release-artifacts/sbom-cyclonedx-go-mod.json --clobber
+          gh release upload "$VERSION" release-artifacts/security-gate-summary.json --clobber
+          echo "Uploaded SBOM + security report assets"
+
+      - name: Generate SLSA provenance attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/ao-darwin-amd64.tar.gz
+            dist/ao-darwin-arm64.tar.gz
+            dist/ao-linux-amd64.tar.gz
+            dist/ao-linux-arm64.tar.gz
+            dist/checksums.txt
+            release-artifacts/sbom-cyclonedx-go-mod.json
+            release-artifacts/security-gate-summary.json

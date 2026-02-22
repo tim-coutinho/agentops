@@ -1,0 +1,9 @@
+version: 2
+goals:
+  - id: ""
+    description: ""
+    check: ""
+    weight: 0
+  - description: Has no id field
+    check: echo ok
+    weight: 5

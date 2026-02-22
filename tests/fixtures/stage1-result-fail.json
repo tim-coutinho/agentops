@@ -1,0 +1,12 @@
+{
+  "quest_id": "ol-318",
+  "bead_id": "ol-318.1",
+  "worktree": "/tmp/worktree/ol-318",
+  "passed": false,
+  "steps": [
+    {"name": "go vet", "exit_code": 0, "passed": true, "duration": "1.1s"},
+    {"name": "go test", "exit_code": 1, "passed": false, "duration": "2.7s"},
+    {"name": "golangci-lint", "exit_code": 0, "passed": true, "duration": "4.9s"}
+  ],
+  "summary": "step 'go test' failed with exit code 1"
+}

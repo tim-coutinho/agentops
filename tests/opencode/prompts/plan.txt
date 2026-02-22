@@ -1,0 +1,1 @@
+Load the plan skill and plan adding a README badge for test coverage. Use --auto mode. Create a simple 2-issue plan.

@@ -1,0 +1,22 @@
+version: 3
+mission: Ship reliable software
+goals:
+  - id: api-latency
+    description: API p99 latency under 200ms
+    check: curl -s -o /dev/null -w '%{time_total}' http://localhost:8080/health
+    weight: 7
+    type: health
+    pillar: reliability
+    continuous:
+      metric: api_latency_p99
+      threshold: 0.2
+    tags:
+      - slo
+      - production
+  - id: no-circular-deps
+    description: No circular package dependencies
+    check: go vet ./...
+    weight: 6
+    type: architecture
+    tags:
+      - structure

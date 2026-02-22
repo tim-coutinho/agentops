@@ -1,0 +1,273 @@
+# DevOps for Vibe-Coding
+
+**Version:** 1.2.0
+**Date:** 2026-01-31
+**Status:** Foundation document for strategic pivot
+
+---
+
+## Tagline
+
+**Primary:** The missing DevOps layer for coding agents. Flow, feedback, and memory that compounds between sessions.
+
+**Secondary:** Validation Built In, Not Bolted On
+
+**Category:** DevOps for coding agents
+
+**Legacy (SEO/blog only):** DevOps for Vibe-Coding
+
+---
+
+## Elevator Pitch (30 seconds)
+
+> 12-Factor AgentOps is DevOps for vibe-coding. Instead of waiting for CI to catch problems with AI-generated code, we shift validation left—into the workflow itself. Pre-mortem before you implement. Vibe check before you commit. The same operational discipline that made infrastructure reliable, applied to coding agents.
+
+### One-Liner (10 seconds)
+
+> Shift-left validation for coding agents—catch it before you ship it.
+
+### Tweet-Length (280 chars)
+
+> DevOps gave us reliable infrastructure. 12-Factor AgentOps gives us reliable coding agents. Validation built in, not bolted on. Pre-mortem before build. Vibe check before commit. Knowledge that compounds.
+
+---
+
+## Key Differentiators
+
+### 1. Validation Built In, Not Bolted On
+
+**Traditional workflow:**
+```
+Write code → Ship → CI catches problems → Fix → Repeat
+```
+
+**Shift-left workflow:**
+```
+/pre-mortem → Implement → /vibe → Commit → Knowledge compounds
+```
+
+The validation loop happens BEFORE code ships, not after. This is the core insight.
+
+### 2. Coding Agent Specific
+
+We focus on **coding agents**—AI assistants that write, modify, and review code:
+
+- Claude Code running in terminal/IDE
+- AI pair programming sessions
+- Code generation with validation workflows
+- Agents using Read, Edit, Write, Bash for development
+
+We are NOT:
+- A framework for customer service chatbots
+- A platform for RAG-based Q&A systems
+- An SDK for multi-modal agents
+- A solution for general autonomous production agents
+
+### 3. DevOps Principles, New Context
+
+We apply proven operational discipline to a new domain:
+
+| DevOps Principle | Coding Agent Application |
+|------------------|--------------------------|
+| Infrastructure as Code | Prompts and workflows as versioned artifacts |
+| Shift-Left Testing | /pre-mortem before implementation |
+| Continuous Integration | /vibe checks before every commit |
+| Post-Mortems | /retro to extract and compound learnings |
+| Observability | Knowledge flywheel tracks what works |
+
+### 4. Single-Session Excellence
+
+AgentOps optimizes the single coding session—where most value is created or destroyed:
+
+- Context management (40% rule)
+- Validation gates within the session
+- Knowledge extraction and injection
+- Human-AI collaboration patterns
+
+For multi-session orchestration, see Olympus (Temporal-based workflows).
+
+### 5. Knowledge That Compounds
+
+The Knowledge Flywheel:
+```
+Session → Forge (extract learnings) → Pool (validate) → Inject (apply)
+    ↑____________________________________________________________|
+```
+
+Every session makes the next one better. This is the moat.
+
+---
+
+## What We Are
+
+- **DevOps principles applied to coding agents** — The same operational discipline that made infrastructure reliable
+- **Validation-first workflow** — Shift-left, not shift-blame
+- **Knowledge flywheel that compounds** — Learnings persist and improve future sessions
+- **Single-session orchestration** — Excellence where it matters most
+- **Framework, not SDK** — Patterns and practices, not lock-in
+
+## What We Are NOT
+
+- **General production agent framework** — For that, see [12-Factor Agents](https://github.com/humanlayer/12-factor-agents) by Dex Horthy
+- **Just another automation tool** — We're about validation, not execution speed
+- **Competing with Agent SDKs** — We're complementary (use LangChain, CrewAI, etc. for the runtime)
+- **Model-specific** — Works with Claude, could work with others
+- **Multi-session orchestration** — For that, see Olympus
+
+---
+
+## Target Audience
+
+### Primary: Developers Using Coding Agents
+
+- Engineers using Claude Code, GitHub Copilot, or similar
+- Teams adopting AI-assisted development
+- Developers who want "vibe coding" without the "hope and pray"
+
+### Secondary: Engineering Managers
+
+- Teams scaling AI-assisted development
+- Leaders concerned about code quality with AI
+- Organizations building coding agent workflows
+
+### Tertiary: Platform/DevOps Engineers
+
+- Building internal developer platforms with AI
+- Integrating coding agents into CI/CD
+- Establishing validation patterns for AI-generated code
+
+---
+
+## Competitive Positioning
+
+| Solution | Focus | Relationship to Us |
+|----------|-------|-------------------|
+| **12-Factor Agents** (Dex Horthy) | General autonomous agents | Complementary—we're coding-specific |
+| **Agent SDKs** (LangChain, CrewAI) | Runtime infrastructure | We sit above—validation patterns, not execution |
+| **Olympus** (mt-olympus.io) | Multi-session orchestration | Complementary—we're single-session |
+| **CI/CD tools** | Post-merge validation | We shift-left—validation before commit |
+| **Linters/Formatters** | Syntax validation | We're semantic—does the code do what you intended? |
+
+### Our Unique Position
+
+```
+                    General ←—→ Coding-Specific
+                         │
+Multi-Session           │   Olympus
+       ↑                │
+       │                │
+       │           ┌────┴────┐
+       │           │ AgentOps │ ← WE ARE HERE
+       │           │(Shift-L) │
+       │           └────┬────┘
+       │                │
+Single-Session          │   Agent SDKs
+       ↓                │
+                        │
+              Execution ←—→ Validation
+```
+
+---
+
+## Core Message Framework
+
+### When Asked "What is 12-Factor AgentOps?"
+
+> It's DevOps for vibe-coding. We apply the same operational principles that made infrastructure reliable—shift-left testing, post-mortems, continuous validation—to coding agents. Instead of shipping AI-generated code and hoping CI catches problems, you validate before you commit.
+
+### When Asked "How is it different from X?"
+
+| X | Response |
+|---|----------|
+| Regular coding | Same principles, but with AI-specific patterns for context management and validation |
+| Other agent frameworks | We're coding-specific and validation-focused, not general autonomous agents |
+| CI/CD | We shift validation left—into the workflow, before you push |
+| Copilot/Claude Code | We're complementary—the operational layer around your coding agent |
+
+### When Asked "Why should I care?"
+
+> Because AI-generated code still needs validation. The 80% that works is valuable. The 20% that doesn't can be catastrophic. DevOps taught us to shift validation left. AgentOps applies that to coding agents.
+
+---
+
+## Key Phrases Reference
+
+### Use These
+
+- "DevOps for Vibe-Coding"
+- "Shift-left validation for coding agents"
+- "Validation built in, not bolted on"
+- "Catch it before you ship it"
+- "Knowledge that compounds"
+- "The 40% rule" (context budget)
+- "Pre-mortem before implement"
+- "Vibe check before commit"
+
+### Avoid These
+
+- "Operational principles for reliable AI agents" (old, too general)
+- "Production-grade agents" (implies general agents)
+- "AI-assisted development" (too generic, no validation emphasis)
+- "Autonomous agents" (not our focus)
+- "Just use Claude better" (undersells the framework)
+
+---
+
+## The Three Core Skills
+
+The shift-left workflow expressed as skills:
+
+### 1. /pre-mortem — Simulate Failures Before Implementing
+
+> "What could go wrong with this plan?"
+
+Run BEFORE implementing. Identifies risks, missing requirements, edge cases. The validation starts before code exists.
+
+### 2. /vibe — Validate Before You Commit
+
+> "Does this code do what you intended?"
+
+The semantic vibe check. Not just syntax—does the implementation match the intent? Run BEFORE every commit.
+
+### 3. /retro — Extract Learnings to Compound Knowledge
+
+> "What did we learn that makes the next session better?"
+
+Closes the loop. Extracts learnings, feeds the flywheel. Every session makes the next one better.
+
+**Supporting skills:** /research (understand before acting), /plan (think before implementing), /crank (execute with validation gates)
+
+---
+
+## Success Criteria
+
+This positioning is successful when:
+
+1. **Users can state what we do in one sentence** — "DevOps for vibe-coding" or equivalent
+2. **No confusion with general agent frameworks** — Clear we're coding-specific
+3. **Validation emphasis is clear** — Shift-left, not shift-blame
+4. **Knowledge flywheel is understood** — Sessions compound, not isolated
+
+---
+
+## Appendix: Related Work
+
+### The Vibe Coding Book
+
+Steve Yegge and Gene Kim's "Vibe Coding" popularized the term. We embrace it and add the operational rigor that makes it sustainable.
+
+### 12-Factor App
+
+Heroku's original 12-factor methodology for SaaS apps. We adapt the philosophy (operational principles) to the new domain (coding agents).
+
+### 12-Factor Agents
+
+Dex Horthy's framework for general autonomous agents. Complementary work—we cite them for users who need general agent patterns.
+
+### DevOps Handbook
+
+The operational discipline that made infrastructure reliable. We're applying the same shift-left philosophy to a new domain.
+
+---
+
+*This document is the foundation for all messaging updates. Reference it when updating READMEs, articles, plugin metadata, and skill descriptions.*

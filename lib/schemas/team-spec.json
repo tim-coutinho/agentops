@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "team_id": {
+      "type": "string",
+      "description": "Unique identifier for this team run"
+    },
+    "repo_path": {
+      "type": "string",
+      "description": "Absolute path to the repository root"
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Agent name (used for output directory naming)"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "The task prompt for this agent"
+          },
+          "files": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Files this agent will modify (for conflict detection)"
+          },
+          "output_file": {
+            "type": "string",
+            "description": "Output filename (relative to agent output dir)"
+          },
+          "sandbox_level": {
+            "type": "string",
+            "enum": ["read-only", "workspace-write", "danger-full-access"],
+            "description": "Codex sandbox level for this agent"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "description": "Per-agent timeout in milliseconds"
+          }
+        },
+        "required": ["name", "prompt", "files", "output_file", "sandbox_level", "timeout_ms"],
+        "additionalProperties": false
+      },
+      "description": "List of agents to spawn"
+    }
+  },
+  "required": ["team_id", "repo_path", "agents"],
+  "additionalProperties": false
+}

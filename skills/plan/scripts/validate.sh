@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PASS=0; FAIL=0
+
+check() { if bash -c "$2"; then echo "PASS: $1"; PASS=$((PASS + 1)); else echo "FAIL: $1"; FAIL=$((FAIL + 1)); fi; }
+
+check "SKILL.md exists" "[ -f '$SKILL_DIR/SKILL.md' ]"
+check "SKILL.md has YAML frontmatter" "head -1 '$SKILL_DIR/SKILL.md' | grep -q '^---$'"
+check "SKILL.md has name: plan" "grep -q '^name: plan' '$SKILL_DIR/SKILL.md'"
+check "references/ directory exists" "[ -d '$SKILL_DIR/references' ]"
+check "references/ has at least 2 files" "[ \$(ls '$SKILL_DIR/references/' | wc -l) -ge 2 ]"
+check "SKILL.md mentions .agents/plans/ output path" "grep -q '\.agents/plans/' '$SKILL_DIR/SKILL.md'"
+check "SKILL.md mentions waves" "grep -qi 'wave' '$SKILL_DIR/SKILL.md'"
+check "SKILL.md mentions dependencies" "grep -qi 'dependencies\|depend' '$SKILL_DIR/SKILL.md'"
+check "SKILL.md mentions bd for issue tracking" "grep -q 'bd ' '$SKILL_DIR/SKILL.md'"
+check "SKILL.md mentions TaskList for tracking" "grep -q 'TaskList\|TaskCreate' '$SKILL_DIR/SKILL.md'"
+check "SKILL.md mentions conformance checks" "grep -qi 'conformance' '$SKILL_DIR/SKILL.md'"
+check "SKILL.md mentions --auto flag" "grep -q '\-\-auto' '$SKILL_DIR/SKILL.md'"
+check "SKILL.md mentions Explore agent" "grep -qi 'explore' '$SKILL_DIR/SKILL.md'"
+
+echo ""; echo "Results: $PASS passed, $FAIL failed"
+[ $FAIL -eq 0 ] && exit 0 || exit 1

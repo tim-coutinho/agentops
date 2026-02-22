@@ -1,0 +1,26 @@
+# E2E test container for AgentOps plugins
+# Tests actual plugin installation with Claude Code CLI
+
+FROM node:22-slim
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    jq \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
+# Create test user (Claude Code needs a home directory)
+RUN useradd -m testuser
+USER testuser
+WORKDIR /home/testuser
+
+# Copy test scripts
+COPY --chown=testuser:testuser tests/e2e-install-test.sh /home/testuser/
+COPY --chown=testuser:testuser . /home/testuser/agentops/
+
+# Run tests
+CMD ["/home/testuser/e2e-install-test.sh"]

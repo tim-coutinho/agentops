@@ -1,0 +1,25 @@
+skills:
+  - changed-files:
+      - any-glob-to-any-file: 'skills/**'
+
+cli:
+  - changed-files:
+      - any-glob-to-any-file: 'cli/**'
+
+hooks:
+  - changed-files:
+      - any-glob-to-any-file: 'hooks/**'
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docs/**'
+          - '*.md'
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: '.github/**'
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file: 'tests/**'

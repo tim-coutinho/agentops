@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentops.dev/schemas/hooks-manifest.v1.schema.json",
+  "title": "AgentOps Hooks Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "hooks"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "SessionStart": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookRule"
+          }
+        },
+        "SessionEnd": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookRule"
+          }
+        },
+        "PreToolUse": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookRule"
+          }
+        },
+        "PostToolUse": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookRule"
+          }
+        },
+        "UserPromptSubmit": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookRule"
+          }
+        },
+        "TaskCompleted": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookRule"
+          }
+        },
+        "Stop": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookRule"
+          }
+        },
+        "PreCompact": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookRule"
+          }
+        },
+        "SubagentStop": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookRule"
+          }
+        },
+        "WorktreeCreate": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookRule"
+          }
+        },
+        "WorktreeRemove": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookRule"
+          }
+        },
+        "ConfigChange": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookRule"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hookRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hooks"],
+      "properties": {
+        "matcher": {
+          "type": "string"
+        },
+        "hooks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hookCommand"
+          }
+        }
+      }
+    },
+    "hookCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "command"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "command"
+        },
+        "command": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

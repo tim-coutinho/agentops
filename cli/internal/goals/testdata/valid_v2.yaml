@@ -1,0 +1,10 @@
+version: 2
+goals:
+  - id: test-coverage
+    description: Maintain test coverage above 80%
+    check: "go test -cover ./... | grep -q 'coverage: [8-9][0-9]'"
+    weight: 5
+  - id: build-passes
+    description: Project builds without errors
+    check: go build ./...
+    weight: 8

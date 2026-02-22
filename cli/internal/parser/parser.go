@@ -1,0 +1,393 @@
+// Package parser provides streaming JSONL parsing for Claude Code transcripts.
+package parser
+
+import (
+	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/boshu2/agentops/cli/internal/types"
+)
+
+// DefaultMaxContentLength is the default truncation limit for content fields.
+const DefaultMaxContentLength = 500
+
+// Parser handles streaming JSONL parsing with configurable options.
+type Parser struct {
+	// MaxContentLength is the maximum characters before truncation.
+	MaxContentLength int
+
+	// SkipMalformed skips malformed lines instead of erroring.
+	SkipMalformed bool
+
+	// OnProgress is called with progress updates for large files.
+	OnProgress func(linesProcessed, totalLines int)
+}
+
+// NewParser creates a parser with default settings.
+func NewParser() *Parser {
+	return &Parser{
+		MaxContentLength: DefaultMaxContentLength,
+		SkipMalformed:    true,
+	}
+}
+
+// rawMessage represents the raw JSON structure from Claude Code transcripts.
+type rawMessage struct {
+	Type       string `json:"type"`
+	SessionID  string `json:"sessionId"`
+	Timestamp  string `json:"timestamp"`
+	UUID       string `json:"uuid"`
+	ParentUUID string `json:"parentUuid,omitempty"`
+	Message    *struct {
+		Role    string      `json:"role"`
+		Content interface{} `json:"content"` // Can be string or array
+	} `json:"message,omitempty"`
+	// ToolUseResult contains structured tool output (e.g., for TodoWrite)
+	ToolUseResult interface{} `json:"toolUseResult,omitempty"`
+}
+
+// ParseResult contains the result of parsing a JSONL stream.
+type ParseResult struct {
+	Messages       []types.TranscriptMessage
+	TotalLines     int
+	MalformedLines int
+	Errors         []error
+
+	// Checksum is SHA256 hash of the parsed content (first 16 hex chars).
+	// Used for detecting changes and validating re-parsing.
+	Checksum string
+
+	// FilePath is the source file path (if parsed from file).
+	FilePath string
+
+	// ParsedAt is when parsing completed.
+	ParsedAt time.Time
+}
+
+// ParseError provides structured error information for transcript parsing failures.
+type ParseError struct {
+	Line       int    `json:"line"`
+	Column     int    `json:"column,omitempty"`
+	Message    string `json:"message"`
+	RawContent string `json:"raw_content,omitempty"`
+	ErrorType  string `json:"error_type"` // "json", "schema", "encoding"
+}
+
+func (e *ParseError) Error() string {
+	if e.Column > 0 {
+		return fmt.Sprintf("line %d, col %d: %s (%s)", e.Line, e.Column, e.Message, e.ErrorType)
+	}
+	return fmt.Sprintf("line %d: %s (%s)", e.Line, e.Message, e.ErrorType)
+}
+
+// Parse reads JSONL from the reader and returns parsed messages.
+func (p *Parser) Parse(r io.Reader) (*ParseResult, error) {
+	result := &ParseResult{
+		Messages: make([]types.TranscriptMessage, 0),
+	}
+
+	// Hash all content for checksum
+	hasher := sha256.New()
+
+	scanner := bufio.NewScanner(r)
+	// Increase buffer size for potentially long lines
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024) // 1MB max line size
+
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		result.TotalLines = lineNum
+
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		// Update checksum with line content
+		hasher.Write(line)
+		hasher.Write([]byte("\n"))
+
+		msg, err := p.parseLine(line, lineNum)
+		if err != nil {
+			result.MalformedLines++
+			if !p.SkipMalformed {
+				// Create structured parse error
+				parseErr := &ParseError{
+					Line:       lineNum,
+					Message:    err.Error(),
+					ErrorType:  classifyError(err),
+					RawContent: truncateForError(string(line), 100),
+				}
+				result.Errors = append(result.Errors, parseErr)
+			}
+			continue
+		}
+
+		if msg != nil {
+			result.Messages = append(result.Messages, *msg)
+		}
+
+		if p.OnProgress != nil && lineNum%100 == 0 {
+			p.OnProgress(lineNum, 0) // Total unknown for streaming
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return result, fmt.Errorf("scanner error: %w", err)
+	}
+
+	// Set checksum (first 16 hex chars of SHA256)
+	hash := hasher.Sum(nil)
+	result.Checksum = hex.EncodeToString(hash[:8])
+	result.ParsedAt = time.Now()
+
+	return result, nil
+}
+
+// classifyError determines the error type for structured reporting.
+func classifyError(err error) string {
+	errStr := err.Error()
+	switch {
+	case strings.Contains(errStr, "invalid character"):
+		return "json"
+	case strings.Contains(errStr, "unexpected end"):
+		return "json"
+	case strings.Contains(errStr, "cannot unmarshal"):
+		return "schema"
+	case strings.Contains(errStr, "invalid UTF-8"):
+		return "encoding"
+	default:
+		return "json"
+	}
+}
+
+// truncateForError limits error context to a reasonable size.
+func truncateForError(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// ParseFile parses a JSONL file by path.
+func (p *Parser) ParseFile(path string) (result *ParseResult, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open file: %w", err)
+	}
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
+	result, err = p.Parse(f)
+	if result != nil {
+		result.FilePath = path
+	}
+	return result, err
+}
+
+// timestampFormats lists the formats to try when parsing timestamps.
+var timestampFormats = []string{
+	time.RFC3339,
+	"2006-01-02T15:04:05.000Z",
+}
+
+// parseTimestamp parses a timestamp string, trying multiple formats.
+// Returns zero time if all formats fail.
+func parseTimestamp(s string) time.Time {
+	for _, format := range timestampFormats {
+		if ts, err := time.Parse(format, s); err == nil {
+			return ts
+		}
+	}
+	return time.Time{}
+}
+
+// isValidMessageType checks if the type is one we should parse.
+func isValidMessageType(msgType string) bool {
+	switch msgType {
+	case "user", "assistant", "tool_use", "tool_result":
+		return true
+	default:
+		return false
+	}
+}
+
+// parseContentBlocks extracts text and tool calls from content block array.
+func (p *Parser) parseContentBlocks(blocks []interface{}) (string, []types.ToolCall) {
+	var content string
+	var tools []types.ToolCall
+
+	for _, block := range blocks {
+		blockMap, ok := block.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		blockType, _ := blockMap["type"].(string)
+		switch blockType {
+		case "text":
+			if text, ok := blockMap["text"].(string); ok {
+				content += p.truncate(text)
+			}
+		case "tool_use":
+			if toolCall := p.parseToolUse(blockMap); toolCall != nil {
+				tools = append(tools, *toolCall)
+			}
+		case "tool_result":
+			if toolResult := p.parseToolResult(blockMap); toolResult != nil {
+				tools = append(tools, *toolResult)
+			}
+		}
+	}
+
+	return content, tools
+}
+
+// parseLine parses a single JSON line.
+func (p *Parser) parseLine(line []byte, lineNum int) (*types.TranscriptMessage, error) {
+	var raw rawMessage
+	if err := json.Unmarshal(line, &raw); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	// Skip non-message types
+	if !isValidMessageType(raw.Type) {
+		return nil, nil
+	}
+
+	msg := &types.TranscriptMessage{
+		Type:         raw.Type,
+		Timestamp:    parseTimestamp(raw.Timestamp),
+		SessionID:    raw.SessionID,
+		MessageIndex: lineNum,
+	}
+
+	// Extract content from message
+	if raw.Message != nil {
+		msg.Role = raw.Message.Role
+		p.extractMessageContent(raw.Message.Content, msg)
+	}
+
+	return msg, nil
+}
+
+// extractMessageContent populates msg.Content and msg.Tools from raw content.
+func (p *Parser) extractMessageContent(rawContent interface{}, msg *types.TranscriptMessage) {
+	switch content := rawContent.(type) {
+	case string:
+		msg.Content = p.truncate(content)
+	case []interface{}:
+		msg.Content, msg.Tools = p.parseContentBlocks(content)
+	}
+}
+
+// parseToolUse extracts tool call information from a tool_use block.
+func (p *Parser) parseToolUse(block map[string]interface{}) *types.ToolCall {
+	name, _ := block["name"].(string)
+	if name == "" {
+		return nil
+	}
+
+	toolCall := &types.ToolCall{
+		Name: name,
+	}
+
+	// Extract input parameters
+	if input, ok := block["input"].(map[string]interface{}); ok {
+		toolCall.Input = input
+	}
+
+	return toolCall
+}
+
+// parseToolResult extracts tool result information from a tool_result block.
+func (p *Parser) parseToolResult(block map[string]interface{}) *types.ToolCall {
+	toolCall := &types.ToolCall{
+		Name: "tool_result",
+	}
+
+	// Check if it's an error result
+	if isError, ok := block["is_error"].(bool); ok && isError {
+		toolCall.Error = "tool error"
+	}
+
+	// Extract result content
+	switch content := block["content"].(type) {
+	case string:
+		toolCall.Output = p.truncate(content)
+	case []interface{}:
+		// Content can be an array of text blocks
+		for _, item := range content {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				if text, ok := itemMap["text"].(string); ok {
+					toolCall.Output += p.truncate(text)
+				}
+			}
+		}
+	}
+
+	return toolCall
+}
+
+// truncate limits content to MaxContentLength characters.
+func (p *Parser) truncate(s string) string {
+	if p.MaxContentLength <= 0 || len(s) <= p.MaxContentLength {
+		return s
+	}
+	return s[:p.MaxContentLength] + "... [truncated]"
+}
+
+// ParseChannel returns a channel that emits messages as they're parsed.
+// Useful for streaming large files without loading all into memory.
+func (p *Parser) ParseChannel(r io.Reader) (<-chan types.TranscriptMessage, <-chan error) {
+	msgCh := make(chan types.TranscriptMessage, 100)
+	errCh := make(chan error, 1)
+
+	go func() {
+		defer close(msgCh)
+		defer close(errCh)
+
+		scanner := bufio.NewScanner(r)
+		buf := make([]byte, 0, 64*1024)
+		scanner.Buffer(buf, 1024*1024)
+
+		lineNum := 0
+		for scanner.Scan() {
+			lineNum++
+			line := scanner.Bytes()
+			if len(line) == 0 {
+				continue
+			}
+
+			msg, err := p.parseLine(line, lineNum)
+			if err != nil {
+				if !p.SkipMalformed {
+					errCh <- fmt.Errorf("line %d: %w", lineNum, err)
+					return
+				}
+				continue
+			}
+
+			if msg != nil {
+				msgCh <- *msg
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			errCh <- fmt.Errorf("scanner error: %w", err)
+		}
+	}()
+
+	return msgCh, errCh
+}

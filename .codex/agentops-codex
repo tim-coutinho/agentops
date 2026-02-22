@@ -1,0 +1,339 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { spawnSync } = require('child_process');
+const skillsCore = require('../lib/skills-core');
+
+// Paths
+const homeDir = os.homedir();
+const agentopsSkillsDir = path.join(homeDir, '.codex', 'agentops', 'skills');
+const personalSkillsDir = path.join(homeDir, '.codex', 'skills');
+const bootstrapFile = path.join(homeDir, '.codex', 'agentops', '.codex', 'agentops-bootstrap.md');
+const agentopsRepoDir = path.join(homeDir, '.codex', 'agentops');
+
+// Utility functions
+function printSkill(skillPath, sourceType) {
+    const skillFile = path.join(skillPath, 'SKILL.md');
+    const relPath = sourceType === 'personal'
+        ? path.relative(personalSkillsDir, skillPath)
+        : path.relative(agentopsSkillsDir, skillPath);
+
+    // Print skill name with namespace
+    if (sourceType === 'personal') {
+        console.log(relPath.replace(/\\/g, '/')); // Personal skills are not namespaced
+    } else {
+        console.log(`agentops:${relPath.replace(/\\/g, '/')}`); // AgentOps skills get agentops namespace
+    }
+
+    // Extract and print metadata
+    const { name, description } = skillsCore.extractFrontmatter(skillFile);
+
+    if (description) console.log(`  ${description}`);
+    console.log('');
+}
+
+// Commands
+function runFindSkills() {
+    console.log('Available skills:');
+    console.log('==================');
+    console.log('');
+
+    const foundSkills = new Set();
+
+    // Find personal skills first (these take precedence)
+    const personalSkills = skillsCore.findSkillsInDir(personalSkillsDir, 'personal', 2);
+    for (const skill of personalSkills) {
+        const relPath = path.relative(personalSkillsDir, skill.path);
+        foundSkills.add(relPath);
+        printSkill(skill.path, 'personal');
+    }
+
+    // Find agentops skills (only if not already found in personal)
+    const agentopsSkills = skillsCore.findSkillsInDir(agentopsSkillsDir, 'agentops', 1);
+    for (const skill of agentopsSkills) {
+        const relPath = path.relative(agentopsSkillsDir, skill.path);
+        if (!foundSkills.has(relPath)) {
+            printSkill(skill.path, 'agentops');
+        }
+    }
+
+    console.log('Usage:');
+    console.log('  agentops-codex use-skill <skill-name>   # Load a specific skill');
+    console.log('');
+    console.log('Skill naming:');
+    console.log('  AgentOps skills: agentops:skill-name (from ~/.codex/agentops/skills/)');
+    console.log('  Personal skills: skill-name (from ~/.codex/skills/)');
+    console.log('  Personal skills override AgentOps skills when names match.');
+    console.log('');
+    console.log('Note: All skills are disclosed at session start via bootstrap.');
+}
+
+function runBootstrap() {
+    console.log('# AgentOps Bootstrap for Codex');
+    console.log('# ================================');
+    console.log('');
+
+    // Check for updates (with timeout protection)
+    if (skillsCore.checkForUpdates(agentopsRepoDir)) {
+        console.log('## Update Available');
+        console.log('');
+        console.log('Your AgentOps installation is behind the latest version.');
+        console.log('To update, run: `cd ~/.codex/agentops && git pull`');
+        console.log('');
+        console.log('---');
+        console.log('');
+    }
+
+    // Show the bootstrap instructions
+    if (fs.existsSync(bootstrapFile)) {
+        console.log('## Bootstrap Instructions:');
+        console.log('');
+        try {
+            const content = fs.readFileSync(bootstrapFile, 'utf8');
+            console.log(content);
+        } catch (error) {
+            console.log(`Error reading bootstrap file: ${error.message}`);
+        }
+        console.log('');
+        console.log('---');
+        console.log('');
+    }
+
+    // Run find-skills to show available skills
+    console.log('## Available Skills:');
+    console.log('');
+    runFindSkills();
+
+    console.log('');
+    console.log('---');
+    console.log('');
+
+    // Load the using-agentops skill automatically
+    console.log('## Auto-loading agentops:using-agentops skill:');
+    console.log('');
+    runUseSkill('agentops:using-agentops');
+
+    console.log('');
+    console.log('---');
+    console.log('');
+    console.log('# Bootstrap Complete!');
+    console.log('# You now have access to all AgentOps skills.');
+    console.log('# Use "agentops-codex use-skill <skill>" to load and apply skills.');
+    console.log('# Remember: If a skill applies to your task, you MUST use it!');
+}
+
+function runUseSkill(skillName) {
+    if (!skillName) {
+        console.log('Usage: agentops-codex use-skill <skill-name>');
+        console.log('Examples:');
+        console.log('  agentops-codex use-skill agentops:research  # Load agentops skill');
+        console.log('  agentops-codex use-skill research           # Load personal skill (or agentops if not found)');
+        console.log('  agentops-codex use-skill my-custom-skill    # Load personal skill');
+        return;
+    }
+
+    // Handle namespaced skill names
+    let actualSkillPath;
+    let forceAgentops = false;
+
+    if (skillName.startsWith('agentops:')) {
+        // Remove the agentops: namespace prefix
+        actualSkillPath = skillName.substring('agentops:'.length);
+        forceAgentops = true;
+    } else {
+        actualSkillPath = skillName;
+    }
+
+    // Remove "skills/" prefix if present
+    if (actualSkillPath.startsWith('skills/')) {
+        actualSkillPath = actualSkillPath.substring('skills/'.length);
+    }
+
+    // Function to find skill file
+    function findSkillFile(searchPath) {
+        // Check for exact match with SKILL.md
+        const skillMdPath = path.join(searchPath, 'SKILL.md');
+        if (fs.existsSync(skillMdPath)) {
+            return skillMdPath;
+        }
+
+        // Check for direct SKILL.md file
+        if (searchPath.endsWith('SKILL.md') && fs.existsSync(searchPath)) {
+            return searchPath;
+        }
+
+        return null;
+    }
+
+    let skillFile = null;
+
+    // If agentops: namespace was used, only check agentops skills
+    if (forceAgentops) {
+        if (fs.existsSync(agentopsSkillsDir)) {
+            const agentopsPath = path.join(agentopsSkillsDir, actualSkillPath);
+            skillFile = findSkillFile(agentopsPath);
+        }
+    } else {
+        // First check personal skills directory (takes precedence)
+        if (fs.existsSync(personalSkillsDir)) {
+            const personalPath = path.join(personalSkillsDir, actualSkillPath);
+            skillFile = findSkillFile(personalPath);
+            if (skillFile) {
+                console.log(`# Loading personal skill: ${actualSkillPath}`);
+                console.log(`# Source: ${skillFile}`);
+                console.log('');
+            }
+        }
+
+        // If not found in personal, check agentops skills
+        if (!skillFile && fs.existsSync(agentopsSkillsDir)) {
+            const agentopsPath = path.join(agentopsSkillsDir, actualSkillPath);
+            skillFile = findSkillFile(agentopsPath);
+            if (skillFile) {
+                console.log(`# Loading agentops skill: agentops:${actualSkillPath}`);
+                console.log(`# Source: ${skillFile}`);
+                console.log('');
+            }
+        }
+    }
+
+    // If still not found, error
+    if (!skillFile) {
+        console.log(`Error: Skill not found: ${actualSkillPath}`);
+        console.log('');
+        console.log('Available skills:');
+        runFindSkills();
+        return;
+    }
+
+    // Extract frontmatter and content using shared core functions
+    let content, frontmatter;
+    try {
+        const fullContent = fs.readFileSync(skillFile, 'utf8');
+        const { name, description } = skillsCore.extractFrontmatter(skillFile);
+        content = skillsCore.stripFrontmatter(fullContent);
+        frontmatter = { name, description };
+    } catch (error) {
+        console.log(`Error reading skill file: ${error.message}`);
+        return;
+    }
+
+    // Display skill header with clean info
+    const displayName = forceAgentops ? `agentops:${actualSkillPath}` :
+                       (skillFile.includes(personalSkillsDir) ? actualSkillPath : `agentops:${actualSkillPath}`);
+
+    const skillDirectory = path.dirname(skillFile);
+
+    console.log(`# ${frontmatter.name || displayName}`);
+    if (frontmatter.description) {
+        console.log(`# ${frontmatter.description}`);
+    }
+    console.log(`# Skill-specific tools and reference files live in ${skillDirectory}`);
+    console.log('# ============================================');
+    console.log('');
+
+    // Display the skill content (without frontmatter)
+    console.log(content);
+
+}
+
+function runSessionEnd() {
+    // Codex doesn't consume Claude plugin hooks.json, so this provides an equivalent
+    // end-of-session close-loop entrypoint.
+    const repoRootResult = spawnSync('git', ['rev-parse', '--show-toplevel'], {
+        encoding: 'utf8'
+    });
+
+    const repoRoot = repoRootResult.status === 0
+        ? repoRootResult.stdout.trim()
+        : process.cwd();
+
+    function commandExists(cmd) {
+        const check = spawnSync('sh', ['-lc', `command -v ${cmd} >/dev/null 2>&1`], { cwd: repoRoot });
+        return check.status === 0;
+    }
+
+    function runAo(args) {
+        const localBin = path.join(repoRoot, 'bin', 'ao');
+        if (fs.existsSync(localBin)) {
+            return spawnSync(localBin, args, { cwd: repoRoot, encoding: 'utf8' });
+        }
+
+        const localCliDir = path.join(repoRoot, 'cli');
+        const localGoMod = path.join(localCliDir, 'go.mod');
+        if (fs.existsSync(localGoMod) && commandExists('go')) {
+            return spawnSync('go', ['run', './cmd/ao', ...args], {
+                cwd: localCliDir,
+                encoding: 'utf8'
+            });
+        }
+
+        if (commandExists('ao')) {
+            return spawnSync('ao', args, { cwd: repoRoot, encoding: 'utf8' });
+        }
+
+        return { status: 127, stderr: 'ao CLI not found' };
+    }
+
+    let closeLoop = runAo(['flywheel', 'close-loop', '--quiet']);
+    if (closeLoop.status !== 0 && closeLoop.stderr && closeLoop.stderr.includes('unknown flag: --quiet')) {
+        closeLoop = runAo(['flywheel', 'close-loop']);
+    }
+
+    if (closeLoop.status === 0) {
+        console.log('Codex session-end close-loop complete.');
+        return;
+    }
+
+    // Mirror hook failure logging behavior.
+    try {
+        const aoDir = path.join(repoRoot, '.agents', 'ao');
+        fs.mkdirSync(aoDir, { recursive: true });
+        const logPath = path.join(aoDir, 'hook-errors.log');
+        const ts = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+        fs.appendFileSync(logPath, `${ts} CODEX_SESSION_END_FAIL: ao flywheel close-loop\n`, 'utf8');
+    } catch (error) {
+        // Best-effort logging; still print command failure details below.
+    }
+
+    console.log('ao flywheel close-loop failed during Codex session-end.');
+    if (closeLoop.stderr) {
+        console.log(closeLoop.stderr.trim());
+    }
+    process.exit(1);
+}
+
+// Main CLI
+const command = process.argv[2];
+const arg = process.argv[3];
+
+switch (command) {
+    case 'bootstrap':
+        runBootstrap();
+        break;
+    case 'use-skill':
+        runUseSkill(arg);
+        break;
+    case 'find-skills':
+        runFindSkills();
+        break;
+    case 'session-end':
+        runSessionEnd();
+        break;
+    default:
+        console.log('AgentOps for Codex');
+        console.log('Usage:');
+        console.log('  agentops-codex bootstrap              # Run complete bootstrap with all skills');
+        console.log('  agentops-codex use-skill <skill-name> # Load a specific skill');
+        console.log('  agentops-codex find-skills            # List all available skills');
+        console.log('  agentops-codex session-end            # Codex equivalent of Stop hook close-loop');
+        console.log('');
+        console.log('Examples:');
+        console.log('  agentops-codex bootstrap');
+        console.log('  agentops-codex use-skill agentops:research');
+        console.log('  agentops-codex use-skill my-custom-skill');
+        console.log('  agentops-codex session-end');
+        break;
+}

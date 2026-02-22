@@ -1,0 +1,1 @@
+Load the learn skill and save this insight: OpenCode headless mode requires NODE_TLS_REJECT_UNAUTHORIZED=0 for self-signed certs on RunAI clusters. Classify as a gotcha.

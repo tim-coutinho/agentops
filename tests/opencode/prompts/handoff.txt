@@ -1,0 +1,1 @@
+Load the handoff skill and create a handoff summary for this test session. Include current state and next steps.

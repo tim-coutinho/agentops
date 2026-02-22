@@ -1,0 +1,1 @@
+Load the complexity skill and analyze the file skills/council/SKILL.md. Since this is a Markdown file, analyze structural complexity: count sections, measure nesting depth, and report total lines. Report any complexity hotspots.

@@ -1,0 +1,50 @@
+# Role Profile: Platform Operations
+# SRE, DevOps, infrastructure, monitoring, incidents, reliability
+
+name: platform-ops
+version: 4.0.0
+description: |
+  Platform operations and site reliability engineering. Respond to production incidents,
+  monitor system health and performance, debug errors, analyze logs, manage security
+  and network infrastructure.
+
+# Skills from skills/ directory
+skills:
+  - path: skills/operations/SKILL.md
+    description: Incident response, triage, postmortems, error detection
+    knowledge_areas: 4
+
+  - path: skills/monitoring/SKILL.md
+    description: Alerts, runbooks, performance engineering
+    knowledge_areas: 2
+
+  - path: skills/security/SKILL.md
+    description: Penetration testing, network engineering
+    knowledge_areas: 2
+
+  - path: skills/validation/SKILL.md
+    description: Assumption validation, tracer bullets
+    knowledge_areas: 4
+
+  - path: skills/meta/SKILL.md
+    description: Context, execution, autonomous work
+    knowledge_areas: 6
+
+# Commands commonly used with this profile
+commands:
+  - /research
+  - /implement
+  - /retro
+  - /session-start
+  - /session-end
+
+# Keywords that trigger this profile
+trigger_patterns:
+  - "incident"
+  - "outage"
+  - "deploy"
+  - "monitor"
+  - "alert"
+  - "debug"
+  - "logs"
+  - "performance"
