@@ -566,6 +566,219 @@ func TestFileStorage_ListSessions_MalformedLines(t *testing.T) {
 	}
 }
 
+func TestFileStorage_QueryProvenance_NoFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Query provenance when file does not exist (IsNotExist path)
+	records, err := fs.QueryProvenance("/nonexistent")
+	if err != nil {
+		t.Fatalf("QueryProvenance() on missing file should return nil, got error: %v", err)
+	}
+	if len(records) != 0 {
+		t.Errorf("expected 0 records, got %d", len(records))
+	}
+}
+
+func TestFileStorage_QueryProvenance_MalformedLines(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a valid provenance record followed by a malformed line
+	record := &ProvenanceRecord{
+		ID:           "prov-ok",
+		ArtifactPath: "/output/ok.md",
+		ArtifactType: "session",
+	}
+	if err := fs.WriteProvenance(record); err != nil {
+		t.Fatal(err)
+	}
+
+	// Append malformed line
+	provPath := fs.GetProvenancePath()
+	f, err := os.OpenFile(provPath, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.Write([]byte("not valid json\n"))
+	f.Close()
+
+	// Query should skip malformed and return the valid one
+	records, err := fs.QueryProvenance("/output/ok.md")
+	if err != nil {
+		t.Fatalf("QueryProvenance() error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Errorf("expected 1 record (skipping malformed), got %d", len(records))
+	}
+}
+
+func TestFileStorage_ReadSession_ListError(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make index directory unreadable to force ListSessions error
+	indexDir := filepath.Join(baseDir, IndexDir)
+
+	// Write a valid index file first
+	entry := &IndexEntry{
+		SessionID:   "test-session",
+		SessionPath: "/path/to/session.jsonl",
+		Summary:     "Test",
+	}
+	if err := fs.WriteIndex(entry); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make the file unreadable
+	indexPath := filepath.Join(indexDir, IndexFile)
+	if err := os.Chmod(indexPath, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(indexPath, 0644)
+	})
+
+	_, err := fs.ReadSession("test-session")
+	if err == nil {
+		t.Error("expected error when index file is unreadable")
+	}
+}
+
+func TestFileStorage_AtomicWrite_WriteFuncError(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	testPath := filepath.Join(baseDir, "error-test.txt")
+
+	err := fs.atomicWrite(testPath, func(w io.Writer) error {
+		return fmt.Errorf("deliberate write error")
+	})
+	if err == nil {
+		t.Fatal("expected error from writeFunc")
+	}
+	if !contains(err.Error(), "write content") {
+		t.Errorf("expected 'write content' in error, got %v", err)
+	}
+
+	// Final file should not exist
+	if _, statErr := os.Stat(testPath); !os.IsNotExist(statErr) {
+		t.Error("expected no final file after writeFunc error")
+	}
+
+	// No temp files should be left behind
+	files, _ := filepath.Glob(filepath.Join(baseDir, ".tmp-*"))
+	if len(files) > 0 {
+		t.Errorf("temp files left behind after error: %v", files)
+	}
+}
+
+func TestFileStorage_ReadSessionFile_InvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+	fs := NewFileStorage(WithBaseDir(baseDir))
+
+	// Create a .jsonl file with invalid JSON
+	badPath := filepath.Join(tmpDir, "bad.jsonl")
+	if err := os.WriteFile(badPath, []byte("not valid json\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := fs.readSessionFile(badPath)
+	if err == nil {
+		t.Fatal("expected error for invalid JSON in session file")
+	}
+}
+
+func TestFileStorage_ListSessions_FileNotExist(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+
+	// Don't init - so index dir doesn't have sessions.jsonl
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	// Manually create the dirs but not the index file
+	if err := os.MkdirAll(filepath.Join(baseDir, IndexDir), 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should return nil, nil when file doesn't exist
+	entries, err := fs.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions() error = %v, want nil", err)
+	}
+	if entries != nil {
+		t.Errorf("expected nil entries, got %v", entries)
+	}
+}
+
+func TestFileStorage_HasIndexEntry_FileNotExist(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// hasIndexEntry on non-existent file should return false
+	got := fs.hasIndexEntry("/nonexistent/index.jsonl", "any-id")
+	if got {
+		t.Error("expected false for non-existent index file")
+	}
+}
+
+func TestFileStorage_WriteSession_NoFormatters(t *testing.T) {
+	tmpDir := t.TempDir()
+	baseDir := filepath.Join(tmpDir, ".agents/ao")
+
+	fs := NewFileStorage(WithBaseDir(baseDir))
+	if err := fs.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	session := &Session{
+		ID:      "no-formatters",
+		Summary: "No formatters set",
+	}
+
+	// With no formatters, should return empty path and no error
+	path, err := fs.WriteSession(session)
+	if err != nil {
+		t.Fatalf("WriteSession() error = %v", err)
+	}
+	if path != "" {
+		t.Errorf("expected empty path with no formatters, got %s", path)
+	}
+}
+
+func TestGenerateSlug_AllSpecialChars(t *testing.T) {
+	// Input that results in empty slug after filtering
+	got := generateSlug("!@#$%^&*()")
+	if got != "session" {
+		t.Errorf("generateSlug of all special chars = %q, want 'session'", got)
+	}
+}
+
 // contains is a test helper for substring matching.
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr))

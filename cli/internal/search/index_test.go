@@ -226,6 +226,174 @@ func TestSearchEmptyIndex(t *testing.T) {
 	}
 }
 
+func TestBuildIndex_UnreadableEntry(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a readable file so the index is non-empty
+	writeFile(t, filepath.Join(dir, "good.md"), "readable content here")
+
+	// Create a subdirectory with no read permission to trigger filepath.Walk err
+	badDir := filepath.Join(dir, "unreadable")
+	if err := os.MkdirAll(badDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(badDir, "secret.md"), "hidden")
+	if err := os.Chmod(badDir, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(badDir, 0700) // restore for cleanup
+	})
+
+	// BuildIndex should succeed; unreadable entries are skipped
+	idx, err := BuildIndex(dir)
+	if err != nil {
+		t.Fatalf("BuildIndex should not fail on unreadable entries: %v", err)
+	}
+	if _, ok := idx.Terms["readable"]; !ok {
+		t.Error("expected 'readable' in index from good.md")
+	}
+}
+
+func TestBuildIndex_NonexistentDir(t *testing.T) {
+	// filepath.Walk calls the callback with the Lstat error for the root.
+	// Our callback returns nil (skip), so Walk returns nil too.
+	// BuildIndex should return an empty index without error.
+	idx, err := BuildIndex("/nonexistent/dir/does/not/exist")
+	if err != nil {
+		t.Fatalf("BuildIndex on nonexistent dir should not error (skips), got: %v", err)
+	}
+	if len(idx.Terms) != 0 {
+		t.Errorf("expected empty index for nonexistent dir, got %d terms", len(idx.Terms))
+	}
+}
+
+func TestSaveIndex_EmptyDocsSkipped(t *testing.T) {
+	dir := t.TempDir()
+	idx := NewIndex()
+
+	// Manually add a term with empty docs map
+	idx.Terms["orphan"] = make(map[string]bool)
+	idx.Terms["real"] = map[string]bool{"/some/path.md": true}
+
+	indexPath := filepath.Join(dir, "index.jsonl")
+	if err := SaveIndex(idx, indexPath); err != nil {
+		t.Fatalf("SaveIndex: %v", err)
+	}
+
+	// Load and verify orphan was skipped
+	loaded, err := LoadIndex(indexPath)
+	if err != nil {
+		t.Fatalf("LoadIndex: %v", err)
+	}
+	if _, ok := loaded.Terms["orphan"]; ok {
+		t.Error("orphan term with empty docs should not be saved")
+	}
+	if _, ok := loaded.Terms["real"]; !ok {
+		t.Error("real term should be saved")
+	}
+}
+
+func TestSaveIndex_ReadOnlyDir(t *testing.T) {
+	dir := t.TempDir()
+	// Make directory read-only
+	readOnlyDir := filepath.Join(dir, "readonly")
+	if err := os.MkdirAll(readOnlyDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(readOnlyDir, 0700)
+	})
+
+	idx := NewIndex()
+	idx.Terms["test"] = map[string]bool{"/a.md": true}
+
+	err := SaveIndex(idx, filepath.Join(readOnlyDir, "subdir", "index.jsonl"))
+	if err == nil {
+		t.Error("expected error when saving to read-only directory")
+	}
+}
+
+func TestLoadIndex_EmptyAndMalformedLines(t *testing.T) {
+	dir := t.TempDir()
+	indexPath := filepath.Join(dir, "index.jsonl")
+
+	// Write index with empty lines and malformed JSON mixed in
+	content := `{"term":"good","paths":["/a.md"]}
+
+{"not valid json
+{"term":"also_good","paths":["/b.md"]}
+`
+	writeFile(t, indexPath, content)
+
+	loaded, err := LoadIndex(indexPath)
+	if err != nil {
+		t.Fatalf("LoadIndex: %v", err)
+	}
+
+	// Should have both valid terms, skipping empty and malformed
+	if _, ok := loaded.Terms["good"]; !ok {
+		t.Error("expected 'good' term in loaded index")
+	}
+	if _, ok := loaded.Terms["also_good"]; !ok {
+		t.Error("expected 'also_good' term in loaded index")
+	}
+}
+
+func TestSaveIndex_NestedDirCreation(t *testing.T) {
+	dir := t.TempDir()
+	idx := NewIndex()
+	idx.Terms["hello"] = map[string]bool{"/doc.md": true}
+
+	// Save to a deeply nested path that doesn't exist yet
+	deepPath := filepath.Join(dir, "a", "b", "c", "index.jsonl")
+	if err := SaveIndex(idx, deepPath); err != nil {
+		t.Fatalf("SaveIndex to deep path: %v", err)
+	}
+
+	// Verify it was created and is loadable
+	loaded, err := LoadIndex(deepPath)
+	if err != nil {
+		t.Fatalf("LoadIndex deep path: %v", err)
+	}
+	if _, ok := loaded.Terms["hello"]; !ok {
+		t.Error("expected 'hello' term in deeply nested index")
+	}
+}
+
+func TestSearch_LimitZeroReturnsAll(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "a.md"), "keyword alpha")
+	writeFile(t, filepath.Join(dir, "b.md"), "keyword beta")
+	writeFile(t, filepath.Join(dir, "c.md"), "keyword gamma")
+
+	idx, err := BuildIndex(dir)
+	if err != nil {
+		t.Fatalf("BuildIndex: %v", err)
+	}
+
+	// limit=0 means no limit
+	results := Search(idx, "keyword", 0)
+	if len(results) != 3 {
+		t.Errorf("expected 3 results with limit=0, got %d", len(results))
+	}
+}
+
+func TestSearch_TieBreakByPath(t *testing.T) {
+	idx := NewIndex()
+	// Two docs with same score
+	idx.Terms["shared"] = map[string]bool{"/b.md": true, "/a.md": true}
+
+	results := Search(idx, "shared", 10)
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	// Should be sorted alphabetically by path when scores tie
+	if results[0].Path != "/a.md" {
+		t.Errorf("expected /a.md first (tie-break by path), got %s", results[0].Path)
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {

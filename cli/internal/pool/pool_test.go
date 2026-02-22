@@ -2,6 +2,7 @@ package pool
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1355,6 +1356,156 @@ func TestAtomicMove(t *testing.T) {
 			t.Error("expected error when source does not exist")
 		}
 	})
+}
+
+func TestPoolListPaginatedOffset(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	// Add 5 candidates
+	for i := 0; i < 5; i++ {
+		id := fmt.Sprintf("page-%d", i)
+		if err := p.Add(types.Candidate{ID: id, Tier: types.TierSilver, Content: "c"}, types.Scoring{}); err != nil {
+			t.Fatalf("Add failed: %v", err)
+		}
+	}
+
+	// Offset within range
+	result, err := p.ListPaginated(ListOptions{Offset: 2, Limit: 2})
+	if err != nil {
+		t.Fatalf("ListPaginated failed: %v", err)
+	}
+	if result.Total != 5 {
+		t.Errorf("expected total 5, got %d", result.Total)
+	}
+	if len(result.Entries) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(result.Entries))
+	}
+
+	// Offset beyond total (should return empty)
+	result, err = p.ListPaginated(ListOptions{Offset: 10})
+	if err != nil {
+		t.Fatalf("ListPaginated failed: %v", err)
+	}
+	if result.Total != 5 {
+		t.Errorf("expected total 5 with offset beyond, got %d", result.Total)
+	}
+	if len(result.Entries) != 0 {
+		t.Errorf("expected 0 entries with offset beyond total, got %d", len(result.Entries))
+	}
+
+	// Offset at exact boundary
+	result, err = p.ListPaginated(ListOptions{Offset: 5})
+	if err != nil {
+		t.Fatalf("ListPaginated failed: %v", err)
+	}
+	if len(result.Entries) != 0 {
+		t.Errorf("expected 0 entries at exact boundary offset, got %d", len(result.Entries))
+	}
+}
+
+func TestPoolListPaginatedNoInit(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	// Don't init - directories don't exist
+
+	// Should handle missing directories gracefully
+	result, err := p.ListPaginated(ListOptions{})
+	if err != nil {
+		t.Fatalf("ListPaginated on uninitialized pool should not error: %v", err)
+	}
+	if result.Total != 0 {
+		t.Errorf("expected total 0, got %d", result.Total)
+	}
+}
+
+func TestPoolPromoteCollisionGuard(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	candidate := types.Candidate{
+		ID:       "collision-test",
+		Tier:     types.TierSilver,
+		Type:     types.KnowledgeTypeLearning,
+		Content:  "Content for collision test",
+		Maturity: types.MaturityCandidate,
+		Source: types.Source{
+			SessionID:      "sess-1",
+			TranscriptPath: "/path/to/t.jsonl",
+		},
+	}
+
+	if err := p.Add(candidate, types.Scoring{}); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+	if err := p.Stage("collision-test", types.TierBronze); err != nil {
+		t.Fatalf("Stage failed: %v", err)
+	}
+
+	// Pre-create the expected artifact file to trigger collision guard
+	destDir := filepath.Join(tmpDir, ".agents", "learnings")
+	if err := os.MkdirAll(destDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	timestamp := time.Now().Format("2006-01-02")
+	expectedName := fmt.Sprintf("%s-collision-test.md", timestamp)
+	if err := os.WriteFile(filepath.Join(destDir, expectedName), []byte("existing"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	artifactPath, err := p.Promote("collision-test")
+	if err != nil {
+		t.Fatalf("Promote with collision should succeed: %v", err)
+	}
+
+	// The artifact path should be different from the pre-existing one
+	if filepath.Base(artifactPath) == expectedName {
+		t.Error("collision guard should have generated a different filename")
+	}
+
+	// Verify both files exist
+	if _, err := os.Stat(artifactPath); os.IsNotExist(err) {
+		t.Error("collision-guarded artifact should exist")
+	}
+}
+
+func TestPoolStageNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	err := p.Stage("nonexistent", types.TierBronze)
+	if err == nil {
+		t.Error("expected error when staging nonexistent candidate")
+	}
+}
+
+func TestPoolRejectNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	err := p.Reject("nonexistent", "reason", "reviewer")
+	if err == nil {
+		t.Error("expected error when rejecting nonexistent candidate")
+	}
+}
+
+func TestPoolApproveNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	err := p.Approve("nonexistent", "note", "reviewer")
+	if err == nil {
+		t.Error("expected error when approving nonexistent candidate")
+	}
 }
 
 func TestPoolListPendingReviewFiltersReviewed(t *testing.T) {
