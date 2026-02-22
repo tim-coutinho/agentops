@@ -305,6 +305,70 @@ func TestGraph_Trace_AbsolutePath(t *testing.T) {
 	}
 }
 
+func TestNewGraph_PermissionError(t *testing.T) {
+	tmpDir := t.TempDir()
+	provPath := filepath.Join(tmpDir, "graph.jsonl")
+	if err := os.WriteFile(provPath, []byte(`{"id":"test"}`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Make file unreadable
+	if err := os.Chmod(provPath, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(provPath, 0644) })
+
+	_, err := NewGraph(provPath)
+	if err == nil {
+		t.Error("expected error when provenance file is unreadable")
+	}
+}
+
+func TestGraph_Trace_NonTranscriptSource(t *testing.T) {
+	content := `{"id":"prov-1","artifact_path":"/out/learning.md","artifact_type":"learning","source_path":"/out/session.md","source_type":"session"}`
+	path := createTestProvFile(t, content)
+
+	g, err := NewGraph(path)
+	if err != nil {
+		t.Fatalf("NewGraph() error = %v", err)
+	}
+
+	result, err := g.Trace("/out/learning.md")
+	if err != nil {
+		t.Fatalf("Trace() error = %v", err)
+	}
+	if len(result.Chain) != 1 {
+		t.Errorf("Expected 1 record in chain, got %d", len(result.Chain))
+	}
+	// Non-transcript source should NOT be in Sources
+	if len(result.Sources) != 0 {
+		t.Errorf("Expected 0 sources (non-transcript), got %d", len(result.Sources))
+	}
+}
+
+func TestGraph_Trace_FilenameMatchNonTranscript(t *testing.T) {
+	// When first pass (exact path match) finds nothing, fallback to filename match
+	content := `{"id":"prov-1","artifact_path":"/different/path/unique-file.md","artifact_type":"learning","source_path":"/out/session.md","source_type":"session"}`
+	path := createTestProvFile(t, content)
+
+	g, err := NewGraph(path)
+	if err != nil {
+		t.Fatalf("NewGraph() error = %v", err)
+	}
+
+	// Use just the filename -- should trigger filename-match fallback
+	result, err := g.Trace("unique-file.md")
+	if err != nil {
+		t.Fatalf("Trace() error = %v", err)
+	}
+	if len(result.Chain) != 1 {
+		t.Errorf("Expected 1 record via filename match, got %d", len(result.Chain))
+	}
+	// Source type is "session" not "transcript"
+	if len(result.Sources) != 0 {
+		t.Errorf("Expected 0 transcript sources, got %d", len(result.Sources))
+	}
+}
+
 func TestGraph_FindBySource_AbsolutePath(t *testing.T) {
 	tmpDir := t.TempDir()
 	sourcePath := filepath.Join(tmpDir, "transcript.jsonl")
