@@ -11,7 +11,7 @@ func TestParseSessionFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	t.Run("JSONL session", func(t *testing.T) {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"summary": "Worked on authentication module",
 		}
 		line, _ := json.Marshal(data)
@@ -94,7 +94,7 @@ Implemented new database migration system.
 		for i := range longSummary {
 			longSummary[i] = 'a'
 		}
-		data := map[string]interface{}{
+		data := map[string]any{
 			"summary": string(longSummary),
 		}
 		line, _ := json.Marshal(data)
@@ -122,13 +122,13 @@ func TestCollectRecentSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data1 := map[string]interface{}{"summary": "Auth work"}
+	data1 := map[string]any{"summary": "Auth work"}
 	line1, _ := json.Marshal(data1)
 	if err := os.WriteFile(filepath.Join(sessionsDir, "s1.jsonl"), line1, 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	data2 := map[string]interface{}{"summary": "Database migration"}
+	data2 := map[string]any{"summary": "Database migration"}
 	line2, _ := json.Marshal(data2)
 	if err := os.WriteFile(filepath.Join(sessionsDir, "s2.jsonl"), line2, 0644); err != nil {
 		t.Fatal(err)

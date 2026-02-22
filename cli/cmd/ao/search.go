@@ -347,7 +347,7 @@ func searchJSONL(query string, dir string, limit int) ([]searchResult, error) {
 			line := scanner.Text()
 			if strings.Contains(strings.ToLower(line), queryLower) {
 				// Parse JSON to get meaningful context
-				var data map[string]interface{}
+				var data map[string]any
 				if err := json.Unmarshal([]byte(line), &data); err == nil {
 					context := ""
 					if summary, ok := data["summary"].(string); ok {
@@ -551,7 +551,7 @@ func searchLearningsWithMaturity(query, dir string, limit int) ([]searchResult, 
 			}
 
 			// Parse JSONL to get maturity and utility
-			var data map[string]interface{}
+			var data map[string]any
 			if err := json.Unmarshal([]byte(line), &data); err != nil {
 				continue
 			}
@@ -593,7 +593,7 @@ func searchLearningsWithMaturity(query, dir string, limit int) ([]searchResult, 
 
 // calculateCASSScore computes a maturity-weighted score for CASS ranking.
 // Score = utility * maturityWeight * confidenceWeight
-func calculateCASSScore(data map[string]interface{}) float64 {
+func calculateCASSScore(data map[string]any) float64 {
 	// Base utility (default 0.5)
 	utility := 0.5
 	if u, ok := data["utility"].(float64); ok && u > 0 {

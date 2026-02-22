@@ -35,7 +35,7 @@ func TestExecuteRPICleanup_DryRunWithStaleRun(t *testing.T) {
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": 1,
 		"run_id":         runID,
 		"goal":           "test goal",
@@ -56,7 +56,7 @@ func TestExecuteRPICleanup_DryRunWithStaleRun(t *testing.T) {
 
 	// State file should be unchanged (no terminal_status written)
 	updated, _ := os.ReadFile(filepath.Join(runDir, phasedStateFile))
-	var updatedState map[string]interface{}
+	var updatedState map[string]any
 	_ = json.Unmarshal(updated, &updatedState)
 	if _, ok := updatedState["terminal_status"]; ok {
 		t.Error("dry run should not modify state file")
@@ -73,7 +73,7 @@ func TestExecuteRPICleanup_SpecificRunID(t *testing.T) {
 		if err := os.MkdirAll(runDir, 0755); err != nil {
 			t.Fatal(err)
 		}
-		state := map[string]interface{}{
+		state := map[string]any{
 			"schema_version": 1,
 			"run_id":         runID,
 			"goal":           "test",
@@ -95,7 +95,7 @@ func TestExecuteRPICleanup_SpecificRunID(t *testing.T) {
 
 	// Target run should be marked stale
 	targetData, _ := os.ReadFile(filepath.Join(tmpDir, ".agents", "rpi", "runs", targetID, phasedStateFile))
-	var targetState map[string]interface{}
+	var targetState map[string]any
 	_ = json.Unmarshal(targetData, &targetState)
 	if targetState["terminal_status"] != "stale" {
 		t.Errorf("target run should be stale, got terminal_status = %v", targetState["terminal_status"])
@@ -103,7 +103,7 @@ func TestExecuteRPICleanup_SpecificRunID(t *testing.T) {
 
 	// Other run should not be modified
 	otherData, _ := os.ReadFile(filepath.Join(tmpDir, ".agents", "rpi", "runs", otherID, phasedStateFile))
-	var otherState map[string]interface{}
+	var otherState map[string]any
 	_ = json.Unmarshal(otherData, &otherState)
 	if _, ok := otherState["terminal_status"]; ok {
 		t.Error("other run should not be marked stale")
@@ -181,7 +181,7 @@ func TestMarkRunStale_WithFlatStateSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	statePath := filepath.Join(runDir, phasedStateFile)
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": 1,
 		"run_id":         runID,
 		"goal":           "test",
@@ -195,7 +195,7 @@ func TestMarkRunStale_WithFlatStateSync(t *testing.T) {
 	// Create flat state file with same run ID
 	flatDir := filepath.Join(tmpDir, ".agents", "rpi")
 	flatPath := filepath.Join(flatDir, phasedStateFile)
-	flatState := map[string]interface{}{
+	flatState := map[string]any{
 		"run_id": runID,
 		"phase":  2,
 	}
@@ -217,7 +217,7 @@ func TestMarkRunStale_WithFlatStateSync(t *testing.T) {
 
 	// Check flat state was also updated
 	updatedFlat, _ := os.ReadFile(flatPath)
-	var updatedFlatState map[string]interface{}
+	var updatedFlatState map[string]any
 	_ = json.Unmarshal(updatedFlat, &updatedFlatState)
 	if updatedFlatState["terminal_status"] != "stale" {
 		t.Error("flat state file should also be marked stale")

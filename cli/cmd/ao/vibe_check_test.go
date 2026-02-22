@@ -143,7 +143,7 @@ func TestOutputFormats(t *testing.T) {
 type MockVibeCheckResult struct {
 	Score    float64
 	Grade    string
-	Events   []interface{}
+	Events   []any
 	Metrics  map[string]float64
-	Findings []interface{}
+	Findings []any
 }

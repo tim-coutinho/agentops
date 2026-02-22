@@ -82,7 +82,7 @@ func GetConfigFile() string {
 }
 
 // VerbosePrintf prints only when verbose mode is enabled.
-func VerbosePrintf(format string, args ...interface{}) {
+func VerbosePrintf(format string, args ...any) {
 	if verbose {
 		fmt.Printf(format, args...)
 	}

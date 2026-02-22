@@ -392,7 +392,7 @@ func markRunInterruptedByCancel(target cancelTarget) error {
 		if err != nil {
 			return err
 		}
-		var raw map[string]interface{}
+		var raw map[string]any
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return err
 		}
@@ -416,7 +416,7 @@ func markRunInterruptedByCancel(target cancelTarget) error {
 	if err != nil {
 		return nil
 	}
-	var flatRaw map[string]interface{}
+	var flatRaw map[string]any
 	if err := json.Unmarshal(flatData, &flatRaw); err != nil {
 		return nil
 	}

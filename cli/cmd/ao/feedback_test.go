@@ -99,7 +99,7 @@ func TestUpdateJSONLUtility(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			var data map[string]interface{}
+			var data map[string]any
 			if err := json.Unmarshal(content, &data); err != nil {
 				t.Fatalf("failed to parse updated file: %v", err)
 			}
@@ -225,7 +225,7 @@ func TestUpdateJSONLUtilityImpliedCounters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal(raw, &data); err != nil {
 		t.Fatal(err)
 	}
@@ -472,7 +472,7 @@ func TestAddUtilityField(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal(data, &result); err != nil {
 		t.Fatalf("failed to parse result: %v", err)
 	}

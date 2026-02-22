@@ -434,7 +434,7 @@ func buildCandidateFromLearningBlock(b learningBlock, srcPath string, fileDate t
 		RawScore:    raw,
 		Tier:        tier,
 		ExtractedAt: fileDate,
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"pending_category":   b.Category,
 			"pending_confidence": b.Confidence,
 			"pending_title":      b.Title,

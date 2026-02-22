@@ -9,16 +9,16 @@ import (
 
 func TestCountInstalledEvents(t *testing.T) {
 	t.Run("empty map returns 0", func(t *testing.T) {
-		got := countInstalledEvents(map[string]interface{}{})
+		got := countInstalledEvents(map[string]any{})
 		if got != 0 {
 			t.Errorf("expected 0, got %d", got)
 		}
 	})
 
 	t.Run("SessionStart with 1 group counts as 1", func(t *testing.T) {
-		hooksMap := map[string]interface{}{
-			"SessionStart": []interface{}{
-				map[string]interface{}{"command": "ao context"},
+		hooksMap := map[string]any{
+			"SessionStart": []any{
+				map[string]any{"command": "ao context"},
 			},
 		}
 		got := countInstalledEvents(hooksMap)
@@ -28,8 +28,8 @@ func TestCountInstalledEvents(t *testing.T) {
 	})
 
 	t.Run("empty slice for event not counted", func(t *testing.T) {
-		hooksMap := map[string]interface{}{
-			"SessionStart": []interface{}{},
+		hooksMap := map[string]any{
+			"SessionStart": []any{},
 		}
 		got := countInstalledEvents(hooksMap)
 		if got != 0 {
@@ -40,9 +40,9 @@ func TestCountInstalledEvents(t *testing.T) {
 
 func TestExtractHooksMap(t *testing.T) {
 	t.Run("settings.json format with hooks key", func(t *testing.T) {
-		data, _ := json.Marshal(map[string]interface{}{
-			"hooks": map[string]interface{}{
-				"SessionStart": []interface{}{},
+		data, _ := json.Marshal(map[string]any{
+			"hooks": map[string]any{
+				"SessionStart": []any{},
 			},
 		})
 		got, ok := extractHooksMap(data)
@@ -55,8 +55,8 @@ func TestExtractHooksMap(t *testing.T) {
 	})
 
 	t.Run("hooks.json format with top-level events", func(t *testing.T) {
-		hooksMap := map[string]interface{}{
-			"SessionStart": []interface{}{},
+		hooksMap := map[string]any{
+			"SessionStart": []any{},
 		}
 		data, _ := json.Marshal(hooksMap)
 		got, ok := extractHooksMap(data)
@@ -76,7 +76,7 @@ func TestExtractHooksMap(t *testing.T) {
 	})
 
 	t.Run("JSON with no hooks or events returns false", func(t *testing.T) {
-		data, _ := json.Marshal(map[string]interface{}{
+		data, _ := json.Marshal(map[string]any{
 			"unrelated": "value",
 		})
 		_, ok := extractHooksMap(data)
@@ -88,7 +88,7 @@ func TestExtractHooksMap(t *testing.T) {
 
 func TestEvaluateHookCoverage(t *testing.T) {
 	t.Run("empty hooks map returns warn", func(t *testing.T) {
-		result := evaluateHookCoverage(map[string]interface{}{})
+		result := evaluateHookCoverage(map[string]any{})
 		if result.Status != "warn" {
 			t.Errorf("expected warn status, got %q", result.Status)
 		}
@@ -96,10 +96,10 @@ func TestEvaluateHookCoverage(t *testing.T) {
 
 	t.Run("has events but no ao command returns warn", func(t *testing.T) {
 		// Create a hooks map with a non-ao command for SessionStart
-		hooksMap := map[string]interface{}{}
+		hooksMap := map[string]any{}
 		for _, event := range AllEventNames() {
-			hooksMap[event] = []interface{}{
-				map[string]interface{}{
+			hooksMap[event] = []any{
+				map[string]any{
 					"command": "echo hello",
 				},
 			}
@@ -111,11 +111,11 @@ func TestEvaluateHookCoverage(t *testing.T) {
 	})
 
 	t.Run("has ao SessionStart but partial coverage returns warn", func(t *testing.T) {
-		hooksMap := map[string]interface{}{
-			"SessionStart": []interface{}{
-				map[string]interface{}{
-					"hooks": []interface{}{
-						map[string]interface{}{"command": "ao context status"},
+		hooksMap := map[string]any{
+			"SessionStart": []any{
+				map[string]any{
+					"hooks": []any{
+						map[string]any{"command": "ao context status"},
 					},
 				},
 			},
@@ -129,12 +129,12 @@ func TestEvaluateHookCoverage(t *testing.T) {
 
 	t.Run("full coverage returns pass", func(t *testing.T) {
 		// Build a complete hooks map with ao commands for all events
-		hooksMap := map[string]interface{}{}
+		hooksMap := map[string]any{}
 		for _, event := range AllEventNames() {
-			hooksMap[event] = []interface{}{
-				map[string]interface{}{
-					"hooks": []interface{}{
-						map[string]interface{}{"command": "ao context status"},
+			hooksMap[event] = []any{
+				map[string]any{
+					"hooks": []any{
+						map[string]any{"command": "ao context status"},
 					},
 				},
 			}

@@ -57,7 +57,7 @@ type TaskEvent struct {
 	BlockedBy []string `json:"blocked_by,omitempty"`
 
 	// Metadata contains additional task metadata.
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // TaskFilePath is the relative path to the task events log.
@@ -165,7 +165,7 @@ func runTaskSync(cmd *cobra.Command, args []string) error {
 
 	// Output summary
 	if GetOutput() == "json" {
-		result := map[string]interface{}{
+		result := map[string]any{
 			"transcript": transcriptPath,
 			"tasks":      tasks,
 			"promoted":   promoted,
@@ -220,7 +220,7 @@ func extractTaskEvents(transcriptPath, filterSession string) ([]TaskEvent, error
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		var data map[string]interface{}
+		var data map[string]any
 		if err := json.Unmarshal([]byte(line), &data); err != nil {
 			continue
 		}
@@ -236,18 +236,18 @@ func extractTaskEvents(transcriptPath, filterSession string) ([]TaskEvent, error
 		}
 
 		// Look for tool calls
-		message, ok := data["message"].(map[string]interface{})
+		message, ok := data["message"].(map[string]any)
 		if !ok {
 			continue
 		}
 
-		content, ok := message["content"].([]interface{})
+		content, ok := message["content"].([]any)
 		if !ok {
 			continue
 		}
 
 		for _, item := range content {
-			block, ok := item.(map[string]interface{})
+			block, ok := item.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -258,7 +258,7 @@ func extractTaskEvents(transcriptPath, filterSession string) ([]TaskEvent, error
 			}
 
 			toolName, _ := block["name"].(string)
-			input, _ := block["input"].(map[string]interface{})
+			input, _ := block["input"].(map[string]any)
 
 			switch toolName {
 			case "TaskCreate":
@@ -289,7 +289,7 @@ func extractTaskEvents(transcriptPath, filterSession string) ([]TaskEvent, error
 }
 
 // parseTaskCreate extracts a TaskEvent from TaskCreate input.
-func parseTaskCreate(input map[string]interface{}, sessionID string) *TaskEvent {
+func parseTaskCreate(input map[string]any, sessionID string) *TaskEvent {
 	subject, _ := input["subject"].(string)
 	if subject == "" {
 		return nil
@@ -311,7 +311,7 @@ func parseTaskCreate(input map[string]interface{}, sessionID string) *TaskEvent 
 
 	if activeForm, ok := input["activeForm"].(string); ok {
 		if task.Metadata == nil {
-			task.Metadata = make(map[string]interface{})
+			task.Metadata = make(map[string]any)
 		}
 		task.Metadata["active_form"] = activeForm
 	}
@@ -320,7 +320,7 @@ func parseTaskCreate(input map[string]interface{}, sessionID string) *TaskEvent 
 }
 
 // updateTask applies updates from TaskUpdate to an existing task.
-func updateTask(task *TaskEvent, input map[string]interface{}) {
+func updateTask(task *TaskEvent, input map[string]any) {
 	task.UpdatedAt = time.Now()
 
 	if status, ok := input["status"].(string); ok {
@@ -446,7 +446,7 @@ func promoteTaskToLearning(baseDir string, task *TaskEvent) error {
 	learningID := fmt.Sprintf("L-%s", strings.TrimPrefix(task.TaskID, "task-"))
 	learningPath := filepath.Join(learningsDir, learningID+".jsonl")
 
-	learning := map[string]interface{}{
+	learning := map[string]any{
 		"id":           learningID,
 		"type":         "learning",
 		"content":      fmt.Sprintf("Task completed: %s", task.Subject),
@@ -455,7 +455,7 @@ func promoteTaskToLearning(baseDir string, task *TaskEvent) error {
 		"utility":      task.Utility,
 		"confidence":   0.7, // Initial confidence for promoted tasks
 		"extracted_at": time.Now().Format(time.RFC3339),
-		"source": map[string]interface{}{
+		"source": map[string]any{
 			"session_id": task.SessionID,
 			"task_id":    task.TaskID,
 			"type":       "task_promotion",
@@ -650,7 +650,7 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	if GetOutput() == "json" {
-		result := map[string]interface{}{
+		result := map[string]any{
 			"total":          len(tasks),
 			"status_counts":  statusCounts,
 			"maturity_counts": maturityCounts,

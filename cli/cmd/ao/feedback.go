@@ -129,7 +129,7 @@ func runFeedback(cmd *cobra.Command, args []string) error {
 
 	switch GetOutput() {
 	case "json":
-		result := map[string]interface{}{
+		result := map[string]any{
 			"learning_id":   learningID,
 			"path":          learningPath,
 			"old_utility":   oldUtility,
@@ -249,7 +249,7 @@ func updateJSONLUtility(path string, reward, alpha float64) (oldUtility, newUtil
 		return 0, 0, fmt.Errorf("empty JSONL file")
 	}
 
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal([]byte(lines[0]), &data); err != nil {
 		return 0, 0, fmt.Errorf("parse JSONL: %w", err)
 	}
@@ -526,7 +526,7 @@ func needsUtilityMigration(path string) (bool, error) {
 
 	scanner := bufio.NewScanner(f)
 	if scanner.Scan() {
-		var data map[string]interface{}
+		var data map[string]any
 		if err := json.Unmarshal(scanner.Bytes(), &data); err != nil {
 			return false, err
 		}
@@ -551,7 +551,7 @@ func addUtilityField(path string) error {
 		return nil
 	}
 
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal([]byte(lines[0]), &data); err != nil {
 		return err
 	}

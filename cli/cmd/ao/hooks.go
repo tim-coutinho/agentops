@@ -130,7 +130,7 @@ func (c *HooksConfig) SetEventGroups(event string, groups []HookGroup) {
 // ClaudeSettings represents the Claude Code settings.json structure.
 type ClaudeSettings struct {
 	Hooks *HooksConfig           `json:"hooks,omitempty"`
-	Other map[string]interface{} `json:"-"` // Preserve other settings
+	Other map[string]any `json:"-"` // Preserve other settings
 }
 
 var hooksCmd = &cobra.Command{
@@ -547,8 +547,8 @@ func installFullHooksFromEmbed(installBase string) (int, error) {
 	return copied, err
 }
 
-func loadHooksSettings(settingsPath string) (map[string]interface{}, error) {
-	rawSettings := make(map[string]interface{})
+func loadHooksSettings(settingsPath string) (map[string]any, error) {
+	rawSettings := make(map[string]any)
 	data, err := os.ReadFile(settingsPath)
 	if err == nil {
 		if err := json.Unmarshal(data, &rawSettings); err != nil {
@@ -604,9 +604,9 @@ func generateHooksForInstall(installBase string) (*HooksConfig, []string, error)
 	return config, AllEventNames(), nil
 }
 
-func cloneHooksMap(rawSettings map[string]interface{}) map[string]interface{} {
-	hooksMap := make(map[string]interface{})
-	if existing, ok := rawSettings["hooks"].(map[string]interface{}); ok {
+func cloneHooksMap(rawSettings map[string]any) map[string]any {
+	hooksMap := make(map[string]any)
+	if existing, ok := rawSettings["hooks"].(map[string]any); ok {
 		for k, v := range existing {
 			hooksMap[k] = v
 		}
@@ -614,7 +614,7 @@ func cloneHooksMap(rawSettings map[string]interface{}) map[string]interface{} {
 	return hooksMap
 }
 
-func mergeHookEvents(hooksMap map[string]interface{}, newHooks *HooksConfig, eventsToInstall []string) int {
+func mergeHookEvents(hooksMap map[string]any, newHooks *HooksConfig, eventsToInstall []string) int {
 	installedEvents := 0
 	for _, event := range eventsToInstall {
 		groups := filterNonAoHookGroups(hooksMap, event)
@@ -646,7 +646,7 @@ func backupHooksSettings(settingsPath string) error {
 	return nil
 }
 
-func writeHooksSettings(settingsPath string, rawSettings map[string]interface{}) error {
+func writeHooksSettings(settingsPath string, rawSettings map[string]any) error {
 	// Ensure .claude directory exists
 	claudeDir := filepath.Dir(settingsPath)
 	if err := os.MkdirAll(claudeDir, 0755); err != nil {
@@ -715,7 +715,7 @@ func runHooksInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check for existing ao hooks
-	if existingHooks, ok := rawSettings["hooks"].(map[string]interface{}); ok && !hooksForce {
+	if existingHooks, ok := rawSettings["hooks"].(map[string]any); ok && !hooksForce {
 		if hookGroupContainsAo(existingHooks, "SessionStart") {
 			fmt.Println("ao hooks already installed. Use --force to overwrite.")
 			return nil
@@ -762,7 +762,7 @@ func runHooksShow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("read settings: %w", err)
 	}
 
-	var settings map[string]interface{}
+	var settings map[string]any
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return fmt.Errorf("parse settings: %w", err)
 	}
@@ -774,7 +774,7 @@ func runHooksShow(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	hooksMap, ok := hooks.(map[string]interface{})
+	hooksMap, ok := hooks.(map[string]any)
 	if !ok {
 		fmt.Println("Invalid hooks format in", settingsPath)
 		return nil
@@ -786,12 +786,12 @@ func runHooksShow(cmd *cobra.Command, args []string) error {
 	fmt.Println("Hook Event Coverage:")
 	fmt.Println()
 	for _, event := range allEvents {
-		groups, hasEvent := hooksMap[event].([]interface{})
+		groups, hasEvent := hooksMap[event].([]any)
 		if hasEvent && len(groups) > 0 {
 			hookCount := 0
 			for _, g := range groups {
-				if gm, ok := g.(map[string]interface{}); ok {
-					if hs, ok := gm["hooks"].([]interface{}); ok {
+				if gm, ok := g.(map[string]any); ok {
+					if hs, ok := gm["hooks"].([]any); ok {
 						hookCount += len(hs)
 					}
 				}
@@ -824,20 +824,20 @@ func runHooksShow(cmd *cobra.Command, args []string) error {
 }
 
 // hookGroupContainsAo checks if any hook group in the given event contains an ao command.
-func hookGroupContainsAo(hooksMap map[string]interface{}, event string) bool {
-	groups, ok := hooksMap[event].([]interface{})
+func hookGroupContainsAo(hooksMap map[string]any, event string) bool {
+	groups, ok := hooksMap[event].([]any)
 	if !ok {
 		return false
 	}
 	for _, g := range groups {
-		group, ok := g.(map[string]interface{})
+		group, ok := g.(map[string]any)
 		if !ok {
 			continue
 		}
 		// New format: check hooks array
-		if hooks, ok := group["hooks"].([]interface{}); ok {
+		if hooks, ok := group["hooks"].([]any); ok {
 			for _, h := range hooks {
-				if hook, ok := h.(map[string]interface{}); ok {
+				if hook, ok := h.(map[string]any); ok {
 					if cmd, ok := hook["command"].(string); ok && isAoManagedHookCommand(cmd) {
 						return true
 					}
@@ -845,7 +845,7 @@ func hookGroupContainsAo(hooksMap map[string]interface{}, event string) bool {
 			}
 		}
 		// Legacy format: check top-level command array
-		if cmd, ok := group["command"].([]interface{}); ok && len(cmd) > 1 {
+		if cmd, ok := group["command"].([]any); ok && len(cmd) > 1 {
 			if cmdStr, ok := cmd[1].(string); ok && isAoManagedHookCommand(cmdStr) {
 				return true
 			}
@@ -855,22 +855,22 @@ func hookGroupContainsAo(hooksMap map[string]interface{}, event string) bool {
 }
 
 // filterNonAoHookGroups returns hook groups that don't contain ao commands.
-func filterNonAoHookGroups(hooksMap map[string]interface{}, event string) []map[string]interface{} {
-	result := make([]map[string]interface{}, 0)
-	groups, ok := hooksMap[event].([]interface{})
+func filterNonAoHookGroups(hooksMap map[string]any, event string) []map[string]any {
+	result := make([]map[string]any, 0)
+	groups, ok := hooksMap[event].([]any)
 	if !ok {
 		return result
 	}
 	for _, g := range groups {
-		group, ok := g.(map[string]interface{})
+		group, ok := g.(map[string]any)
 		if !ok {
 			continue
 		}
 		isAo := false
 		// Check new format
-		if hooks, ok := group["hooks"].([]interface{}); ok {
+		if hooks, ok := group["hooks"].([]any); ok {
 			for _, h := range hooks {
-				if hook, ok := h.(map[string]interface{}); ok {
+				if hook, ok := h.(map[string]any); ok {
 					if cmd, ok := hook["command"].(string); ok && isAoManagedHookCommand(cmd) {
 						isAo = true
 						break
@@ -879,7 +879,7 @@ func filterNonAoHookGroups(hooksMap map[string]interface{}, event string) []map[
 			}
 		}
 		// Check legacy format
-		if cmd, ok := group["command"].([]interface{}); ok && len(cmd) > 1 {
+		if cmd, ok := group["command"].([]any); ok && len(cmd) > 1 {
 			if cmdStr, ok := cmd[1].(string); ok && isAoManagedHookCommand(cmdStr) {
 				isAo = true
 			}
@@ -902,10 +902,10 @@ func isAoManagedHookCommand(cmd string) bool {
 }
 
 // hookGroupToMap converts a HookGroup to a map for JSON serialization.
-func hookGroupToMap(g HookGroup) map[string]interface{} {
-	hooks := make([]map[string]interface{}, len(g.Hooks))
+func hookGroupToMap(g HookGroup) map[string]any {
+	hooks := make([]map[string]any, len(g.Hooks))
 	for i, h := range g.Hooks {
-		entry := map[string]interface{}{
+		entry := map[string]any{
 			"type":    h.Type,
 			"command": h.Command,
 		}
@@ -914,7 +914,7 @@ func hookGroupToMap(g HookGroup) map[string]interface{} {
 		}
 		hooks[i] = entry
 	}
-	result := map[string]interface{}{
+	result := map[string]any{
 		"hooks": hooks,
 	}
 	if g.Matcher != "" {
@@ -970,7 +970,7 @@ func runSettingsCoverageTest(testNum int, homeDir string, allPassed *bool) {
 		return
 	}
 
-	var settings map[string]interface{}
+	var settings map[string]any
 	if err := json.Unmarshal(data, &settings); err != nil {
 		fmt.Println("✗ FAILED to parse")
 		*allPassed = false
@@ -984,14 +984,14 @@ func runSettingsCoverageTest(testNum int, homeDir string, allPassed *bool) {
 		return
 	}
 
-	hooksMap, ok := hooksRaw.(map[string]interface{})
+	hooksMap, ok := hooksRaw.(map[string]any)
 	if !ok {
 		return
 	}
 
 	installed := 0
 	for _, event := range AllEventNames() {
-		if groups, ok := hooksMap[event].([]interface{}); ok && len(groups) > 0 {
+		if groups, ok := hooksMap[event].([]any); ok && len(groups) > 0 {
 			installed++
 		}
 	}

@@ -386,10 +386,10 @@ func TestCollectFilesFromPatterns(t *testing.T) {
 
 func TestCloneHooksMap(t *testing.T) {
 	t.Run("clones hooks sub-map from rawSettings", func(t *testing.T) {
-		rawSettings := map[string]interface{}{
-			"hooks": map[string]interface{}{
-				"SessionStart": []interface{}{"cmd1"},
-				"PreToolUse":   []interface{}{"cmd2"},
+		rawSettings := map[string]any{
+			"hooks": map[string]any{
+				"SessionStart": []any{"cmd1"},
+				"PreToolUse":   []any{"cmd2"},
 			},
 		}
 		got := cloneHooksMap(rawSettings)
@@ -402,7 +402,7 @@ func TestCloneHooksMap(t *testing.T) {
 	})
 
 	t.Run("no hooks key returns empty map", func(t *testing.T) {
-		rawSettings := map[string]interface{}{"other": "value"}
+		rawSettings := map[string]any{"other": "value"}
 		got := cloneHooksMap(rawSettings)
 		if len(got) != 0 {
 			t.Errorf("expected empty map, got %d entries", len(got))
@@ -410,14 +410,14 @@ func TestCloneHooksMap(t *testing.T) {
 	})
 
 	t.Run("empty rawSettings returns empty map", func(t *testing.T) {
-		got := cloneHooksMap(map[string]interface{}{})
+		got := cloneHooksMap(map[string]any{})
 		if len(got) != 0 {
 			t.Errorf("expected empty map, got %v", got)
 		}
 	})
 
 	t.Run("hooks key with wrong type returns empty map", func(t *testing.T) {
-		rawSettings := map[string]interface{}{"hooks": "not-a-map"}
+		rawSettings := map[string]any{"hooks": "not-a-map"}
 		got := cloneHooksMap(rawSettings)
 		if len(got) != 0 {
 			t.Errorf("expected empty map for wrong type, got %d entries", len(got))
@@ -429,7 +429,7 @@ func TestExtractFilePathsFromTool(t *testing.T) {
 	t.Run("extracts file_path from tool input", func(t *testing.T) {
 		tool := types.ToolCall{
 			Name: "Read",
-			Input: map[string]interface{}{
+			Input: map[string]any{
 				"file_path": "/some/path/file.go",
 			},
 		}
@@ -443,7 +443,7 @@ func TestExtractFilePathsFromTool(t *testing.T) {
 	t.Run("extracts path from tool input", func(t *testing.T) {
 		tool := types.ToolCall{
 			Name: "Bash",
-			Input: map[string]interface{}{
+			Input: map[string]any{
 				"path": "/another/path.sh",
 			},
 		}
@@ -458,7 +458,7 @@ func TestExtractFilePathsFromTool(t *testing.T) {
 		state := &transcriptState{seenFiles: make(map[string]bool)}
 		tool := types.ToolCall{
 			Name:  "Read",
-			Input: map[string]interface{}{"file_path": "/dup.go"},
+			Input: map[string]any{"file_path": "/dup.go"},
 		}
 		extractFilePathsFromTool(tool, state)
 		extractFilePathsFromTool(tool, state)
@@ -508,9 +508,9 @@ func TestExtractToolRefs(t *testing.T) {
 		session := &storage.Session{ToolCalls: make(map[string]int)}
 		state := &transcriptState{seenFiles: make(map[string]bool)}
 		tools := []types.ToolCall{
-			{Name: "Read", Input: map[string]interface{}{"file_path": "/a.go"}},
+			{Name: "Read", Input: map[string]any{"file_path": "/a.go"}},
 			{Name: "Bash", Input: nil},
-			{Name: "Read", Input: map[string]interface{}{"file_path": "/b.go"}},
+			{Name: "Read", Input: map[string]any{"file_path": "/b.go"}},
 		}
 		extractToolRefs(tools, session, state)
 		if session.ToolCalls["Read"] != 2 {

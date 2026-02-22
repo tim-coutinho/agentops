@@ -9,7 +9,7 @@ import (
 )
 
 // createTestLearningJSONL creates a JSONL learning file with the given first-line JSON data.
-func createTestLearningJSONL(t *testing.T, dir, name string, data map[string]interface{}) {
+func createTestLearningJSONL(t *testing.T, dir, name string, data map[string]any) {
 	t.Helper()
 	firstLine, err := json.Marshal(data)
 	if err != nil {
@@ -24,7 +24,7 @@ func createTestLearningJSONL(t *testing.T, dir, name string, data map[string]int
 // createTestCitation appends a citation entry to a citations.jsonl file.
 func createTestCitation(t *testing.T, citationsPath, artifactPath string, citedAt time.Time) {
 	t.Helper()
-	entry := map[string]interface{}{
+	entry := map[string]any{
 		"artifact_path": artifactPath,
 		"cited_at":      citedAt.Format(time.RFC3339),
 	}
@@ -55,7 +55,7 @@ func TestEvictIdentifiesCandidate(t *testing.T) {
 
 	// Create a learning that meets ALL 4 eviction criteria:
 	// utility < 0.3, confidence < 0.2, not established, no recent citation
-	createTestLearningJSONL(t, learningsDir, "stale.jsonl", map[string]interface{}{
+	createTestLearningJSONL(t, learningsDir, "stale.jsonl", map[string]any{
 		"id":         "L-stale",
 		"utility":    0.1,
 		"confidence": 0.1,
@@ -100,7 +100,7 @@ func TestEvictSkipsEstablished(t *testing.T) {
 	}
 
 	// Low scores but established maturity -> should NOT be evicted
-	createTestLearningJSONL(t, learningsDir, "established.jsonl", map[string]interface{}{
+	createTestLearningJSONL(t, learningsDir, "established.jsonl", map[string]any{
 		"id":         "L-established",
 		"utility":    0.1,
 		"confidence": 0.05,
@@ -147,7 +147,7 @@ func TestEvictSkipsRecentlyCited(t *testing.T) {
 	learningFile := "recent-cite.jsonl"
 
 	// Low scores but recently cited -> should NOT be evicted
-	createTestLearningJSONL(t, learningsDir, learningFile, map[string]interface{}{
+	createTestLearningJSONL(t, learningsDir, learningFile, map[string]any{
 		"id":         "L-recent",
 		"utility":    0.1,
 		"confidence": 0.05,
@@ -197,7 +197,7 @@ func TestEvictArchivesCandidate(t *testing.T) {
 
 	// Meets all criteria: low utility, low confidence, provisional, cited 120 days ago
 	learningFile := "evictable.jsonl"
-	createTestLearningJSONL(t, learningsDir, learningFile, map[string]interface{}{
+	createTestLearningJSONL(t, learningsDir, learningFile, map[string]any{
 		"id":         "L-evictable",
 		"utility":    0.15,
 		"confidence": 0.1,

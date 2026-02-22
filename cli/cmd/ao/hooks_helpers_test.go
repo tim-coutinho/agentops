@@ -32,15 +32,15 @@ func TestIsAoManagedHookCommand(t *testing.T) {
 
 func TestHookGroupContainsAo(t *testing.T) {
 	t.Run("empty hooks map returns false", func(t *testing.T) {
-		got := hookGroupContainsAo(map[string]interface{}{}, "UserPromptSubmit")
+		got := hookGroupContainsAo(map[string]any{}, "UserPromptSubmit")
 		if got {
 			t.Error("expected false for empty hooks map")
 		}
 	})
 
 	t.Run("event not present returns false", func(t *testing.T) {
-		hooksMap := map[string]interface{}{
-			"PreToolUse": []interface{}{},
+		hooksMap := map[string]any{
+			"PreToolUse": []any{},
 		}
 		got := hookGroupContainsAo(hooksMap, "UserPromptSubmit")
 		if got {
@@ -49,11 +49,11 @@ func TestHookGroupContainsAo(t *testing.T) {
 	})
 
 	t.Run("new format with ao command returns true", func(t *testing.T) {
-		hooksMap := map[string]interface{}{
-			"SessionStart": []interface{}{
-				map[string]interface{}{
-					"hooks": []interface{}{
-						map[string]interface{}{
+		hooksMap := map[string]any{
+			"SessionStart": []any{
+				map[string]any{
+					"hooks": []any{
+						map[string]any{
 							"command": "ao context status",
 						},
 					},
@@ -67,11 +67,11 @@ func TestHookGroupContainsAo(t *testing.T) {
 	})
 
 	t.Run("new format with non-ao command returns false", func(t *testing.T) {
-		hooksMap := map[string]interface{}{
-			"SessionStart": []interface{}{
-				map[string]interface{}{
-					"hooks": []interface{}{
-						map[string]interface{}{
+		hooksMap := map[string]any{
+			"SessionStart": []any{
+				map[string]any{
+					"hooks": []any{
+						map[string]any{
 							"command": "echo hello",
 						},
 					},
@@ -85,10 +85,10 @@ func TestHookGroupContainsAo(t *testing.T) {
 	})
 
 	t.Run("legacy format with ao command returns true", func(t *testing.T) {
-		hooksMap := map[string]interface{}{
-			"SessionStart": []interface{}{
-				map[string]interface{}{
-					"command": []interface{}{"bash", "ao flywheel status"},
+		hooksMap := map[string]any{
+			"SessionStart": []any{
+				map[string]any{
+					"command": []any{"bash", "ao flywheel status"},
 				},
 			},
 		}
@@ -99,7 +99,7 @@ func TestHookGroupContainsAo(t *testing.T) {
 	})
 
 	t.Run("non-array event type returns false", func(t *testing.T) {
-		hooksMap := map[string]interface{}{
+		hooksMap := map[string]any{
 			"SessionStart": "not-an-array",
 		}
 		got := hookGroupContainsAo(hooksMap, "SessionStart")
@@ -111,7 +111,7 @@ func TestHookGroupContainsAo(t *testing.T) {
 
 func TestMergeHookEvents(t *testing.T) {
 	t.Run("installs events from newHooks into hooksMap", func(t *testing.T) {
-		hooksMap := map[string]interface{}{}
+		hooksMap := map[string]any{}
 		newHooks := &HooksConfig{}
 		newHooks.SetEventGroups("SessionStart", []HookGroup{
 			{Hooks: []HookEntry{{Command: "ao context status"}}},
@@ -133,7 +133,7 @@ func TestMergeHookEvents(t *testing.T) {
 	})
 
 	t.Run("event not in newHooks is not installed", func(t *testing.T) {
-		hooksMap := map[string]interface{}{}
+		hooksMap := map[string]any{}
 		newHooks := &HooksConfig{} // no events set
 		eventsToInstall := []string{"SessionStart"}
 		count := mergeHookEvents(hooksMap, newHooks, eventsToInstall)
@@ -146,11 +146,11 @@ func TestMergeHookEvents(t *testing.T) {
 	})
 
 	t.Run("preserves non-ao existing hooks", func(t *testing.T) {
-		hooksMap := map[string]interface{}{
-			"SessionStart": []interface{}{
-				map[string]interface{}{
-					"hooks": []interface{}{
-						map[string]interface{}{"command": "echo hello"},
+		hooksMap := map[string]any{
+			"SessionStart": []any{
+				map[string]any{
+					"hooks": []any{
+						map[string]any{"command": "echo hello"},
 					},
 				},
 			},
@@ -164,10 +164,10 @@ func TestMergeHookEvents(t *testing.T) {
 			t.Errorf("expected 1 installed event, got %d", count)
 		}
 		// The merged groups should contain both existing and new
-		// mergeHookEvents sets hooksMap[event] = []map[string]interface{}
-		groups, ok := hooksMap["SessionStart"].([]map[string]interface{})
+		// mergeHookEvents sets hooksMap[event] = []map[string]any
+		groups, ok := hooksMap["SessionStart"].([]map[string]any)
 		if !ok {
-			t.Fatalf("expected []map[string]interface{} for SessionStart, got %T", hooksMap["SessionStart"])
+			t.Fatalf("expected []map[string]any for SessionStart, got %T", hooksMap["SessionStart"])
 		}
 		// Should have at least 2 groups: original + new
 		if len(groups) < 2 {

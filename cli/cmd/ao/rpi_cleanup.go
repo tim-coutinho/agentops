@@ -398,7 +398,7 @@ func markRunStale(sr staleRunEntry) error {
 		return fmt.Errorf("read state: %w", err)
 	}
 
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return fmt.Errorf("unmarshal state: %w", err)
 	}
@@ -420,7 +420,7 @@ func markRunStale(sr staleRunEntry) error {
 	// Also update the flat state file if it exists and matches this run.
 	flatPath := filepath.Join(sr.root, ".agents", "rpi", phasedStateFile)
 	if flatData, fErr := os.ReadFile(flatPath); fErr == nil {
-		var flatRaw map[string]interface{}
+		var flatRaw map[string]any
 		if json.Unmarshal(flatData, &flatRaw) == nil {
 			if flatRunID, ok := flatRaw["run_id"].(string); ok && flatRunID == sr.runID {
 				flatRaw["terminal_status"] = "stale"

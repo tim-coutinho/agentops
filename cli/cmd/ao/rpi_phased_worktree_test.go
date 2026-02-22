@@ -448,7 +448,7 @@ func TestPhasedState_WorktreeFields(t *testing.T) {
 
 	// Verify JSON roundtrip contains the fields.
 	data, _ := os.ReadFile(filepath.Join(dir, ".agents", "rpi", phasedStateFile))
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("unmarshal raw: %v", err)
 	}

@@ -245,7 +245,7 @@ func TestIntegrationFeedbackLoop(t *testing.T) {
 	}
 
 	// Create a test learning
-	learningData := map[string]interface{}{
+	learningData := map[string]any{
 		"id":      "L-test-001",
 		"title":   "Test Learning",
 		"content": "This is a test learning",

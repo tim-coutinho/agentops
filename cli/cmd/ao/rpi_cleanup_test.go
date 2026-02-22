@@ -18,7 +18,7 @@ func TestCleanupStaleRun(t *testing.T) {
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": 1,
 		"run_id":         "stale-run",
 		"goal":           "test stale",
@@ -53,7 +53,7 @@ func TestCleanupStaleRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var updatedState map[string]interface{}
+	var updatedState map[string]any
 	if err := json.Unmarshal(updated, &updatedState); err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestCleanupDryRun(t *testing.T) {
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": 1,
 		"run_id":         "dry-run-test",
 		"goal":           "dry run test",
@@ -116,7 +116,7 @@ func TestCleanupDryRun(t *testing.T) {
 
 	// Verify the state file is NOT modified (simulating dry-run by not calling markRunStale).
 	originalData, _ := os.ReadFile(statePath)
-	var originalState map[string]interface{}
+	var originalState map[string]any
 	_ = json.Unmarshal(originalData, &originalState)
 
 	if originalState["terminal_status"] != nil {
@@ -133,7 +133,7 @@ func TestCleanupByRunID(t *testing.T) {
 		if err := os.MkdirAll(runDir, 0755); err != nil {
 			t.Fatal(err)
 		}
-		state := map[string]interface{}{
+		state := map[string]any{
 			"schema_version": 1,
 			"run_id":         id,
 			"goal":           id + " goal",
@@ -174,7 +174,7 @@ func TestCleanupSkipsTerminalRuns(t *testing.T) {
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version":  1,
 		"run_id":          "already-stale",
 		"goal":            "already marked",
@@ -208,7 +208,7 @@ func TestCleanupIncludesTerminalRunsWithExistingWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version":  1,
 		"run_id":          "failed-run",
 		"goal":            "failed run",
@@ -265,7 +265,7 @@ func TestCleanupSkipsCompletedRuns(t *testing.T) {
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": 1,
 		"run_id":         "done-run",
 		"goal":           "completed",
@@ -293,7 +293,7 @@ func TestFindStaleRunsWithMinAge_SkipsRecentRuns(t *testing.T) {
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": 1,
 		"run_id":         "recent-run",
 		"goal":           "recent",
@@ -321,7 +321,7 @@ func TestExecuteRPICleanup_StaleAfterOnlyMarksOldRuns(t *testing.T) {
 		if err := os.MkdirAll(runDir, 0755); err != nil {
 			t.Fatal(err)
 		}
-		state := map[string]interface{}{
+		state := map[string]any{
 			"schema_version": 1,
 			"run_id":         runID,
 			"goal":           runID,
@@ -347,7 +347,7 @@ func TestExecuteRPICleanup_StaleAfterOnlyMarksOldRuns(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s state: %v", runID, err)
 		}
-		var raw map[string]interface{}
+		var raw map[string]any
 		if err := json.Unmarshal(data, &raw); err != nil {
 			t.Fatalf("unmarshal %s state: %v", runID, err)
 		}
@@ -569,7 +569,7 @@ func TestExecuteRPICleanup_DryRunWithPruneFlags_PreservesStateAndBranches(t *tes
 		t.Fatal(err)
 	}
 	statePath := filepath.Join(runDir, phasedStateFile)
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": 1,
 		"run_id":         "dry-run-stale",
 		"goal":           "dry run stale",
@@ -593,7 +593,7 @@ func TestExecuteRPICleanup_DryRunWithPruneFlags_PreservesStateAndBranches(t *tes
 	if err != nil {
 		t.Fatalf("read state after dry-run: %v", err)
 	}
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(updated, &raw); err != nil {
 		t.Fatalf("unmarshal state after dry-run: %v", err)
 	}
@@ -630,7 +630,7 @@ func TestExecuteRPICleanup_PruneBranchesPreservesActiveCheckedOutWorktree(t *tes
 		t.Fatal(err)
 	}
 	statePath := filepath.Join(runDir, phasedStateFile)
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": 1,
 		"run_id":         "active-run",
 		"goal":           "active run",

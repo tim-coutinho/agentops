@@ -632,7 +632,7 @@ func queryBeadsEpics() ([]beadsEpic, error) {
 	var epics []beadsEpic
 	scanner := bufio.NewScanner(strings.NewReader(string(output)))
 	for scanner.Scan() {
-		var data map[string]interface{}
+		var data map[string]any
 		if err := json.Unmarshal(scanner.Bytes(), &data); err != nil {
 			continue
 		}

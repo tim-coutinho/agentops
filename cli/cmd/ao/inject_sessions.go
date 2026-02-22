@@ -80,7 +80,7 @@ func parseSessionFile(path string) (session, error) {
 
 		scanner := bufio.NewScanner(f)
 		if scanner.Scan() {
-			var data map[string]interface{}
+			var data map[string]any
 			if err := json.Unmarshal(scanner.Bytes(), &data); err == nil {
 				if summary, ok := data["summary"].(string); ok {
 					s.Summary = truncateText(summary, 150)

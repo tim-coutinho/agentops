@@ -204,7 +204,7 @@ func checkHookCoverage() doctorCheck {
 	}
 }
 
-func evaluateHookCoverage(hooksMap map[string]interface{}) doctorCheck {
+func evaluateHookCoverage(hooksMap map[string]any) doctorCheck {
 	installedEvents := countInstalledEvents(hooksMap)
 	if installedEvents == 0 {
 		return doctorCheck{
@@ -241,15 +241,15 @@ func evaluateHookCoverage(hooksMap map[string]interface{}) doctorCheck {
 	}
 }
 
-func extractHooksMap(data []byte) (map[string]interface{}, bool) {
-	var parsed map[string]interface{}
+func extractHooksMap(data []byte) (map[string]any, bool) {
+	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		return nil, false
 	}
 
 	// settings.json shape
 	if hooksRaw, ok := parsed["hooks"]; ok {
-		if hooksMap, ok := hooksRaw.(map[string]interface{}); ok {
+		if hooksMap, ok := hooksRaw.(map[string]any); ok {
 			return hooksMap, true
 		}
 	}
@@ -264,28 +264,28 @@ func extractHooksMap(data []byte) (map[string]interface{}, bool) {
 	return nil, false
 }
 
-func countHooksInMap(raw interface{}) int {
+func countHooksInMap(raw any) int {
 	count := 0
 	switch v := raw.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		for _, val := range v {
-			if arr, ok := val.([]interface{}); ok {
+			if arr, ok := val.([]any); ok {
 				count += len(arr)
 			} else {
 				// Recurse into nested maps
 				count += countHooksInMap(val)
 			}
 		}
-	case []interface{}:
+	case []any:
 		count += len(v)
 	}
 	return count
 }
 
-func countInstalledEvents(hooksMap map[string]interface{}) int {
+func countInstalledEvents(hooksMap map[string]any) int {
 	installed := 0
 	for _, event := range AllEventNames() {
-		if groups, ok := hooksMap[event].([]interface{}); ok && len(groups) > 0 {
+		if groups, ok := hooksMap[event].([]any); ok && len(groups) > 0 {
 			installed++
 		}
 	}

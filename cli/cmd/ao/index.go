@@ -211,8 +211,8 @@ func extractEntry(filePath, filename string) indexEntry {
 }
 
 // parseFrontmatter extracts YAML frontmatter between --- delimiters.
-func parseFrontmatter(content string) map[string]interface{} {
-	result := make(map[string]interface{})
+func parseFrontmatter(content string) map[string]any {
+	result := make(map[string]any)
 
 	scanner := bufio.NewScanner(strings.NewReader(content))
 	fmCount := 0
@@ -242,7 +242,7 @@ func parseFrontmatter(content string) map[string]interface{} {
 }
 
 // extractDateField tries frontmatter fields then filename for a date string.
-func extractDateField(fm map[string]interface{}, filename string) string {
+func extractDateField(fm map[string]any, filename string) string {
 	// Try created_at first, then date
 	for _, field := range []string{"created_at", "date"} {
 		if val, ok := fm[field]; ok {
@@ -290,14 +290,14 @@ func extractH1(content string) string {
 }
 
 // extractTagsFromFrontmatter extracts tags as a space-separated string.
-func extractTagsFromFrontmatter(fm map[string]interface{}) string {
+func extractTagsFromFrontmatter(fm map[string]any) string {
 	val, ok := fm["tags"]
 	if !ok {
 		return ""
 	}
 
 	switch v := val.(type) {
-	case []interface{}:
+	case []any:
 		var tags []string
 		for _, t := range v {
 			tags = append(tags, fmt.Sprintf("%v", t))

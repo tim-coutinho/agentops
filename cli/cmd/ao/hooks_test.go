@@ -106,7 +106,7 @@ func TestHookGroupToMapStringMatcher(t *testing.T) {
 		t.Errorf("expected matcher 'Write|Edit', got '%s'", matcher)
 	}
 
-	hooks, ok := m["hooks"].([]map[string]interface{})
+	hooks, ok := m["hooks"].([]map[string]any)
 	if !ok {
 		t.Fatal("expected hooks array in map")
 	}
@@ -137,7 +137,7 @@ func TestHookGroupToMapTimeout(t *testing.T) {
 	}
 
 	m := hookGroupToMap(g)
-	hooks := m["hooks"].([]map[string]interface{})
+	hooks := m["hooks"].([]map[string]any)
 	if hooks[0]["timeout"] != 120 {
 		t.Errorf("expected timeout 120, got %v", hooks[0]["timeout"])
 	}
@@ -149,7 +149,7 @@ func TestHookGroupToMapTimeout(t *testing.T) {
 		},
 	}
 	m2 := hookGroupToMap(g2)
-	hooks2 := m2["hooks"].([]map[string]interface{})
+	hooks2 := m2["hooks"].([]map[string]any)
 	if _, exists := hooks2[0]["timeout"]; exists {
 		t.Error("expected no timeout key when Timeout is 0")
 	}
@@ -252,17 +252,17 @@ func TestReplacePluginRoot(t *testing.T) {
 
 func TestFilterNonAoHookGroupsAllEvents(t *testing.T) {
 	// Build a hooksMap with ao and non-ao groups for every event
-	hooksMap := make(map[string]interface{})
+	hooksMap := make(map[string]any)
 	for _, event := range AllEventNames() {
-		hooksMap[event] = []interface{}{
-			map[string]interface{}{
-				"hooks": []interface{}{
-					map[string]interface{}{"type": "command", "command": "ao inject 2>/dev/null"},
+		hooksMap[event] = []any{
+			map[string]any{
+				"hooks": []any{
+					map[string]any{"type": "command", "command": "ao inject 2>/dev/null"},
 				},
 			},
-			map[string]interface{}{
-				"hooks": []interface{}{
-					map[string]interface{}{"type": "command", "command": "my-custom-hook"},
+			map[string]any{
+				"hooks": []any{
+					map[string]any{"type": "command", "command": "my-custom-hook"},
 				},
 			},
 		}
@@ -273,8 +273,8 @@ func TestFilterNonAoHookGroupsAllEvents(t *testing.T) {
 		if len(filtered) != 1 {
 			t.Errorf("event %s: expected 1 non-ao group, got %d", event, len(filtered))
 		}
-		if hooks, ok := filtered[0]["hooks"].([]interface{}); ok {
-			if hook, ok := hooks[0].(map[string]interface{}); ok {
+		if hooks, ok := filtered[0]["hooks"].([]any); ok {
+			if hook, ok := hooks[0].(map[string]any); ok {
 				if hook["command"] != "my-custom-hook" {
 					t.Errorf("event %s: expected non-ao hook preserved, got %v", event, hook["command"])
 				}
@@ -284,12 +284,12 @@ func TestFilterNonAoHookGroupsAllEvents(t *testing.T) {
 }
 
 func TestHookGroupContainsAoAllEvents(t *testing.T) {
-	hooksMap := make(map[string]interface{})
+	hooksMap := make(map[string]any)
 	for _, event := range AllEventNames() {
-		hooksMap[event] = []interface{}{
-			map[string]interface{}{
-				"hooks": []interface{}{
-					map[string]interface{}{"type": "command", "command": "ao inject stuff"},
+		hooksMap[event] = []any{
+			map[string]any{
+				"hooks": []any{
+					map[string]any{"type": "command", "command": "ao inject stuff"},
 				},
 			},
 		}
@@ -303,11 +303,11 @@ func TestHookGroupContainsAoAllEvents(t *testing.T) {
 }
 
 func TestHookGroupContainsAoForInstalledScriptPaths(t *testing.T) {
-	hooksMap := map[string]interface{}{
-		"SessionStart": []interface{}{
-			map[string]interface{}{
-				"hooks": []interface{}{
-					map[string]interface{}{"type": "command", "command": "/Users/test/.agentops/hooks/session-start.sh"},
+	hooksMap := map[string]any{
+		"SessionStart": []any{
+			map[string]any{
+				"hooks": []any{
+					map[string]any{"type": "command", "command": "/Users/test/.agentops/hooks/session-start.sh"},
 				},
 			},
 		},

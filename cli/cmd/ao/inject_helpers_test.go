@@ -323,7 +323,7 @@ Always use sync.Mutex for shared state access.
 	}
 
 	// Create JSONL learning
-	jsonlData := map[string]interface{}{
+	jsonlData := map[string]any{
 		"id":      "L2",
 		"title":   "Database Pooling",
 		"summary": "Use connection pooling for database access",
@@ -408,7 +408,7 @@ func TestParseLearningJSONL(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	t.Run("basic JSONL", func(t *testing.T) {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"id":      "L42",
 			"title":   "Test Learning",
 			"summary": "A test summary",
@@ -436,7 +436,7 @@ func TestParseLearningJSONL(t *testing.T) {
 	})
 
 	t.Run("superseded JSONL", func(t *testing.T) {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"id":            "L1",
 			"title":         "Old",
 			"superseded_by": "L99",
@@ -457,7 +457,7 @@ func TestParseLearningJSONL(t *testing.T) {
 	})
 
 	t.Run("content fallback for summary", func(t *testing.T) {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"id":      "L3",
 			"title":   "Title Only",
 			"content": "This is the content used as summary",
@@ -478,7 +478,7 @@ func TestParseLearningJSONL(t *testing.T) {
 	})
 
 	t.Run("default utility", func(t *testing.T) {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"id":    "L4",
 			"title": "No Utility",
 		}

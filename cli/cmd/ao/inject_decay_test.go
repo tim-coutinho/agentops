@@ -17,7 +17,7 @@ func TestApplyConfidenceDecay_WritesBack(t *testing.T) {
 	filePath := filepath.Join(dir, "test-learning.jsonl")
 
 	twoWeeksAgo := time.Now().Add(-14 * 24 * time.Hour)
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":            "test-1",
 		"title":         "Test Learning",
 		"summary":       "A test learning for decay",
@@ -49,7 +49,7 @@ func TestApplyConfidenceDecay_WritesBack(t *testing.T) {
 		t.Fatalf("read back: %v", err)
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal(content, &result); err != nil {
 		t.Fatalf("unmarshal result: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestApplyConfidenceDecay_ClampsMinimum(t *testing.T) {
 	// 100 weeks ago — decay factor = exp(-100 * 0.1) ≈ 0.0000454
 	// 0.5 * 0.0000454 ≈ 0.0000227, should clamp to 0.1
 	longAgo := time.Now().Add(-100 * 7 * 24 * time.Hour)
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":            "test-clamp",
 		"title":         "Very Old Learning",
 		"confidence":    0.5,
@@ -160,7 +160,7 @@ func TestApplyConfidenceDecay_ClampsMinimum(t *testing.T) {
 		t.Fatalf("read back: %v", err)
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal(content, &result); err != nil {
 		t.Fatalf("unmarshal result: %v", err)
 	}

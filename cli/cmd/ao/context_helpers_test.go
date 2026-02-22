@@ -922,8 +922,8 @@ func TestFindTeamMemberByName(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		config := map[string]interface{}{
-			"members": []map[string]interface{}{
+		config := map[string]any{
+			"members": []map[string]any{
 				{"name": "Alice", "role": "worker"},
 				{"name": "Bob", "role": "lead"},
 			},
@@ -956,8 +956,8 @@ func TestFindTeamMemberByName(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		config := map[string]interface{}{
-			"members": []map[string]interface{}{
+		config := map[string]any{
+			"members": []map[string]any{
 				{"name": "Worker-1"},
 			},
 		}
@@ -980,7 +980,7 @@ func TestFindTeamMemberByName(t *testing.T) {
 		dir := t.TempDir()
 		teamDir := filepath.Join(dir, ".claude", "teams", "team-b")
 		os.MkdirAll(teamDir, 0755)                                                        //nolint:errcheck // test setup
-		data, _ := json.Marshal(map[string]interface{}{"members": []map[string]interface{}{{"name": "Bob"}}})
+		data, _ := json.Marshal(map[string]any{"members": []map[string]any{{"name": "Bob"}}})
 		os.WriteFile(filepath.Join(teamDir, "config.json"), data, 0644) //nolint:errcheck // test setup
 		old := os.Getenv("HOME")
 		os.Setenv("HOME", dir)

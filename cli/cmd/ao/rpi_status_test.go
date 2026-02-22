@@ -23,7 +23,7 @@ func writeRegistryRun(t *testing.T, rootDir string, spec registryRunSpec) {
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		t.Fatalf("mkdir registry run dir: %v", err)
 	}
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": spec.schema,
 		"run_id":         spec.runID,
 		"goal":           spec.goal,
@@ -49,7 +49,7 @@ func TestRPIStatusDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": 1,
 		"run_id":         "abc123def456",
 		"goal":           "test goal",
@@ -134,7 +134,7 @@ func TestRPIStatusPhaseNames(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		state := map[string]interface{}{
+		state := map[string]any{
 			"schema_version": tt.schema,
 			"run_id":         "test-run",
 			"phase":          tt.phase,
@@ -161,7 +161,7 @@ func TestRPIStatusEmptyRunID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state := map[string]interface{}{
+	state := map[string]any{
 		"goal":  "no run id",
 		"phase": 1,
 	}
@@ -183,7 +183,7 @@ func TestRPIStatusCompletedFinalPhase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": 1,
 		"run_id":         "completed-run",
 		"goal":           "finished goal",
@@ -247,7 +247,7 @@ func TestRPIStatusSiblingDiscovery(t *testing.T) {
 	}
 
 	// Write state in cwd
-	cwdState := map[string]interface{}{
+	cwdState := map[string]any{
 		"schema_version": 1,
 		"run_id":         "main-run",
 		"goal":           "main goal",
@@ -259,7 +259,7 @@ func TestRPIStatusSiblingDiscovery(t *testing.T) {
 	}
 
 	// Write state in sibling
-	sibState := map[string]interface{}{
+	sibState := map[string]any{
 		"schema_version": 1,
 		"run_id":         "sibling-run",
 		"goal":           "sibling goal",
@@ -907,7 +907,7 @@ func TestDiscoverRPIRuns_FallbackFlatState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": 1,
 		"run_id":         "legacy-run",
 		"goal":           "legacy goal",
@@ -1106,7 +1106,7 @@ func TestLocateRunMetadata_FlatFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stateData := map[string]interface{}{
+	stateData := map[string]any{
 		"schema_version": 1,
 		"run_id":         runID,
 		"goal":           "flat fallback goal",
@@ -1150,7 +1150,7 @@ func TestLocateRunMetadata_WrongRunIDInFlat(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stateData := map[string]interface{}{
+	stateData := map[string]any{
 		"schema_version": 1,
 		"run_id":         "different-run",
 		"goal":           "some goal",
@@ -1350,7 +1350,7 @@ func TestScanRegistryRuns_StaleWorktreeReason(t *testing.T) {
 	if err := os.MkdirAll(runDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	state := map[string]interface{}{
+	state := map[string]any{
 		"schema_version": 1,
 		"run_id":         "stale-wt-run",
 		"goal":           "stale worktree test",

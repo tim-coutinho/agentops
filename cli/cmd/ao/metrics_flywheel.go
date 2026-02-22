@@ -74,7 +74,7 @@ func runFlywheelStatus(cmd *cobra.Command, args []string) error {
 	case "json":
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		return enc.Encode(map[string]interface{}{
+		return enc.Encode(map[string]any{
 			"status":      metrics.EscapeVelocityStatus(),
 			"delta":       metrics.Delta,
 			"sigma":       metrics.Sigma,
@@ -87,7 +87,7 @@ func runFlywheelStatus(cmd *cobra.Command, args []string) error {
 
 	case "yaml":
 		enc := yaml.NewEncoder(w)
-		return enc.Encode(map[string]interface{}{
+		return enc.Encode(map[string]any{
 			"status":      metrics.EscapeVelocityStatus(),
 			"delta":       metrics.Delta,
 			"sigma":       metrics.Sigma,

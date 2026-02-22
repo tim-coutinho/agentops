@@ -33,37 +33,37 @@ func TestExtractDateFromFilename(t *testing.T) {
 func TestExtractTagsFromFrontmatter(t *testing.T) {
 	tests := []struct {
 		name string
-		fm   map[string]interface{}
+		fm   map[string]any
 		want string
 	}{
 		{
 			name: "missing tags returns empty",
-			fm:   map[string]interface{}{"title": "test"},
+			fm:   map[string]any{"title": "test"},
 			want: "",
 		},
 		{
 			name: "slice of tags joined with space",
-			fm:   map[string]interface{}{"tags": []interface{}{"go", "testing", "coverage"}},
+			fm:   map[string]any{"tags": []any{"go", "testing", "coverage"}},
 			want: "go testing coverage",
 		},
 		{
 			name: "string tags in bracket format",
-			fm:   map[string]interface{}{"tags": "[go, testing]"},
+			fm:   map[string]any{"tags": "[go, testing]"},
 			want: "go testing",
 		},
 		{
 			name: "plain string tag",
-			fm:   map[string]interface{}{"tags": "single-tag"},
+			fm:   map[string]any{"tags": "single-tag"},
 			want: "single-tag",
 		},
 		{
 			name: "empty slice returns empty",
-			fm:   map[string]interface{}{"tags": []interface{}{}},
+			fm:   map[string]any{"tags": []any{}},
 			want: "",
 		},
 		{
 			name: "numeric tag uses Sprintf",
-			fm:   map[string]interface{}{"tags": 42},
+			fm:   map[string]any{"tags": 42},
 			want: "42",
 		},
 	}

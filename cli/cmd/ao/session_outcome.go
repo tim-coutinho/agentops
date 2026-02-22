@@ -332,7 +332,7 @@ func scanTranscript(f *os.File, outcome *SessionOutcome, state *signalState) int
 // extractSessionID tries to extract session ID from a JSON line.
 func extractSessionID(line string) string {
 	// Try to parse as JSON and extract sessionId
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal([]byte(line), &data); err != nil {
 		return ""
 	}

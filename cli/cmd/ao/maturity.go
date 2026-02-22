@@ -471,7 +471,7 @@ func buildEvictionCandidate(baseDir, file string, lastCited map[string]time.Time
 	}, true
 }
 
-func readLearningJSONLData(file string) (map[string]interface{}, bool) {
+func readLearningJSONLData(file string) (map[string]any, bool) {
 	content, err := os.ReadFile(file)
 	if err != nil {
 		return nil, false
@@ -482,7 +482,7 @@ func readLearningJSONLData(file string) (map[string]interface{}, bool) {
 		return nil, false
 	}
 
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal([]byte(lines[0]), &data); err != nil {
 		return nil, false
 	}
@@ -567,7 +567,7 @@ func archiveEvictionCandidates(cwd string, candidates []evictionCandidate) error
 	return nil
 }
 
-func floatValueFromData(data map[string]interface{}, key string, defaultValue float64) float64 {
+func floatValueFromData(data map[string]any, key string, defaultValue float64) float64 {
 	value, ok := data[key].(float64)
 	if !ok {
 		return defaultValue
@@ -575,7 +575,7 @@ func floatValueFromData(data map[string]interface{}, key string, defaultValue fl
 	return value
 }
 
-func nonEmptyStringFromData(data map[string]interface{}, key, defaultValue string) string {
+func nonEmptyStringFromData(data map[string]any, key, defaultValue string) string {
 	value, ok := data[key].(string)
 	if !ok || value == "" {
 		return defaultValue

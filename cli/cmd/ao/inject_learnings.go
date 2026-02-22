@@ -119,7 +119,7 @@ func applyConfidenceDecay(l learning, filePath string, now time.Time) learning {
 			return l
 		}
 
-		var data map[string]interface{}
+		var data map[string]any
 		if err := json.Unmarshal([]byte(lines[0]), &data); err != nil {
 			return l
 		}
@@ -305,7 +305,7 @@ func parseLearningJSONL(path string) (learning, error) {
 
 	scanner := bufio.NewScanner(f)
 	if scanner.Scan() {
-		var data map[string]interface{}
+		var data map[string]any
 		if err := json.Unmarshal(scanner.Bytes(), &data); err == nil {
 			// F3: Filter superseded learnings - skip if superseded_by is set
 			if supersededBy, ok := data["superseded_by"]; ok && supersededBy != nil && supersededBy != "" {

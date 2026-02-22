@@ -678,7 +678,7 @@ func parseUtilityFromFile(path string) float64 {
 	}()
 	scanner := bufio.NewScanner(f)
 	if scanner.Scan() {
-		var data map[string]interface{}
+		var data map[string]any
 		if err := json.Unmarshal(scanner.Bytes(), &data); err == nil {
 			if utility, ok := data["utility"].(float64); ok {
 				return utility

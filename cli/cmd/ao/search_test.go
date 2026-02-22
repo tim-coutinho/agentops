@@ -68,19 +68,19 @@ func TestFilterByType(t *testing.T) {
 func TestCalculateCASSScore(t *testing.T) {
 	tests := []struct {
 		name    string
-		data    map[string]interface{}
+		data    map[string]any
 		wantMin float64
 		wantMax float64
 	}{
 		{
 			name:    "all defaults",
-			data:    map[string]interface{}{},
+			data:    map[string]any{},
 			wantMin: 0.124, // 0.5 * 1.0 * 0.5 = 0.25
 			wantMax: 0.251,
 		},
 		{
 			name: "established maturity",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":   "established",
 				"utility":    0.8,
 				"confidence": 0.9,
@@ -90,7 +90,7 @@ func TestCalculateCASSScore(t *testing.T) {
 		},
 		{
 			name: "anti-pattern low weight",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":   "anti-pattern",
 				"utility":    0.5,
 				"confidence": 0.5,
@@ -100,7 +100,7 @@ func TestCalculateCASSScore(t *testing.T) {
 		},
 		{
 			name: "candidate maturity",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":   "candidate",
 				"utility":    1.0,
 				"confidence": 1.0,
@@ -110,7 +110,7 @@ func TestCalculateCASSScore(t *testing.T) {
 		},
 		{
 			name: "provisional maturity explicit",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":   "provisional",
 				"utility":    0.5,
 				"confidence": 0.5,
@@ -120,7 +120,7 @@ func TestCalculateCASSScore(t *testing.T) {
 		},
 		{
 			name: "zero utility uses default",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"utility": 0.0,
 			},
 			wantMin: 0.249, // default 0.5 * 1.0 * 0.5 = 0.25
@@ -128,7 +128,7 @@ func TestCalculateCASSScore(t *testing.T) {
 		},
 		{
 			name: "negative utility uses default",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"utility": -1.0,
 			},
 			wantMin: 0.249,
@@ -242,7 +242,7 @@ func TestSearchJSONL(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create JSONL files
-	data1 := map[string]interface{}{
+	data1 := map[string]any{
 		"id":      "L1",
 		"summary": "Authentication patterns for Go services",
 		"content": "Use middleware for auth",
@@ -252,7 +252,7 @@ func TestSearchJSONL(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data2 := map[string]interface{}{
+	data2 := map[string]any{
 		"id":      "L2",
 		"summary": "Database connection pooling",
 		"content": "Pool connections for efficiency",
@@ -474,7 +474,7 @@ func TestSearchFilesCombinedLimitEnforcement(t *testing.T) {
 
 	// Create multiple JSONL files
 	for i := 1; i <= 5; i++ {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"id":      "L" + string(rune('0'+i)),
 			"summary": "searchable term in JSONL content",
 		}

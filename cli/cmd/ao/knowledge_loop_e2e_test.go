@@ -95,7 +95,7 @@ This ensures all goroutines clean up properly on shutdown.
 
 		// Update index
 		indexPath := filepath.Join(tempDir, ".agents", "ao", "index", "sessions.jsonl")
-		indexEntry := map[string]interface{}{
+		indexEntry := map[string]any{
 			"session_id": sessionID,
 			"date":       session.Date.Format(time.RFC3339),
 			"summary":    session.Summary,
@@ -461,7 +461,7 @@ func copyFile(src, dst string) error {
 }
 
 func createMinimalTranscript() string {
-	messages := []map[string]interface{}{
+	messages := []map[string]any{
 		{
 			"type":      "user",
 			"sessionId": "test-session-001",

@@ -318,7 +318,7 @@ func writeCitations(baseDir string, citations []types.CitationEvent) error {
 func outputFeedbackSummary(sessionID string, reward float64, totalCitations, uniqueCount, updatedCount, failedCount int, events []FeedbackEvent) error {
 	switch GetOutput() {
 	case "json":
-		result := map[string]interface{}{
+		result := map[string]any{
 			"session_id": sessionID,
 			"reward":     reward,
 			"citations":  totalCitations,

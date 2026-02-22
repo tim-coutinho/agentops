@@ -289,27 +289,27 @@ func TestCheckFlywheelHealth(t *testing.T) {
 func TestCountHooksInMap(t *testing.T) {
 	tests := []struct {
 		name string
-		raw  interface{}
+		raw  any
 		want int
 	}{
 		{
 			name: "flat hook arrays",
-			raw: map[string]interface{}{
-				"PreToolUse": []interface{}{"hook1", "hook2"},
-				"PostToolUse": []interface{}{"hook3"},
+			raw: map[string]any{
+				"PreToolUse": []any{"hook1", "hook2"},
+				"PostToolUse": []any{"hook3"},
 			},
 			want: 3,
 		},
 		{
 			name: "empty map",
-			raw:  map[string]interface{}{},
+			raw:  map[string]any{},
 			want: 0,
 		},
 		{
 			name: "nested hooks map",
-			raw: map[string]interface{}{
-				"hooks": map[string]interface{}{
-					"PreToolUse": []interface{}{"h1"},
+			raw: map[string]any{
+				"hooks": map[string]any{
+					"PreToolUse": []any{"h1"},
 				},
 			},
 			want: 1,
