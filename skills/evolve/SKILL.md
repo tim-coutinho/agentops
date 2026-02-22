@@ -158,6 +158,9 @@ echo "{\"cycle\":${CYCLE},\"target\":\"${TARGET}\",\"result\":\"${OUTCOME}\",\"s
 LAST=$(tail -1 .agents/evolve/cycle-history.jsonl | jq -r '.cycle')
 [ "$LAST" != "$CYCLE" ] && echo "FATAL: cycle log write failed" && exit 1
 
+# Telemetry
+bash scripts/log-telemetry.sh evolve cycle-complete cycle=${CYCLE} goal=${TARGET} outcome=${OUTCOME} 2>/dev/null || true
+
 # Commit checkpoint (survives compaction)
 git add .agents/evolve/ && git commit -m "evolve: cycle ${CYCLE} -- ${TARGET} ${OUTCOME}" || true
 ```
@@ -185,6 +188,27 @@ git push
 ## /evolve Complete
 Cycles: N | Improved: X | Regressed: Y (reverted) | Unchanged: Z
 ```
+
+## Examples
+
+**Basic:** `/evolve --max-cycles=5` — measures goals, fixes highest-weight failure, gates, repeats for 5 cycles.
+
+**Beads only:** `/evolve --beads-only` — skips goals measurement, works through `bd ready` backlog.
+
+**Dry run:** `/evolve --dry-run` — shows what would be worked on without executing.
+
+See `references/examples.md` for detailed walkthroughs.
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Loop exits immediately | Remove `~/.config/evolve/KILL` or `.agents/evolve/STOP` |
+| Stagnation after 3 idle cycles | All work sources empty — this is success |
+| `ao goals measure` hangs | Use `--timeout 30` flag or `--beads-only` to skip |
+| Regression gate reverts | Review reverted changes, narrow scope, re-run |
+
+See `references/cycle-history.md` for advanced troubleshooting.
 
 ## References
 

@@ -27,7 +27,7 @@ for dir in docs skills cli; do
   if [[ -d "$REPO_ROOT/$dir" ]]; then
     while IFS= read -r f; do
       md_files+=("$f")
-    done < <(find "$REPO_ROOT/$dir" -name '*.md' -type f)
+    done < <(find "$REPO_ROOT/$dir" -name '*.md' -type f -not -path '*/.agents/*')
   fi
 done
 

@@ -244,7 +244,7 @@ goals:
 
   - id: rpi-phased-context-discipline
     description: "ao rpi phased includes context discipline and handoff instructions in every phase prompt"
-    check: "cd cli && go build -o /tmp/test-ao-rpi ./cmd/ao >/dev/null 2>&1 && grep -q 'phaseContextBudgets' cmd/ao/rpi_phased.go"
+    check: "cd cli && go build -o /tmp/test-ao-rpi ./cmd/ao >/dev/null 2>&1 && grep -rq 'phaseContextBudgets' cmd/ao/rpi_phased*.go"
     weight: 3
     pillar: zero-friction-workflow
     added: "2026-02-19"
