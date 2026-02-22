@@ -345,6 +345,37 @@ Subagents are disposable. Each gets fresh context scoped to its role — no accu
 
 Subagent behaviors are defined inline within SKILL.md files. Skills that use subagents (e.g., `/council`, `/vibe`, `/pre-mortem`, `/post-mortem`, `/research`) spawn them via runtime-native backends.
 
+### Custom Agents
+
+AgentOps ships two custom agents (`agents/` directory in the plugin). These fill gaps between Claude Code's built-in agent types:
+
+| Agent | Model | Tools | Purpose |
+|-------|-------|-------|---------|
+| `agentops:researcher` | haiku | Read, Grep, Glob, **Bash** (no Write/Edit) | Deep exploration that needs to **run commands** |
+| `agentops:code-reviewer` | sonnet | Read, Grep, Glob, Bash | Post-change quality review |
+
+**Why not use built-in agents?**
+
+| Built-in | What it can do | What it can't do |
+|----------|----------------|------------------|
+| `Explore` | Read, Grep, Glob — fast file search | No Bash. Can't run `gocyclo`, `go test`, `golangci-lint`, or any command. |
+| `general-purpose` | Everything (Read, Write, Edit, Bash) | Uses the primary model (expensive). Full write access is unnecessary for read-only research. |
+
+The custom agents fill the gap:
+
+- **`agentops:researcher`** is `Explore` + Bash. It can search code AND run analysis tools (`gocyclo`, `go test -cover`, `wc -l`, etc.) — but it can't write or edit files, enforcing read-only discipline. Uses haiku for cost efficiency since research is high-volume.
+
+- **`agentops:code-reviewer`** is a review specialist that runs `git diff`, reads changed files, and produces structured findings. Uses sonnet for stronger reasoning on code quality, security, and architecture review.
+
+**Rule of thumb for choosing:**
+
+| Need | Agent |
+|------|-------|
+| Find a file or function | `Explore` (fastest, cheapest) |
+| Explore + run commands (read-only) | `agentops:researcher` |
+| Make changes to files | `general-purpose` |
+| Review code after changes | `agentops:code-reviewer` |
+
 ### ao CLI Integration
 
 For full workflow orchestration, skills integrate with the ao CLI:

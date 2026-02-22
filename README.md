@@ -336,6 +336,29 @@ AgentOps orchestrates across runtimes. Claude can lead a team of Codex workers. 
 
 Distributed mode workers survive disconnects — each runs in its own tmux session with crash recovery. `tmux attach` to debug live.
 
+<details>
+<summary><b>Custom agents</b> — why AgentOps ships its own</summary>
+
+AgentOps includes two small, purpose-built agents that fill gaps between Claude Code's built-in agent types:
+
+| Agent | Model | Can do | Can't do |
+|-------|-------|--------|----------|
+| `agentops:researcher` | haiku | Read, search, **run commands** (`gocyclo`, `go test`, etc.) | Write or edit files |
+| `agentops:code-reviewer` | sonnet | Read, search, run `git diff`, produce structured findings | Write or edit files |
+
+**The gap they fill:** Claude Code's built-in `Explore` agent can search code but can't run commands. Its `general-purpose` agent can do everything but uses the primary model (expensive) and has full write access. The custom agents sit in between — read-only discipline with command execution, at lower cost.
+
+| Need | Best agent |
+|------|-----------|
+| Find a file or function | `Explore` (fastest) |
+| Explore + run analysis tools | `agentops:researcher` (haiku, read-only + Bash) |
+| Make changes to files | `general-purpose` (full access) |
+| Review code after changes | `agentops:code-reviewer` (sonnet, structured review) |
+
+Skills spawn these agents automatically — you don't pick them manually. `/research` uses the researcher, `/vibe` uses the code-reviewer, `/crank` uses general-purpose for workers.
+
+</details>
+
 ---
 
 ## Deep Dive
