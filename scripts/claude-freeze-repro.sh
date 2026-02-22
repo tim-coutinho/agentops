@@ -228,7 +228,7 @@ BANNER
     done
 ) &
 DETECT_PID=$!
-cleanup_pids+=($DETECT_PID)
+cleanup_pids+=("$DETECT_PID")
 
 # Wait for user ENTER or auto-detection
 while true; do

@@ -136,3 +136,107 @@ func TestResolveToolchain_InvalidRuntimeMode(t *testing.T) {
 		t.Fatal("expected invalid runtime mode error")
 	}
 }
+
+func TestNormalizeRuntimeMode(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"", DefaultRuntimeMode},
+		{"  ", DefaultRuntimeMode},
+		{"auto", "auto"},
+		{"  AUTO  ", "auto"},
+		{"Direct", "direct"},
+		{"STREAM", "stream"},
+	}
+	for _, tc := range cases {
+		got := NormalizeRuntimeMode(tc.input)
+		if got != tc.want {
+			t.Errorf("NormalizeRuntimeMode(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestValidateRuntimeMode(t *testing.T) {
+	validModes := []string{"auto", "direct", "stream", " Auto ", "DIRECT"}
+	for _, m := range validModes {
+		if err := ValidateRuntimeMode(m); err != nil {
+			t.Errorf("ValidateRuntimeMode(%q) unexpected error: %v", m, err)
+		}
+	}
+
+	invalidModes := []string{"invalid", "hybrid", "custom"}
+	for _, m := range invalidModes {
+		if err := ValidateRuntimeMode(m); err == nil {
+			t.Errorf("ValidateRuntimeMode(%q) expected error", m)
+		}
+	}
+}
+
+func TestResolveToolchain_AllFlagOverrides(t *testing.T) {
+	tc, err := ResolveToolchain(ResolveToolchainOptions{
+		Config: Toolchain{
+			RuntimeMode:    "stream",
+			RuntimeCommand: "config-cmd",
+			AOCommand:      "config-ao",
+			BDCommand:      "config-bd",
+			TmuxCommand:    "config-tmux",
+		},
+		FlagValues: Toolchain{
+			RuntimeMode:    "direct",
+			RuntimeCommand: "flag-cmd",
+			AOCommand:      "flag-ao",
+			BDCommand:      "flag-bd",
+			TmuxCommand:    "flag-tmux",
+		},
+		FlagSet: ToolchainFlagSet{
+			RuntimeMode:    true,
+			RuntimeCommand: true,
+			AOCommand:      true,
+			BDCommand:      true,
+			TmuxCommand:    true,
+		},
+		EnvLookup: func(k string) string {
+			// Even with env set, flags should win
+			return "env-value"
+		},
+	})
+	if err != nil {
+		t.Fatalf("ResolveToolchain() error = %v", err)
+	}
+	if tc.RuntimeMode != "direct" {
+		t.Errorf("RuntimeMode = %q, want direct", tc.RuntimeMode)
+	}
+	if tc.RuntimeCommand != "flag-cmd" {
+		t.Errorf("RuntimeCommand = %q, want flag-cmd", tc.RuntimeCommand)
+	}
+	if tc.AOCommand != "flag-ao" {
+		t.Errorf("AOCommand = %q, want flag-ao", tc.AOCommand)
+	}
+	if tc.BDCommand != "flag-bd" {
+		t.Errorf("BDCommand = %q, want flag-bd", tc.BDCommand)
+	}
+	if tc.TmuxCommand != "flag-tmux" {
+		t.Errorf("TmuxCommand = %q, want flag-tmux", tc.TmuxCommand)
+	}
+}
+
+func TestResolveToolchain_EmptyCommandNormalization(t *testing.T) {
+	// Empty command values should fall back to defaults
+	tc, err := ResolveToolchain(ResolveToolchainOptions{
+		Config: Toolchain{
+			RuntimeCommand: "  ",
+			AOCommand:      "",
+		},
+		EnvLookup: func(string) string { return "" },
+	})
+	if err != nil {
+		t.Fatalf("ResolveToolchain() error = %v", err)
+	}
+	if tc.RuntimeCommand != DefaultRuntimeCommand {
+		t.Errorf("RuntimeCommand = %q, want %q (default)", tc.RuntimeCommand, DefaultRuntimeCommand)
+	}
+	if tc.AOCommand != DefaultAOCommand {
+		t.Errorf("AOCommand = %q, want %q (default)", tc.AOCommand, DefaultAOCommand)
+	}
+}

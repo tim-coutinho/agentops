@@ -35,8 +35,6 @@ if [[ $((USER_FACING + INTERNAL)) -ne "$TOTAL" ]]; then
 fi
 
 # --- Define all patch targets ---
-# Each entry: file | sed-pattern | description
-patches=()
 changes=0
 
 patch_file() {

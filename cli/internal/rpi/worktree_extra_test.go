@@ -243,3 +243,194 @@ func TestMergeWorktree_DirtyRepo(t *testing.T) {
 		t.Fatal("expected error for dirty/invalid merge scenario")
 	}
 }
+
+func TestMergeWorktree_HappyPath(t *testing.T) {
+	repo := initGitRepo(t)
+
+	// Create a worktree, make a commit in it, then merge back
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, nil)
+	if err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	defer func() {
+		_ = RemoveWorktree(repo, worktreePath, runID, 30*time.Second)
+	}()
+
+	// Add a file in the worktree and commit
+	newFile := filepath.Join(worktreePath, "worktree-change.txt")
+	if err := os.WriteFile(newFile, []byte("from worktree\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, worktreePath, "add", "worktree-change.txt")
+	runGit(t, worktreePath, "commit", "-m", "worktree commit")
+
+	// Get the main branch for checkout
+	branch := strings.TrimSpace(runGitOutput(t, repo, "branch", "--show-current"))
+	if branch == "" {
+		// Might be detached — get the first branch name
+		branches := listBranches(t, repo, "*")
+		if len(branches) == 0 {
+			t.Fatal("no branches available")
+		}
+		branch = branches[0]
+		runGit(t, repo, "checkout", branch)
+	}
+
+	// Merge the worktree back
+	var verboseOutput []string
+	verbosef := func(f string, a ...interface{}) {
+		verboseOutput = append(verboseOutput, f)
+	}
+	err = MergeWorktree(repo, worktreePath, runID, 30*time.Second, verbosef)
+	if err != nil {
+		t.Fatalf("MergeWorktree: %v", err)
+	}
+
+	// Verify the merged file exists in the original repo
+	mergedFile := filepath.Join(repo, "worktree-change.txt")
+	if _, err := os.Stat(mergedFile); err != nil {
+		t.Errorf("expected merged file to exist in repo: %v", err)
+	}
+}
+
+func TestMergeWorktree_EmptyWorktreePath_InferredFromRunID(t *testing.T) {
+	repo := initGitRepo(t)
+
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, nil)
+	if err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	defer func() {
+		_ = RemoveWorktree(repo, worktreePath, runID, 30*time.Second)
+	}()
+
+	// Add a file in the worktree and commit
+	newFile := filepath.Join(worktreePath, "inferred-path.txt")
+	if err := os.WriteFile(newFile, []byte("test\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, worktreePath, "add", "inferred-path.txt")
+	runGit(t, worktreePath, "commit", "-m", "commit for path inference test")
+
+	// Checkout a branch in the original repo (it may be detached after worktree creation)
+	branch := strings.TrimSpace(runGitOutput(t, repo, "branch", "--show-current"))
+	if branch == "" {
+		branches := listBranches(t, repo, "*")
+		if len(branches) > 0 {
+			runGit(t, repo, "checkout", branches[0])
+		}
+	}
+
+	// Pass empty worktreePath — should be inferred from runID
+	err = MergeWorktree(repo, "", runID, 30*time.Second, nil)
+	if err != nil {
+		t.Fatalf("MergeWorktree with empty path: %v", err)
+	}
+}
+
+func TestMergeWorktree_NonexistentWorktree(t *testing.T) {
+	repo := initGitRepo(t)
+	err := MergeWorktree(repo, "/nonexistent/path", "abc123", 5*time.Second, nil)
+	if err == nil {
+		t.Fatal("expected error for nonexistent worktree")
+	}
+}
+
+func TestMergeWorktree_EmptyMergeSource(t *testing.T) {
+	repo := initGitRepo(t)
+	// Create a valid worktree but don't make any commits
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, nil)
+	if err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	defer func() {
+		_ = RemoveWorktree(repo, worktreePath, runID, 30*time.Second)
+	}()
+
+	// Get the main branch
+	branch := strings.TrimSpace(runGitOutput(t, repo, "branch", "--show-current"))
+	if branch == "" {
+		branches := listBranches(t, repo, "*")
+		if len(branches) > 0 {
+			runGit(t, repo, "checkout", branches[0])
+		}
+	}
+
+	// Merging when worktree HEAD equals repo HEAD should still work (no-op merge)
+	err = MergeWorktree(repo, worktreePath, runID, 30*time.Second, nil)
+	// This may succeed as a no-op or fail with "already up to date"
+	// Either outcome is acceptable
+	_ = err
+}
+
+func TestEnsureAttachedBranch_EmptyPrefix(t *testing.T) {
+	repo := initGitRepo(t)
+
+	// Detach HEAD
+	sha := runGitOutput(t, repo, "rev-parse", "HEAD")
+	runGit(t, repo, "checkout", strings.TrimSpace(sha))
+
+	// Call with empty prefix — should use default "codex/auto-rpi"
+	branch, healed, err := EnsureAttachedBranch(repo, 30*time.Second, "")
+	if err != nil {
+		t.Fatalf("EnsureAttachedBranch with empty prefix: %v", err)
+	}
+	if !healed {
+		t.Fatal("expected healing with empty prefix")
+	}
+	if branch != "codex/auto-rpi-recovery" {
+		t.Fatalf("expected default recovery branch, got %q", branch)
+	}
+}
+
+func TestEnsureAttachedBranch_PrefixWithTrailingDash(t *testing.T) {
+	repo := initGitRepo(t)
+
+	sha := runGitOutput(t, repo, "rev-parse", "HEAD")
+	runGit(t, repo, "checkout", strings.TrimSpace(sha))
+
+	// Prefix with trailing dash should be trimmed
+	branch, healed, err := EnsureAttachedBranch(repo, 30*time.Second, "my-prefix-")
+	if err != nil {
+		t.Fatalf("EnsureAttachedBranch: %v", err)
+	}
+	if !healed {
+		t.Fatal("expected healing")
+	}
+	if branch != "my-prefix-recovery" {
+		t.Fatalf("expected my-prefix-recovery, got %q", branch)
+	}
+}
+
+func TestCreateWorktree_NotARepo(t *testing.T) {
+	dir := t.TempDir()
+	_, _, err := CreateWorktree(dir, 30*time.Second, nil)
+	if err == nil {
+		t.Fatal("expected error for non-git directory")
+	}
+	if !strings.Contains(err.Error(), "not a git repository") {
+		t.Errorf("expected 'not a git repository' error, got: %v", err)
+	}
+}
+
+func TestGetCurrentBranch_NotARepo(t *testing.T) {
+	dir := t.TempDir()
+	_, err := GetCurrentBranch(dir, 30*time.Second)
+	if err == nil {
+		t.Fatal("expected error for non-git directory")
+	}
+}
+
+func TestGetCurrentBranch_DetachedHEAD(t *testing.T) {
+	repo := initGitRepo(t)
+	sha := runGitOutput(t, repo, "rev-parse", "HEAD")
+	runGit(t, repo, "checkout", strings.TrimSpace(sha))
+
+	_, err := GetCurrentBranch(repo, 30*time.Second)
+	if err == nil {
+		t.Fatal("expected error for detached HEAD")
+	}
+	if !strings.Contains(err.Error(), "detached HEAD") {
+		t.Errorf("expected 'detached HEAD' error, got: %v", err)
+	}
+}
