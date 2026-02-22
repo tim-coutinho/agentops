@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -312,8 +313,8 @@ func TestSupersede_MaxDepth(t *testing.T) {
 		t.Fatal("Expected error for exceeding max depth, got nil")
 	}
 
-	supersessionErr, ok := err.(*SupersessionError)
-	if !ok {
+	var supersessionErr *SupersessionError
+	if !errors.As(err, &supersessionErr) {
 		t.Fatalf("Expected SupersessionError, got %T", err)
 	}
 
@@ -642,8 +643,8 @@ func TestHandleMCPFailure(t *testing.T) {
 				t.Errorf("HandleMCPFailure() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if tt.wantErr {
-				mcpErr, ok := err.(*MCPError)
-				if !ok {
+				var mcpErr *MCPError
+				if !errors.As(err, &mcpErr) {
 					t.Fatalf("Expected *MCPError, got %T", err)
 				}
 				if mcpErr.Tier != KnowledgeTierStrict {

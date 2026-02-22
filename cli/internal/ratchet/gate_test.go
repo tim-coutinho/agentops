@@ -1,6 +1,7 @@
 package ratchet
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,7 +44,7 @@ func TestGateCheckerWithMissingBd(t *testing.T) {
 
 	// We expect an error (bd not found or no epic found), but not a timeout
 	// unless the command is actually hanging
-	if err == ErrBdCLITimeout {
+	if errors.Is(err, ErrBdCLITimeout) {
 		t.Error("unexpected timeout error - bd command should fail fast if not installed")
 	}
 }

@@ -199,7 +199,7 @@ func classifyWorktreeError(output []byte, ctxErr error, cmdErr error, timeout ti
 	if strings.Contains(string(output), "already exists") {
 		return true, nil
 	}
-	if ctxErr == context.DeadlineExceeded {
+	if errors.Is(ctxErr, context.DeadlineExceeded) {
 		return false, fmt.Errorf("git worktree add timed out after %s", timeout)
 	}
 	return false, fmt.Errorf("git worktree add failed: %w (output: %s)", cmdErr, string(output))

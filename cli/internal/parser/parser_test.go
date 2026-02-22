@@ -616,8 +616,8 @@ func TestParser_ParseMalformedNotSkipped(t *testing.T) {
 	}
 
 	// Verify it's a ParseError
-	parseErr, ok := result.Errors[0].(*ParseError)
-	if !ok {
+	var parseErr *ParseError
+	if !errors.As(result.Errors[0], &parseErr) {
 		t.Fatalf("Error type = %T, want *ParseError", result.Errors[0])
 	}
 	if parseErr.Line != 2 {

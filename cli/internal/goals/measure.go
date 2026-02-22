@@ -2,6 +2,7 @@ package goals
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -22,7 +23,7 @@ type Measurement struct {
 // classifyResult maps command exit status to a result string.
 func classifyResult(ctxErr, cmdErr error) string {
 	switch {
-	case ctxErr == context.DeadlineExceeded:
+	case errors.Is(ctxErr, context.DeadlineExceeded):
 		return resultSkip
 	case cmdErr != nil:
 		return resultFail

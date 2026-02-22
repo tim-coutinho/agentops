@@ -304,13 +304,13 @@ func TestPoolBulkApproveThresholdTooLow(t *testing.T) {
 
 	// Threshold below minimum should return error
 	_, err := p.BulkApprove(0, "bulk-tester", false)
-	if err != ErrThresholdTooLow {
+	if !errors.Is(err, ErrThresholdTooLow) {
 		t.Errorf("expected ErrThresholdTooLow, got %v", err)
 	}
 
 	// Just under 1 hour should also fail
 	_, err = p.BulkApprove(59*time.Minute, "bulk-tester", false)
-	if err != ErrThresholdTooLow {
+	if !errors.Is(err, ErrThresholdTooLow) {
 		t.Errorf("expected ErrThresholdTooLow for 59m, got %v", err)
 	}
 }
@@ -476,7 +476,7 @@ func TestPoolRejectReasonTooLong(t *testing.T) {
 	}
 
 	err := p.Reject("reason-length-test", string(longReason), "reviewer")
-	if err != ErrReasonTooLong {
+	if !errors.Is(err, ErrReasonTooLong) {
 		t.Errorf("expected ErrReasonTooLong, got %v", err)
 	}
 
@@ -512,7 +512,7 @@ func TestPoolApproveNoteTooLong(t *testing.T) {
 	}
 
 	err := p.Approve("note-length-test", string(longNote), "reviewer")
-	if err != ErrReasonTooLong {
+	if !errors.Is(err, ErrReasonTooLong) {
 		t.Errorf("expected ErrReasonTooLong, got %v", err)
 	}
 
