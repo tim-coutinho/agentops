@@ -34,7 +34,7 @@ Keep: what changed, described in plain English.
 Each bullet: one sentence, no bold lead-in, no parenthetical issue refs.
 End with a link to the full CHANGELOG.md for those who want raw detail.>
 
-[Full changelog](../../CHANGELOG.md)
+[Full changelog](../../docs/CHANGELOG.md)
 ```
 
 **The All Changes section is NOT the CHANGELOG.** The CHANGELOG is for contributors who want file paths, issue IDs, and implementation detail. The release page condenses that into plain-English bullets a user can scan in 15 seconds. When in doubt, leave it out — the link is there for the curious.

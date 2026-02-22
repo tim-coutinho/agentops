@@ -6,10 +6,10 @@
 
 - [README](../README.md) — Project overview and quick start
 - [FAQ](FAQ.md) — Comparisons, limitations, subagent nesting, uninstall
-- [CONTRIBUTING](../CONTRIBUTING.md) — How to contribute
+- [CONTRIBUTING](CONTRIBUTING.md) — How to contribute
 - [AGENTS.md](../AGENTS.md) — Local agent instructions for this repo
-- [Changelog](../CHANGELOG.md) — Release history
-- [Security](../SECURITY.md) — Vulnerability reporting
+- [Changelog](CHANGELOG.md) — Release history
+- [Security](SECURITY.md) — Vulnerability reporting
 
 ## Architecture
 

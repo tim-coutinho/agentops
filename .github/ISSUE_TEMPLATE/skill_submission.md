@@ -178,9 +178,9 @@ Add any other context, design decisions, or notes about the skill:
 
 **By submitting this skill, I confirm:**
 
-- [ ] I have read and agree to the [Code of Conduct](../CODE_OF_CONDUCT.md)
-- [ ] I have read the [Contributing Guidelines](../CONTRIBUTING.md)
+- [ ] I have read and agree to the [Code of Conduct](../docs/CODE_OF_CONDUCT.md)
+- [ ] I have read the [Contributing Guidelines](../docs/CONTRIBUTING.md)
 - [ ] This is original work or properly attributed
 - [ ] I have the rights to distribute this code
-- [ ] This skill follows the [Security Policy](../SECURITY.md)
+- [ ] This skill follows the [Security Policy](../docs/SECURITY.md)
 - [ ] I will respond to feedback and review comments

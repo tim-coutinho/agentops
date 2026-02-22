@@ -371,11 +371,11 @@ Report issues to: fullerbt@users.noreply.github.com
 ### Useful Resources
 
 **Project Documentation:**
-- [AGENTS.md](AGENTS.md) - Project instructions for AI agents
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture
-- [docs/SKILLS.md](docs/SKILLS.md) - Skills reference
-- [skills/SKILL-TIERS.md](skills/SKILL-TIERS.md) - Skill taxonomy
-- [docs/testing-skills.md](docs/testing-skills.md) - Testing guide
+- [AGENTS.md](../AGENTS.md) - Project instructions for AI agents
+- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture
+- [SKILLS.md](SKILLS.md) - Skills reference
+- [SKILL-TIERS.md](../skills/SKILL-TIERS.md) - Skill taxonomy
+- [testing-skills.md](testing-skills.md) - Testing guide
 
 **External:**
 - [Claude Code Plugins](https://docs.claude.com/en/docs/claude-code/plugins)

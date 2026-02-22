@@ -238,8 +238,8 @@ Relates to #[issue-number]
 
 **Before submitting, ensure:**
 
-- [ ] I have read the [Contributing Guidelines](../CONTRIBUTING.md)
-- [ ] I have read the [Code of Conduct](../CODE_OF_CONDUCT.md)
+- [ ] I have read the [Contributing Guidelines](../docs/CONTRIBUTING.md)
+- [ ] I have read the [Code of Conduct](../docs/CODE_OF_CONDUCT.md)
 - [ ] My code follows the project's style guidelines
 - [ ] I have performed a self-review of my code
 - [ ] I have commented complex code appropriately

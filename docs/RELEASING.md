@@ -268,7 +268,7 @@ brew install agentops
 - **Dependabot:** Automated dependency updates for Go modules and GitHub Actions
 - **Security scan:** Secrets and dangerous pattern detection on every PR
 
-See [SECURITY.md](../SECURITY.md) for vulnerability reporting.
+See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
 ## Troubleshooting
 

@@ -102,18 +102,18 @@ check_tier1() {
         results+=("README.md:fail")
     fi
 
-    if [[ -f CONTRIBUTING.md ]]; then
-        results+=("CONTRIBUTING.md:pass")
+    if [[ -f docs/CONTRIBUTING.md ]]; then
+        results+=("docs/CONTRIBUTING.md:pass")
         ((score++))
     else
-        results+=("CONTRIBUTING.md:fail")
+        results+=("docs/CONTRIBUTING.md:fail")
     fi
 
-    if [[ -f CODE_OF_CONDUCT.md ]]; then
-        results+=("CODE_OF_CONDUCT.md:pass")
+    if [[ -f docs/CODE_OF_CONDUCT.md ]]; then
+        results+=("docs/CODE_OF_CONDUCT.md:pass")
         ((score++))
     else
-        results+=("CODE_OF_CONDUCT.md:fail")
+        results+=("docs/CODE_OF_CONDUCT.md:fail")
     fi
 
     echo "$score:$total:${results[*]}"
@@ -125,18 +125,18 @@ check_tier2() {
     local total=5
     local results=()
 
-    if [[ -f SECURITY.md ]]; then
-        results+=("SECURITY.md:pass")
+    if [[ -f docs/SECURITY.md ]]; then
+        results+=("docs/SECURITY.md:pass")
         ((score++))
     else
-        results+=("SECURITY.md:fail")
+        results+=("docs/SECURITY.md:fail")
     fi
 
-    if [[ -f CHANGELOG.md ]]; then
-        results+=("CHANGELOG.md:pass")
+    if [[ -f docs/CHANGELOG.md ]]; then
+        results+=("docs/CHANGELOG.md:pass")
         ((score++))
     else
-        results+=("CHANGELOG.md:fail")
+        results+=("docs/CHANGELOG.md:fail")
     fi
 
     if [[ -f AGENTS.md ]]; then

@@ -18,7 +18,7 @@ PREV_TAG="${2:-}"
 VERSION="${TAG#v}"
 REPO="boshu2/agentops"
 
-CHANGELOG="CHANGELOG.md"
+CHANGELOG="docs/CHANGELOG.md"
 if [[ ! -f "$CHANGELOG" ]]; then
   echo "ERROR: $CHANGELOG not found" >&2
   exit 1

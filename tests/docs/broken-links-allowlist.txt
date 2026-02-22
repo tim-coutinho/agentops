@@ -41,7 +41,7 @@ docs/comparisons/README.md:../README.md
 docs/brownian-ratchet.md:/.beads/issues/ol-rg3p
 
 # Release notes template (CHANGELOG.md created at release time)
-skills/release/references/release-notes.md:../../CHANGELOG.md
+skills/release/references/release-notes.md:../../docs/CHANGELOG.md
 
 # Go generics in backticks parsed as markdown links (false positive: `[T](err)`)
 skills/standards/references/go.md:err

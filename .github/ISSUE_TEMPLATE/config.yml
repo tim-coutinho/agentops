@@ -4,10 +4,10 @@ contact_links:
     url: https://github.com/boshu2/agentops/blob/main/README.md
     about: Check the documentation before opening an issue
   - name: Security Vulnerability
-    url: https://github.com/boshu2/agentops/blob/main/SECURITY.md
+    url: https://github.com/boshu2/agentops/blob/main/docs/SECURITY.md
     about: Report security vulnerabilities privately
   - name: Contributing Guidelines
-    url: https://github.com/boshu2/agentops/blob/main/CONTRIBUTING.md
+    url: https://github.com/boshu2/agentops/blob/main/docs/CONTRIBUTING.md
     about: Learn how to contribute to AgentOps
   - name: GitHub Discussions
     url: https://github.com/boshu2/agentops/discussions
