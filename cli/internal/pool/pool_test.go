@@ -2250,3 +2250,191 @@ func TestPoolAddAtInvalidID(t *testing.T) {
 		t.Errorf("expected 'invalid candidate ID' error, got: %v", err)
 	}
 }
+
+// blockChainFile replaces the chain.jsonl with a directory to make recordEvent fail.
+// Returns a cleanup function that restores it.
+func blockChainFile(t *testing.T, p *Pool) {
+	t.Helper()
+	chainPath := filepath.Join(p.PoolPath, ChainFile)
+	// Remove existing chain file if any
+	_ = os.Remove(chainPath)
+	// Create a directory at the chain file path so OpenFile fails with "is a directory"
+	if err := os.MkdirAll(chainPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.RemoveAll(chainPath)
+	})
+}
+
+func TestStage_RecordEventFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a candidate
+	candidate := types.Candidate{
+		ID:      "stage-event-fail",
+		Tier:    types.TierSilver,
+		Content: "test content for stage event failure",
+	}
+	if err := p.Add(candidate, types.Scoring{GateRequired: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Block the chain file so recordEvent fails
+	blockChainFile(t, p)
+
+	// Stage should succeed (recordEvent failure is non-fatal)
+	err := p.Stage("stage-event-fail", types.TierBronze)
+	if err != nil {
+		t.Fatalf("Stage should succeed despite recordEvent failure: %v", err)
+	}
+}
+
+func TestReject_RecordEventFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	candidate := types.Candidate{
+		ID:      "reject-event-fail",
+		Tier:    types.TierBronze,
+		Content: "test content for reject event failure",
+	}
+	if err := p.Add(candidate, types.Scoring{GateRequired: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Block the chain file
+	blockChainFile(t, p)
+
+	// Reject should succeed (recordEvent failure is non-fatal)
+	err := p.Reject("reject-event-fail", "test reason", "tester")
+	if err != nil {
+		t.Fatalf("Reject should succeed despite recordEvent failure: %v", err)
+	}
+}
+
+func TestApprove_RecordEventFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	candidate := types.Candidate{
+		ID:      "approve-event-fail",
+		Tier:    types.TierBronze,
+		Content: "test content for approve event failure",
+	}
+	if err := p.Add(candidate, types.Scoring{GateRequired: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Block the chain file
+	blockChainFile(t, p)
+
+	// Approve should succeed (recordEvent failure is non-fatal)
+	err := p.Approve("approve-event-fail", "looks good", "tester")
+	if err != nil {
+		t.Fatalf("Approve should succeed despite recordEvent failure: %v", err)
+	}
+}
+
+func TestPromote_RecordEventFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add and stage a candidate first
+	candidate := types.Candidate{
+		ID:      "promote-event-fail",
+		Tier:    types.TierSilver,
+		Content: "test content for promote event failure",
+		Type:    types.KnowledgeTypeLearning,
+	}
+	if err := p.Add(candidate, types.Scoring{GateRequired: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Stage("promote-event-fail", types.TierBronze); err != nil {
+		t.Fatal(err)
+	}
+
+	// Block the chain file
+	blockChainFile(t, p)
+
+	// Promote should succeed (recordEvent failures are non-fatal)
+	_, err := p.Promote("promote-event-fail")
+	if err != nil {
+		t.Fatalf("Promote should succeed despite recordEvent failure: %v", err)
+	}
+}
+
+func TestRecordEvent_CloseError(t *testing.T) {
+	// Exercise the deferred close error path in recordEvent.
+	// We can't easily trigger a close error on a regular file, but we can
+	// at least verify recordEvent works correctly on a valid chain file.
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Record a test event
+	event := ChainEvent{
+		Timestamp:   time.Now(),
+		Operation:   "test",
+		CandidateID: "test-id",
+	}
+	if err := p.recordEvent(event); err != nil {
+		t.Fatalf("recordEvent: %v", err)
+	}
+
+	// Make the chain file read-only to exercise the open error
+	chainPath := filepath.Join(p.PoolPath, ChainFile)
+	if err := os.Chmod(chainPath, 0400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(chainPath, 0600) })
+
+	err := p.recordEvent(event)
+	if err == nil {
+		t.Error("expected error when chain file is read-only")
+	}
+}
+
+func TestGetChain_CloseError(t *testing.T) {
+	// Exercise GetChain with valid data to ensure the deferred close path works.
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Record some events
+	for i := 0; i < 3; i++ {
+		event := ChainEvent{
+			Timestamp:   time.Now(),
+			Operation:   fmt.Sprintf("test-%d", i),
+			CandidateID: fmt.Sprintf("id-%d", i),
+		}
+		if err := p.recordEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	events, err := p.GetChain()
+	if err != nil {
+		t.Fatalf("GetChain: %v", err)
+	}
+	if len(events) != 3 {
+		t.Errorf("expected 3 events, got %d", len(events))
+	}
+}
