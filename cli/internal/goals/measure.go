@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -55,6 +57,7 @@ func applyContinuousMetric(m *Measurement, goal Goal) {
 
 // MeasureOne runs a single goal's check command and returns a Measurement.
 // Exit 0 = pass, non-zero = fail, context deadline exceeded = skip.
+// Uses process groups so child processes are killed on timeout.
 func MeasureOne(goal Goal, timeout time.Duration) Measurement {
 	m := Measurement{GoalID: goal.ID, Weight: goal.Weight}
 
@@ -63,6 +66,12 @@ func MeasureOne(goal Goal, timeout time.Duration) Measurement {
 
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, "bash", "-c", goal.Check)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		// Kill the entire process group, not just the parent.
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = 3 * time.Second
 	out, err := cmd.CombinedOutput()
 	m.Duration = time.Since(start).Seconds()
 	m.Output = truncateOutput(out)
@@ -82,20 +91,45 @@ func Measure(gf *GoalFile, timeout time.Duration) *Snapshot {
 	}
 }
 
-// runGoals executes meta-goals first, then non-meta goals.
-func runGoals(goals []Goal, timeout time.Duration) []Measurement {
+// maxParallelGoals limits concurrent goal checks to avoid resource contention.
+const maxParallelGoals = 4
+
+// runGoals executes meta-goals first (sequential), then non-meta goals (parallel).
+func runGoals(allGoals []Goal, timeout time.Duration) []Measurement {
+	// Phase 1: meta-goals run sequentially (they may affect non-meta goals).
 	var measurements []Measurement
-	for _, g := range goals {
+	for _, g := range allGoals {
 		if g.Type == GoalTypeMeta {
 			measurements = append(measurements, MeasureOne(g, timeout))
 		}
 	}
-	for _, g := range goals {
+
+	// Phase 2: non-meta goals run concurrently with a semaphore.
+	var nonMeta []Goal
+	for _, g := range allGoals {
 		if g.Type != GoalTypeMeta {
-			measurements = append(measurements, MeasureOne(g, timeout))
+			nonMeta = append(nonMeta, g)
 		}
 	}
-	return measurements
+	if len(nonMeta) == 0 {
+		return measurements
+	}
+
+	results := make([]Measurement, len(nonMeta))
+	sem := make(chan struct{}, maxParallelGoals)
+	var wg sync.WaitGroup
+	for i, g := range nonMeta {
+		wg.Add(1)
+		go func(idx int, goal Goal) {
+			defer wg.Done()
+			sem <- struct{}{}
+			results[idx] = MeasureOne(goal, timeout)
+			<-sem
+		}(i, g)
+	}
+	wg.Wait()
+
+	return append(measurements, results...)
 }
 
 // computeSummary aggregates pass/fail/skip counts and weighted score.

@@ -1,7 +1,7 @@
 ---
 name: rpi
 description: 'Full RPI lifecycle orchestrator. Discovery (research+plan+pre-mortem) → Implementation (crank) → Validation (vibe+post-mortem). One command, sequential skill invocations with retry gates and fresh phase contexts.'
-disable-model-invocation: true
+user-invocable: true
 metadata:
   tier: execution
   dependencies:

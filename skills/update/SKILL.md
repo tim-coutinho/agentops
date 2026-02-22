@@ -1,7 +1,7 @@
 ---
 name: update
 description: 'Reinstall all AgentOps skills globally from the latest source. Triggers: "update skills", "reinstall skills", "sync skills".'
-disable-model-invocation: true
+user-invocable: true
 metadata:
   tier: meta
   dependencies: []
