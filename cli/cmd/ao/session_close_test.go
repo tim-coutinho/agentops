@@ -27,6 +27,7 @@ func TestResolveTranscript(t *testing.T) {
 			name:      "empty session ID triggers fallback",
 			sessionID: "",
 			setupFunc: func(t *testing.T) string {
+				t.Helper()
 				// findLastSession searches real ~/.claude/projects
 				// so this test just verifies fallback is set
 				return ""
@@ -38,6 +39,7 @@ func TestResolveTranscript(t *testing.T) {
 			name:      "nonexistent session ID returns error",
 			sessionID: "nonexistent-session-id-12345",
 			setupFunc: func(t *testing.T) string {
+				t.Helper()
 				return ""
 			},
 			expectFallback: false,

@@ -493,6 +493,7 @@ func TestIntegration_SessionCloseResultLifecycle(t *testing.T) {
 				Message:       "Session closed: 5 decisions, 8 learnings extracted",
 			},
 			checks: func(t *testing.T, r SessionCloseResult) {
+				t.Helper()
 				if r.Status != "compounding" {
 					t.Errorf("status = %q, want compounding", r.Status)
 				}
@@ -517,6 +518,7 @@ func TestIntegration_SessionCloseResultLifecycle(t *testing.T) {
 				Message:       "Session closed: 0 decisions, 0 learnings extracted",
 			},
 			checks: func(t *testing.T, r SessionCloseResult) {
+				t.Helper()
 				if r.Status != "decaying" {
 					t.Errorf("status = %q, want decaying", r.Status)
 				}
@@ -538,6 +540,7 @@ func TestIntegration_SessionCloseResultLifecycle(t *testing.T) {
 				Message:       "Session closed: 1 decisions, 2 learnings extracted",
 			},
 			checks: func(t *testing.T, r SessionCloseResult) {
+				t.Helper()
 				if r.Status != "near-escape" {
 					t.Errorf("status = %q, want near-escape", r.Status)
 				}
