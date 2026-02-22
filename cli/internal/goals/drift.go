@@ -2,6 +2,20 @@ package goals
 
 import "sort"
 
+// Drift delta classification constants.
+const (
+	deltaImproved  = "improved"
+	deltaRegressed = "regressed"
+	deltaUnchanged = "unchanged"
+)
+
+// Goal measurement result constants.
+const (
+	resultPass = "pass"
+	resultFail = "fail"
+	resultSkip = "skip"
+)
+
 // DriftResult describes how a single goal changed between two snapshots.
 type DriftResult struct {
 	GoalID     string   `json:"goal_id"`
@@ -40,12 +54,12 @@ func ComputeDrift(baseline, current *Snapshot) []DriftResult {
 // classifyDelta determines the drift direction between two results.
 func classifyDelta(before, after string) string {
 	switch {
-	case before == "fail" && after == "pass":
-		return "improved"
-	case before == "pass" && after == "fail":
-		return "regressed"
+	case before == resultFail && after == resultPass:
+		return deltaImproved
+	case before == resultPass && after == resultFail:
+		return deltaRegressed
 	default:
-		return "unchanged"
+		return deltaUnchanged
 	}
 }
 
@@ -70,7 +84,7 @@ func computeGoalDrift(cur Measurement, baseMap map[string]Measurement) DriftResu
 	base, found := baseMap[cur.GoalID]
 	if !found {
 		dr.Before = "new"
-		dr.Delta = "unchanged"
+		dr.Delta = deltaUnchanged
 		return dr
 	}
 
@@ -83,9 +97,9 @@ func computeGoalDrift(cur Measurement, baseMap map[string]Measurement) DriftResu
 // deltaRank returns a sort key: regressed=0, improved=1, unchanged=2.
 func deltaRank(delta string) int {
 	switch delta {
-	case "regressed":
+	case deltaRegressed:
 		return 0
-	case "improved":
+	case deltaImproved:
 		return 1
 	default:
 		return 2

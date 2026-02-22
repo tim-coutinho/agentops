@@ -104,7 +104,7 @@ func (t Tier) String() string {
 	case TierCore:
 		return "core"
 	default:
-		return "unknown"
+		return unknownValue
 	}
 }
 

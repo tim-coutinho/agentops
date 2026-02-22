@@ -130,7 +130,7 @@ func findContradictingFix(claim TimelineEvent, following []TimelineEvent) (Findi
 		}
 		if filesRelated(claim.Files, next.Files) {
 			return Finding{
-				Severity: "critical",
+				Severity: SeverityCritical,
 				Category: "tests-passing-lie",
 				Message:  "Claimed success (" + claim.Message + ") but fix followed within " + gap.String() + ": " + next.Message,
 			}, true

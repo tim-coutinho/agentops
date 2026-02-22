@@ -51,7 +51,7 @@ func DetectInstructionDrift(events []TimelineEvent) []Finding {
 	for file, count := range fileCounts {
 		if count >= driftMinEdits {
 			findings = append(findings, Finding{
-				Severity: "warning",
+				Severity: SeverityWarning,
 				Category: "instruction-drift",
 				Message:  file + " modified " + itoa(count) + " times, instructions may be drifting",
 				File:     file,

@@ -35,6 +35,9 @@ const (
 
 	// SlugMinWordBoundary is the minimum length before trimming at word boundary.
 	SlugMinWordBoundary = 30
+
+	// defaultSlug is the fallback slug when text is empty or non-alphanumeric.
+	defaultSlug = "session"
 )
 
 // FileStorage implements Storage using the local filesystem.
@@ -376,14 +379,14 @@ func (fs *FileStorage) readSessionFile(path string) (*Session, error) {
 // generateSlug creates a URL-safe slug from text.
 func generateSlug(text string) string {
 	if text == "" {
-		return "session"
+		return defaultSlug
 	}
 
 	s := slugify(strings.ToLower(text))
 	s = truncateSlug(s)
 
 	if s == "" {
-		return "session"
+		return defaultSlug
 	}
 	return s
 }

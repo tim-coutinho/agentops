@@ -78,7 +78,7 @@ func detectAmnesiaInFile(file string, edits []fileEdit) (Finding, bool) {
 		}
 		if count >= amnesiaMinEdits {
 			return Finding{
-				Severity: "warning",
+				Severity: SeverityWarning,
 				Category: "context-amnesia",
 				Message:  file + " modified " + itoa(count) + " times within 1 hour, suggesting lost context",
 				File:     file,

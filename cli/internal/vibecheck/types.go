@@ -26,6 +26,19 @@ type VibeCheckResult struct {
 	Findings []Finding          `json:"findings,omitempty"`
 }
 
+// Severity constants for findings.
+const (
+	SeverityCritical = "critical"
+	SeverityWarning  = "warning"
+)
+
+// Health classification constants.
+const (
+	HealthCritical = "critical"
+	HealthWarning  = "warning"
+	HealthHealthy  = "healthy"
+)
+
 // Finding represents a single observation surfaced during analysis.
 type Finding struct {
 	Severity string `json:"severity"`

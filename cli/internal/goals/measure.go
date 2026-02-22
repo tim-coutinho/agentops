@@ -23,11 +23,11 @@ type Measurement struct {
 func classifyResult(ctxErr, cmdErr error) string {
 	switch {
 	case ctxErr == context.DeadlineExceeded:
-		return "skip"
+		return resultSkip
 	case cmdErr != nil:
-		return "fail"
+		return resultFail
 	default:
-		return "pass"
+		return resultPass
 	}
 }
 

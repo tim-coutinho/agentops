@@ -20,6 +20,18 @@ const (
 	PriorityLow                              // Can drop
 )
 
+// Context item type constants.
+const (
+	ItemTypeFailingTest     = "failing_test"
+	ItemTypeFileChange      = "file_change"
+	ItemTypeCriticalFinding = "critical_finding"
+	ItemTypeHighFinding     = "high_finding"
+	ItemTypeMediumFinding   = "medium_finding"
+	ItemTypeLowFinding      = "low_finding"
+	ItemTypeContext         = "context"
+	ItemTypeExploration     = "exploration"
+)
+
 // ContextItem represents a piece of context to potentially summarize.
 type ContextItem struct {
 	// Type identifies the item (file_change, test_result, finding, etc).
@@ -200,13 +212,13 @@ func (s *Summarizer) ClassifyItem(itemType, content string) SummaryPriority {
 // baseItemPriority returns the default priority for an item type (without config overrides).
 func baseItemPriority(itemType string) SummaryPriority {
 	switch itemType {
-	case "failing_test", "file_change", "critical_finding":
+	case ItemTypeFailingTest, ItemTypeFileChange, ItemTypeCriticalFinding:
 		return PriorityHigh
-	case "high_finding":
+	case ItemTypeHighFinding:
 		return PriorityHigh
-	case "medium_finding":
+	case ItemTypeMediumFinding:
 		return PriorityMedium
-	case "low_finding", "context", "exploration":
+	case ItemTypeLowFinding, ItemTypeContext, ItemTypeExploration:
 		return PriorityLow
 	default:
 		return PriorityMedium
@@ -216,11 +228,11 @@ func baseItemPriority(itemType string) SummaryPriority {
 // shouldPreserve checks whether the summarizer config escalates the given item type to critical.
 func (s *Summarizer) shouldPreserve(itemType string) bool {
 	switch itemType {
-	case "failing_test":
+	case ItemTypeFailingTest:
 		return s.Config.PreserveFailingTests
-	case "file_change":
+	case ItemTypeFileChange:
 		return s.Config.PreserveFileChanges
-	case "critical_finding":
+	case ItemTypeCriticalFinding:
 		return s.Config.PreserveCriticalFindings
 	default:
 		return false

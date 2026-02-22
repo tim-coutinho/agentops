@@ -73,7 +73,7 @@ func DetectLoggingOnly(events []TimelineEvent) []Finding {
 
 	if maxConsec >= maxConsecutiveLogging {
 		return []Finding{{
-			Severity: "warning",
+			Severity: SeverityWarning,
 			Category: "logging-only",
 			Message:  itoa(maxConsec) + " consecutive commits appear to be logging/debug only, suggesting a debug spiral",
 		}}

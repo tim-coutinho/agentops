@@ -25,20 +25,20 @@ func ClassifyHealth(findings []Finding) string {
 
 	for _, f := range findings {
 		switch f.Severity {
-		case "critical":
+		case SeverityCritical:
 			hasCritical = true
-		case "warning":
+		case SeverityWarning:
 			hasWarning = true
 		}
 	}
 
 	if hasCritical {
-		return "critical"
+		return HealthCritical
 	}
 	if hasWarning {
-		return "warning"
+		return HealthWarning
 	}
-	return "healthy"
+	return HealthHealthy
 }
 
 // sortOldestFirst sorts events by timestamp ascending (oldest first).

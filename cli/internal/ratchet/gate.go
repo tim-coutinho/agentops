@@ -11,6 +11,9 @@ import (
 // BdCLITimeout is the maximum duration to wait for bd CLI commands.
 const BdCLITimeout = 5 * time.Second
 
+// unknownValue is the fallback string for unrecognized steps or tiers.
+const unknownValue = "unknown"
+
 // ErrBdCLITimeout is returned when bd CLI command times out.
 var ErrBdCLITimeout = fmt.Errorf("bd CLI timeout after %s", BdCLITimeout)
 
@@ -248,7 +251,7 @@ func GetRequiredInput(step Step) string {
 	case StepPostMortem:
 		return "closed epic (optional)"
 	default:
-		return "unknown"
+		return unknownValue
 	}
 }
 
@@ -268,6 +271,6 @@ func GetExpectedOutput(step Step) string {
 	case StepPostMortem:
 		return ".agents/retros/<date>-<topic>.md"
 	default:
-		return "unknown"
+		return unknownValue
 	}
 }

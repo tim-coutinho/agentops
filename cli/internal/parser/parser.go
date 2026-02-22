@@ -18,6 +18,21 @@ import (
 // DefaultMaxContentLength is the default truncation limit for content fields.
 const DefaultMaxContentLength = 500
 
+// Message type constants for transcript entries.
+const (
+	msgTypeUser       = "user"
+	msgTypeAssistant  = "assistant"
+	msgTypeToolUse    = "tool_use"
+	msgTypeToolResult = "tool_result"
+)
+
+// Error classification constants for parse errors.
+const (
+	errClassJSON     = "json"
+	errClassSchema   = "schema"
+	errClassEncoding = "encoding"
+)
+
 // Parser handles streaming JSONL parsing with configurable options.
 type Parser struct {
 	// MaxContentLength is the maximum characters before truncation.
@@ -154,15 +169,15 @@ func classifyError(err error) string {
 	errStr := err.Error()
 	switch {
 	case strings.Contains(errStr, "invalid character"):
-		return "json"
+		return errClassJSON
 	case strings.Contains(errStr, "unexpected end"):
-		return "json"
+		return errClassJSON
 	case strings.Contains(errStr, "cannot unmarshal"):
-		return "schema"
+		return errClassSchema
 	case strings.Contains(errStr, "invalid UTF-8"):
-		return "encoding"
+		return errClassEncoding
 	default:
-		return "json"
+		return errClassJSON
 	}
 }
 
@@ -213,7 +228,7 @@ func parseTimestamp(s string) time.Time {
 // isValidMessageType checks if the type is one we should parse.
 func isValidMessageType(msgType string) bool {
 	switch msgType {
-	case "user", "assistant", "tool_use", "tool_result":
+	case msgTypeUser, msgTypeAssistant, msgTypeToolUse, msgTypeToolResult:
 		return true
 	default:
 		return false
@@ -248,9 +263,9 @@ func (p *Parser) classifyBlock(blockMap map[string]any) (string, *types.ToolCall
 		if text, ok := blockMap["text"].(string); ok {
 			return p.truncate(text), nil
 		}
-	case "tool_use":
+	case msgTypeToolUse:
 		return "", p.parseToolUse(blockMap)
-	case "tool_result":
+	case msgTypeToolResult:
 		return "", p.parseToolResult(blockMap)
 	}
 	return "", nil
@@ -316,7 +331,7 @@ func (p *Parser) parseToolUse(block map[string]any) *types.ToolCall {
 // parseToolResult extracts tool result information from a tool_result block.
 func (p *Parser) parseToolResult(block map[string]any) *types.ToolCall {
 	toolCall := &types.ToolCall{
-		Name: "tool_result",
+		Name: msgTypeToolResult,
 	}
 
 	// Check if it's an error result
