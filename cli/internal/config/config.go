@@ -284,85 +284,79 @@ func applyEnv(cfg *Config) *Config {
 	return cfg
 }
 
+// mergeStr overwrites dst with src when src is non-empty.
+func mergeStr(dst *string, src string) {
+	if src != "" {
+		*dst = src
+	}
+}
+
+// mergeInt overwrites dst with src when src is non-zero.
+func mergeInt(dst *int, src int) {
+	if src != 0 {
+		*dst = src
+	}
+}
+
 // merge merges src into dst, with src values taking precedence.
 // For booleans, we need explicit tracking via pointer or separate "set" flag.
 func merge(dst, src *Config) *Config {
-	if src.Output != "" {
-		dst.Output = src.Output
-	}
-	if src.BaseDir != "" {
-		dst.BaseDir = src.BaseDir
-	}
+	mergeStr(&dst.Output, src.Output)
+	mergeStr(&dst.BaseDir, src.BaseDir)
 	if src.Verbose {
 		dst.Verbose = true
 	}
-	if src.Forge.MaxContentLength != 0 {
-		dst.Forge.MaxContentLength = src.Forge.MaxContentLength
-	}
-	if src.Forge.ProgressInterval != 0 {
-		dst.Forge.ProgressInterval = src.Forge.ProgressInterval
-	}
-	if src.Search.DefaultLimit != 0 {
-		dst.Search.DefaultLimit = src.Search.DefaultLimit
-	}
-	// UseSmartConnections: src.UseSmartConnectionsSet tracks if explicitly configured
-	if src.Search.UseSmartConnectionsSet {
-		dst.Search.UseSmartConnections = src.Search.UseSmartConnections
-		dst.Search.UseSmartConnectionsSet = true
-	}
 
-	// Merge RPI config
-	if src.RPI.WorktreeMode != "" {
-		dst.RPI.WorktreeMode = src.RPI.WorktreeMode
-	}
-	if src.RPI.RuntimeMode != "" {
-		dst.RPI.RuntimeMode = src.RPI.RuntimeMode
-	}
-	if src.RPI.RuntimeCommand != "" {
-		dst.RPI.RuntimeCommand = src.RPI.RuntimeCommand
-	}
-	if src.RPI.AOCommand != "" {
-		dst.RPI.AOCommand = src.RPI.AOCommand
-	}
-	if src.RPI.BDCommand != "" {
-		dst.RPI.BDCommand = src.RPI.BDCommand
-	}
-	if src.RPI.TmuxCommand != "" {
-		dst.RPI.TmuxCommand = src.RPI.TmuxCommand
-	}
-
-	// Merge Flywheel config
-	if src.Flywheel.AutoPromoteThreshold != "" {
-		dst.Flywheel.AutoPromoteThreshold = src.Flywheel.AutoPromoteThreshold
-	}
-
-	// Merge paths (G5: configurable paths, not hardcoded)
-	if src.Paths.LearningsDir != "" {
-		dst.Paths.LearningsDir = src.Paths.LearningsDir
-	}
-	if src.Paths.PatternsDir != "" {
-		dst.Paths.PatternsDir = src.Paths.PatternsDir
-	}
-	if src.Paths.RetrosDir != "" {
-		dst.Paths.RetrosDir = src.Paths.RetrosDir
-	}
-	if src.Paths.ResearchDir != "" {
-		dst.Paths.ResearchDir = src.Paths.ResearchDir
-	}
-	if src.Paths.PlansDir != "" {
-		dst.Paths.PlansDir = src.Paths.PlansDir
-	}
-	if src.Paths.ClaudePlansDir != "" {
-		dst.Paths.ClaudePlansDir = src.Paths.ClaudePlansDir
-	}
-	if src.Paths.CitationsFile != "" {
-		dst.Paths.CitationsFile = src.Paths.CitationsFile
-	}
-	if src.Paths.TranscriptsDir != "" {
-		dst.Paths.TranscriptsDir = src.Paths.TranscriptsDir
-	}
+	mergeForge(&dst.Forge, &src.Forge)
+	mergeSearch(&dst.Search, &src.Search)
+	mergeRPI(&dst.RPI, &src.RPI)
+	mergeFlywheel(&dst.Flywheel, &src.Flywheel)
+	mergePaths(&dst.Paths, &src.Paths)
 
 	return dst
+}
+
+// mergeForge merges forge-specific config fields.
+func mergeForge(dst, src *ForgeConfig) {
+	mergeInt(&dst.MaxContentLength, src.MaxContentLength)
+	mergeInt(&dst.ProgressInterval, src.ProgressInterval)
+}
+
+// mergeSearch merges search-specific config fields.
+func mergeSearch(dst, src *SearchConfig) {
+	mergeInt(&dst.DefaultLimit, src.DefaultLimit)
+	// UseSmartConnections: src.UseSmartConnectionsSet tracks if explicitly configured
+	if src.UseSmartConnectionsSet {
+		dst.UseSmartConnections = src.UseSmartConnections
+		dst.UseSmartConnectionsSet = true
+	}
+}
+
+// mergeRPI merges RPI-specific config fields.
+func mergeRPI(dst, src *RPIConfig) {
+	mergeStr(&dst.WorktreeMode, src.WorktreeMode)
+	mergeStr(&dst.RuntimeMode, src.RuntimeMode)
+	mergeStr(&dst.RuntimeCommand, src.RuntimeCommand)
+	mergeStr(&dst.AOCommand, src.AOCommand)
+	mergeStr(&dst.BDCommand, src.BDCommand)
+	mergeStr(&dst.TmuxCommand, src.TmuxCommand)
+}
+
+// mergeFlywheel merges flywheel-specific config fields.
+func mergeFlywheel(dst, src *FlywheelConfig) {
+	mergeStr(&dst.AutoPromoteThreshold, src.AutoPromoteThreshold)
+}
+
+// mergePaths merges path config fields (G5: configurable paths, not hardcoded).
+func mergePaths(dst, src *PathsConfig) {
+	mergeStr(&dst.LearningsDir, src.LearningsDir)
+	mergeStr(&dst.PatternsDir, src.PatternsDir)
+	mergeStr(&dst.RetrosDir, src.RetrosDir)
+	mergeStr(&dst.ResearchDir, src.ResearchDir)
+	mergeStr(&dst.PlansDir, src.PlansDir)
+	mergeStr(&dst.ClaudePlansDir, src.ClaudePlansDir)
+	mergeStr(&dst.CitationsFile, src.CitationsFile)
+	mergeStr(&dst.TranscriptsDir, src.TranscriptsDir)
 }
 
 // Source represents where a config value came from.
