@@ -1,7 +1,6 @@
 ---
 name: evolve
 description: Goal-driven fitness-scored improvement loop. Measures goals, picks worst gap, runs /rpi (or parallel /swarm of /rpi cycles), compounds via knowledge flywheel.
-context: fork
 disable-model-invocation: true
 metadata:
   tier: execution
@@ -68,10 +67,24 @@ Parse flags:
 SESSION_START_SHA=$(git rev-parse HEAD)
 ```
 
+**Recover cycle number from disk (compaction-proof):**
+```bash
+# HARD REQUIREMENT: Always recover state from cycle-history.jsonl, never from LLM memory.
+# This ensures the loop survives context compaction across long runs.
+if [ -f .agents/evolve/cycle-history.jsonl ]; then
+  LAST_CYCLE=$(tail -1 .agents/evolve/cycle-history.jsonl | jq -r '.cycle // 0')
+  RESUME_CYCLE=$((LAST_CYCLE + 1))
+  log "Resuming from cycle ${RESUME_CYCLE} (recovered from cycle-history.jsonl)"
+else
+  RESUME_CYCLE=1
+  log "Fresh start — no cycle-history.jsonl found"
+fi
+```
+
 Initialize state:
 ```
 evolve_state = {
-  cycle: 0,
+  cycle: $RESUME_CYCLE,   # recovered from disk, NOT from LLM context
   max_cycles: <from flag, or Infinity if not set>,
   dry_run: <from flag, default false>,
   test_first: <from flag, default false>,
@@ -344,9 +357,19 @@ This internally runs the full lifecycle (per goal):
 
 In parallel mode, each worker runs a complete /rpi cycle independently. The regression gate (Step 5) runs once after ALL parallel goals complete — not per-goal. See `references/parallel-execution.md` for architecture details.
 
-### Step 5: Full-Fitness Regression Gate
+### Step 5: Full-Fitness Regression Gate (HARD GATE)
 
-**CRITICAL: Re-run ALL goals, not just the target.**
+**CRITICAL: Re-run ALL goals, not just the target. This step is MANDATORY — never skip it.**
+
+**Pre-condition check (HARD GATE):**
+```bash
+# Verify pre-cycle snapshot exists before proceeding
+if ! jq empty ".agents/evolve/fitness-${CYCLE}.json" 2>/dev/null; then
+  echo "FATAL: Pre-cycle fitness snapshot missing or invalid for cycle ${CYCLE}."
+  echo "Cannot run regression gate without a baseline. STOPPING."
+  exit 1
+fi
+```
 
 After /rpi completes, re-run MEASURE_FITNESS on **every goal** (same as Step 2). Write result to `fitness-{CYCLE}-post.json`.
 
@@ -355,6 +378,12 @@ Compare the pre-cycle snapshot (`fitness-{CYCLE}.json`) against the post-cycle s
 ```
 pre_results = load("fitness-{CYCLE}.json")
 post_results = MEASURE_FITNESS()  # writes fitness-{CYCLE}-post.json
+
+# HARD GATE: Verify post-snapshot was written
+if ! jq empty ".agents/evolve/fitness-${CYCLE}-post.json" 2>/dev/null; then
+  echo "FATAL: Post-cycle fitness snapshot write failed. STOPPING."
+  exit 1
+fi
 
 # Determine outcome for target goal(s)
 outcome = "improved" if target_now_passes else "unchanged"
@@ -376,24 +405,56 @@ if newly_failing:
     git commit -m "revert: evolve cycle ${CYCLE} regression in {newly_failing}"
 ```
 
-**Snapshot enforcement:** Validate `fitness-{CYCLE}-post.json` was written and is valid JSON before proceeding.
-
-### Step 6: Log Cycle
+### Step 6: Log Cycle (HARD GATE)
 
 Append to `.agents/evolve/cycle-history.jsonl` with mandatory fields: `cycle`, `goal_id`/`goal_ids`, `result`, `commit_sha`, `goals_passing`, `goals_total`, `goals_added`, `timestamp`. For cycle history JSONL format, mandatory fields, and telemetry details, read `references/cycle-history.md`.
+
+**HARD GATE: Cycle logging is MANDATORY. Do NOT proceed to Step 7 without a successful write.**
+
+```bash
+# Build cycle entry
+CYCLE_ENTRY=$(jq -n \
+  --argjson cycle "$CYCLE" \
+  --arg goal_id "${selected.id}" \
+  --arg result "$outcome" \
+  --arg commit_sha "$(git rev-parse HEAD)" \
+  --argjson goals_passing "$GOALS_PASSING" \
+  --argjson goals_total "$GOALS_TOTAL" \
+  --arg timestamp "$(date -Iseconds)" \
+  '{cycle: $cycle, goal_id: $goal_id, result: $result, commit_sha: $commit_sha, goals_passing: $goals_passing, goals_total: $goals_total, timestamp: $timestamp}')
+
+echo "$CYCLE_ENTRY" >> .agents/evolve/cycle-history.jsonl
+
+# HARD GATE: Verify the write succeeded
+LAST_LOGGED=$(tail -1 .agents/evolve/cycle-history.jsonl | jq -r '.cycle // -1')
+if [ "$LAST_LOGGED" != "$CYCLE" ]; then
+  echo "FATAL: cycle-history.jsonl write failed. Expected cycle $CYCLE, got $LAST_LOGGED. STOPPING."
+  exit 1
+fi
+
+# Write watchdog heartbeat for external monitoring
+echo "{\"cycle\": $CYCLE, \"timestamp\": \"$(date -Iseconds)\", \"outcome\": \"$outcome\"}" > .agents/evolve/heartbeat.json
+```
 
 **Compaction-proofing: commit after every cycle.** Uncommitted state does not survive context compaction.
 
 ```bash
 bash scripts/log-telemetry.sh evolve cycle-complete cycle=${CYCLE} goal=${selected.id} outcome=${outcome} 2>/dev/null || true
-git add .agents/evolve/cycle-history.jsonl .agents/evolve/fitness-*.json
-git commit -m "evolve: cycle ${CYCLE} — ${selected.id} ${outcome}" --allow-empty
+git add .agents/evolve/cycle-history.jsonl .agents/evolve/fitness-*.json .agents/evolve/heartbeat.json
+git commit -m "evolve: cycle ${CYCLE} -- ${selected.id} ${outcome}"
 ```
 
 ### Step 7: Loop or Stop
 
 ```
 evolve_state.cycle += 1
+
+# CONTINUITY CHECK: Verify cycle N was logged before starting N+1
+LAST_LOGGED=$(tail -1 .agents/evolve/cycle-history.jsonl | jq -r '.cycle // -1')
+if [ "$LAST_LOGGED" != "$CYCLE" ]; then
+  log "FATAL: Cycle $CYCLE not found in cycle-history.jsonl. Tracking integrity lost. STOPPING."
+  STOP → go to Teardown
+fi
 
 # Only stop for max-cycles if the user explicitly set one
 if evolve_state.max_cycles != Infinity and evolve_state.cycle >= evolve_state.max_cycles:

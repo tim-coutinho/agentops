@@ -379,6 +379,53 @@ Individual judge outputs also go to `.agents/council/`:
 
 ---
 
+## Execution Modes
+
+Skills follow a two-tier execution model based on visibility needs:
+
+> **The Rule:** The orchestrator never forks. The workers it spawns always fork.
+
+### Tier 1: NO-FORK (stay in main context)
+
+Orchestrators, interactive skills, and single-task executors stay in the main session so the operator can see progress, phase transitions, and intervene.
+
+| Skill | Role | Why |
+|-------|------|-----|
+| evolve | Orchestrator | Long loop, need cycle-by-cycle visibility |
+| rpi | Orchestrator | Sequential phases, need phase gates |
+| crank | Orchestrator | Wave orchestrator, need wave reports |
+| research | Interactive | User gate before /plan |
+| plan | Interactive | User gate before /crank |
+| implement | Single-task | Single issue, medium duration |
+| bug-hunt | Investigator | Hypothesis loop, need to see reasoning |
+| vibe | Orchestrator | Orchestrates council, reports verdict |
+| post-mortem | Orchestrator | Orchestrates council + retro |
+| pre-mortem | Orchestrator | Default inline, orchestrates if --deep |
+
+### Tier 2: FORK (subagent/worktree via `context: fork`)
+
+Worker spawners that fan out parallel work. Results merge back via filesystem. Only these skills set `context: fork` in frontmatter.
+
+| Skill | Role | Why |
+|-------|------|-----|
+| council | Worker spawner | Parallel judges, merge verdicts |
+| codex-team | Worker spawner | Parallel Codex agents, merge results |
+
+Note: `swarm` is an orchestrator (no `context: fork`) that spawns runtime workers via `TeamCreate`/`spawn_agent`. The workers it creates are runtime sub-agents, not SKILL.md skills.
+
+### Dual-Role Skills
+
+Some skills are orchestrators when called directly but workers when spawned by another skill. The caller determines the role:
+
+- **implement**: Called directly → orchestrator (stays). Spawned by swarm → worker (already forked by swarm).
+- **crank**: Called directly → orchestrator (stays). Called by rpi → still in context (rpi chains sequentially, doesn't fork).
+
+### Mechanism
+
+Set `context: fork` in skill frontmatter to fork into a subagent. Only set this on **worker spawner** skills (council, codex-team), never on orchestrators.
+
+---
+
 ## See Also
 
 - `skills/council/SKILL.md` — Core judgment primitive

@@ -7,7 +7,7 @@ pillars:
   - validated-acceleration
   - goal-driven-automation
   - zero-friction-workflow
-# Total: 28 goals
+# Total: 33 goals
 # Pruned 2026-02-21 per council consensus: feature saturation reached.
 # Removed 58 grep-for-string-in-file-we-control goals, file-exists checks,
 # keyword-in-README/SKILL.md goals, and duplicates (go-race-clean = go-cli-tests).
@@ -140,8 +140,36 @@ goals:
     pillar: validated-acceleration
     added: "2026-02-21"
 
+  - id: go-absolute-complexity-ceiling
+    description: "No Go function in cli/ has cyclomatic complexity >= 10 (absolute, not delta-only)"
+    check: "bash scripts/check-go-absolute-complexity.sh --dir cli/ --threshold 10"
+    weight: 5
+    pillar: validated-acceleration
+    added: "2026-02-22"
+
+  - id: go-internal-complexity-ceiling
+    description: "No Go function in cli/internal/ has cyclomatic complexity >= 8"
+    check: "bash scripts/check-go-absolute-complexity.sh --dir cli/internal/ --threshold 8"
+    weight: 4
+    pillar: validated-acceleration
+    added: "2026-02-22"
+
+  - id: go-cmdao-complexity-tracking
+    description: "No Go function in cli/cmd/ao/ has cyclomatic complexity >= 10"
+    check: "bash scripts/check-go-absolute-complexity.sh --dir cli/cmd/ao/ --threshold 10"
+    weight: 3
+    pillar: validated-acceleration
+    added: "2026-02-22"
+
+  - id: go-per-package-coverage-floor
+    description: "Every Go package under cli/ has test coverage >= 60% (per-package, not just average)"
+    check: "bash scripts/check-go-per-package-coverage.sh --floor 60"
+    weight: 3
+    pillar: validated-acceleration
+    added: "2026-02-22"
+
   # ============================================================================
-  # SYSTEM HEALTH (4 goals, weight 3-6)
+  # SYSTEM HEALTH (5 goals, weight 2-6)
   # Goals subsystem, plugin versions, wiring integrity.
   # ============================================================================
 
@@ -169,6 +197,13 @@ goals:
     check: "./tests/skills/run-all.sh"
     weight: 2
     added: "2026-02-19"
+
+  - id: evolve-cycle-logging
+    description: "Evolve cycle-history.jsonl has entries for all completed cycles with no gaps or missing fields"
+    check: "bash scripts/check-evolve-cycle-logging.sh"
+    weight: 6
+    pillar: goal-driven-automation
+    added: "2026-02-22"
 
   # ============================================================================
   # SKILLS HEALTH (2 goals, weight 3)

@@ -147,7 +147,6 @@ func runRPILoop(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Parse explicit goal if provided
 	explicitGoal := ""
 	if len(args) > 0 {
 		explicitGoal = args[0]
@@ -158,12 +157,11 @@ func runRPILoop(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("ensure .agents/rpi directory: %w", err)
 	}
 
-	var lease *supervisorLease
 	if cfg.LeaseEnabled && !GetDryRun() {
 		runID := generateRunID()
-		lease, err = acquireSupervisorLease(cwd, cfg.LeasePath, cfg.LeaseTTL, runID)
-		if err != nil {
-			return err
+		lease, leaseErr := acquireSupervisorLease(cwd, cfg.LeasePath, cfg.LeaseTTL, runID)
+		if leaseErr != nil {
+			return leaseErr
 		}
 		defer func() {
 			if releaseErr := lease.Release(); releaseErr != nil {
@@ -173,6 +171,20 @@ func runRPILoop(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Supervisor lease acquired: %s (run=%s)\n", lease.Path(), runID)
 	}
 
+	return executeLoopCycles(cwd, explicitGoal, nextWorkPath, cfg)
+}
+
+// loopCycleResult signals the loop iteration outcome.
+type loopCycleResult int
+
+const (
+	loopContinue loopCycleResult = iota
+	loopBreak
+	loopReturn
+)
+
+// executeLoopCycles runs the main RPI loop consuming from the next-work queue.
+func executeLoopCycles(cwd, explicitGoal, nextWorkPath string, cfg rpiLoopSupervisorConfig) error {
 	cycle := 0
 	executedCycles := 0
 	for {
@@ -182,131 +194,184 @@ func runRPILoop(cmd *cobra.Command, args []string) error {
 			fmt.Printf("\nReached max cycles (%d). Stopping.\n", rpiMaxCycles)
 			break
 		}
-		if cycle > 1 && cfg.CycleDelay > 0 {
-			fmt.Printf("\nSleeping %s before next cycle...\n", cfg.CycleDelay.Round(time.Second))
-			time.Sleep(cfg.CycleDelay)
+		stop, err := applyCycleDelay(cycle, cfg)
+		if err != nil {
+			return err
 		}
-		killSwitchSet, killErr := isLoopKillSwitchSet(cfg)
-		if killErr != nil {
-			return killErr
-		}
-		if killSwitchSet {
-			fmt.Printf("Kill switch detected (%s). Stopping loop.\n", cfg.KillSwitchPath)
+		if stop {
 			break
 		}
 
 		fmt.Printf("\n=== RPI Loop: Cycle %d ===\n", cycle)
 
-		// Determine goal and which queue entry to mark after completion.
-		goal := explicitGoal
-		var sel *queueSelection
-
-		if goal == "" {
-			// Read queue for unconsumed, non-failed entries.
-			entries, err := readQueueEntries(nextWorkPath)
-			if err != nil {
-				VerbosePrintf("Warning: %v\n", err)
-			}
-
-			sel = selectHighestSeverityEntry(entries, rpiRepoFilter)
-			if sel == nil {
-				fmt.Println("No unconsumed work in queue. Flywheel stable.")
-				break
-			}
-
-			goal = sel.Item.Title
-			fmt.Printf("From queue: %s\n", goal)
-		}
-
-		if goal == "" {
-			fmt.Println("No goal and empty queue. Nothing to do.")
-			break
-		}
-
-		if GetDryRun() {
-			fmt.Printf("[dry-run] Would run phased engine for: %q\n", goal)
-			if explicitGoal == "" {
-				fmt.Println("[dry-run] Queue not consumed in dry-run. Showing first cycle only.")
-			}
+		goal, sel, action := resolveLoopGoal(explicitGoal, nextWorkPath)
+		if action == loopBreak {
 			break
 		}
 
 		fmt.Printf("Running phased engine for: %q\n", goal)
 		executedCycles++
-		start := time.Now()
-		var cycleErr error
-		maxAttempts := cfg.MaxCycleAttempts()
-		for attempt := 1; attempt <= maxAttempts; attempt++ {
-			killSwitchSet, killErr := isLoopKillSwitchSet(cfg)
-			if killErr != nil {
-				return killErr
-			}
-			if killSwitchSet {
-				fmt.Printf("Kill switch detected (%s). Stopping loop before cycle execution.\n", cfg.KillSwitchPath)
-				fmt.Printf("\nRPI loop finished after %d cycle(s).\n", executedCycles)
-				return nil
-			}
-			cycleErr = runRPISupervisedCycleFn(cwd, goal, cycle, attempt, cfg)
-			if cycleErr == nil {
-				break
-			}
-			if attempt >= maxAttempts {
-				break
-			}
-			fmt.Printf("Cycle %d attempt %d/%d failed: %v\n", cycle, attempt, maxAttempts, cycleErr)
-			if cfg.RetryBackoff > 0 {
-				fmt.Printf("Retrying in %s...\n", cfg.RetryBackoff.Round(time.Second))
-				time.Sleep(cfg.RetryBackoff)
-			}
+
+		result, err := runCycleWithRetries(cwd, goal, cycle, executedCycles, nextWorkPath, sel, explicitGoal, cfg)
+		if err != nil {
+			return err
 		}
-		elapsed := time.Since(start).Round(time.Second)
-
-		if cycleErr != nil {
-			fmt.Printf("Cycle %d failed after %s: %v\n", cycle, elapsed, cycleErr)
-
-			// Mark only task failures as failed. Transient infra failures remain
-			// retryable queue items for a future cycle.
-			if sel != nil {
-				if shouldMarkQueueEntryFailed(cycleErr) {
-					if markErr := markEntryFailed(nextWorkPath, sel.EntryIndex); markErr != nil {
-						VerbosePrintf("Warning: could not mark queue entry as failed: %v\n", markErr)
-					} else {
-						fmt.Printf("Queue entry marked failed (set consumed=false to retry): %q\n", sel.Item.Title)
-					}
-				} else {
-					fmt.Printf("Queue entry left unmodified (transient infra failure): %q\n", sel.Item.Title)
-				}
-			}
-
-			if cfg.ShouldContinueAfterFailure() && explicitGoal == "" {
-				fmt.Printf("Failure policy %q: continuing to next queue item.\n", cfg.FailurePolicy)
-				continue
-			}
-
-			fmt.Println("Stopping loop due to failure policy.")
-			return cycleErr
-		}
-
-		fmt.Printf("Cycle %d completed in %s\n", cycle, elapsed)
-
-		// Mark the queue entry consumed after successful completion.
-		if sel != nil {
-			if markErr := markEntryConsumed(nextWorkPath, sel.EntryIndex, "ao-rpi-loop"); markErr != nil {
-				VerbosePrintf("Warning: could not mark queue entry as consumed: %v\n", markErr)
-			} else {
-				fmt.Printf("Queue entry consumed: %q\n", sel.Item.Title)
-			}
-		}
-
-		// If explicit goal was provided, only run once.
-		if explicitGoal != "" {
-			fmt.Println("Explicit goal completed.")
+		if result == loopBreak {
 			break
 		}
 	}
 
 	fmt.Printf("\nRPI loop finished after %d cycle(s).\n", executedCycles)
 	return nil
+}
+
+// applyCycleDelay handles inter-cycle delay and kill-switch checking.
+// Returns (true, nil) when the loop should stop.
+func applyCycleDelay(cycle int, cfg rpiLoopSupervisorConfig) (bool, error) {
+	if cycle > 1 && cfg.CycleDelay > 0 {
+		fmt.Printf("\nSleeping %s before next cycle...\n", cfg.CycleDelay.Round(time.Second))
+		time.Sleep(cfg.CycleDelay)
+	}
+	killSwitchSet, killErr := isLoopKillSwitchSet(cfg)
+	if killErr != nil {
+		return false, killErr
+	}
+	if killSwitchSet {
+		fmt.Printf("Kill switch detected (%s). Stopping loop.\n", cfg.KillSwitchPath)
+		return true, nil
+	}
+	return false, nil
+}
+
+// resolveLoopGoal determines the goal and queue selection for a cycle.
+// Returns the goal string, optional queue selection, and a loop action.
+func resolveLoopGoal(explicitGoal, nextWorkPath string) (string, *queueSelection, loopCycleResult) {
+	goal := explicitGoal
+	var sel *queueSelection
+
+	if goal == "" {
+		entries, err := readQueueEntries(nextWorkPath)
+		if err != nil {
+			VerbosePrintf("Warning: %v\n", err)
+		}
+		sel = selectHighestSeverityEntry(entries, rpiRepoFilter)
+		if sel == nil {
+			fmt.Println("No unconsumed work in queue. Flywheel stable.")
+			return "", nil, loopBreak
+		}
+		goal = sel.Item.Title
+		fmt.Printf("From queue: %s\n", goal)
+	}
+
+	if goal == "" {
+		fmt.Println("No goal and empty queue. Nothing to do.")
+		return "", nil, loopBreak
+	}
+
+	if GetDryRun() {
+		fmt.Printf("[dry-run] Would run phased engine for: %q\n", goal)
+		if explicitGoal == "" {
+			fmt.Println("[dry-run] Queue not consumed in dry-run. Showing first cycle only.")
+		}
+		return goal, sel, loopBreak
+	}
+
+	return goal, sel, loopContinue
+}
+
+// runCycleWithRetries executes a single cycle with retry logic and handles
+// success/failure queue marking.
+func runCycleWithRetries(cwd, goal string, cycle, executedCycles int, nextWorkPath string, sel *queueSelection, explicitGoal string, cfg rpiLoopSupervisorConfig) (loopCycleResult, error) {
+	start := time.Now()
+	cycleErr := executeCycleAttempts(cwd, goal, cycle, executedCycles, cfg)
+	elapsed := time.Since(start).Round(time.Second)
+
+	if cycleErr != nil {
+		return handleCycleFailure(cycleErr, cycle, elapsed, nextWorkPath, sel, explicitGoal, cfg)
+	}
+
+	fmt.Printf("Cycle %d completed in %s\n", cycle, elapsed)
+	markQueueEntryConsumed(nextWorkPath, sel)
+
+	if explicitGoal != "" {
+		fmt.Println("Explicit goal completed.")
+		return loopBreak, nil
+	}
+	return loopContinue, nil
+}
+
+// executeCycleAttempts runs the phased engine with retry attempts, checking
+// the kill switch before each attempt.
+func executeCycleAttempts(cwd, goal string, cycle, executedCycles int, cfg rpiLoopSupervisorConfig) error {
+	maxAttempts := cfg.MaxCycleAttempts()
+	var cycleErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		killSwitchSet, killErr := isLoopKillSwitchSet(cfg)
+		if killErr != nil {
+			return killErr
+		}
+		if killSwitchSet {
+			fmt.Printf("Kill switch detected (%s). Stopping loop before cycle execution.\n", cfg.KillSwitchPath)
+			fmt.Printf("\nRPI loop finished after %d cycle(s).\n", executedCycles)
+			return nil
+		}
+		cycleErr = runRPISupervisedCycleFn(cwd, goal, cycle, attempt, cfg)
+		if cycleErr == nil {
+			return nil
+		}
+		if attempt >= maxAttempts {
+			return cycleErr
+		}
+		fmt.Printf("Cycle %d attempt %d/%d failed: %v\n", cycle, attempt, maxAttempts, cycleErr)
+		if cfg.RetryBackoff > 0 {
+			fmt.Printf("Retrying in %s...\n", cfg.RetryBackoff.Round(time.Second))
+			time.Sleep(cfg.RetryBackoff)
+		}
+	}
+	return cycleErr
+}
+
+// handleCycleFailure processes a cycle failure by marking the queue entry and
+// deciding whether to continue or stop the loop.
+func handleCycleFailure(cycleErr error, cycle int, elapsed time.Duration, nextWorkPath string, sel *queueSelection, explicitGoal string, cfg rpiLoopSupervisorConfig) (loopCycleResult, error) {
+	fmt.Printf("Cycle %d failed after %s: %v\n", cycle, elapsed, cycleErr)
+	markQueueEntryFailed(nextWorkPath, sel, cycleErr)
+
+	if cfg.ShouldContinueAfterFailure() && explicitGoal == "" {
+		fmt.Printf("Failure policy %q: continuing to next queue item.\n", cfg.FailurePolicy)
+		return loopContinue, nil
+	}
+
+	fmt.Println("Stopping loop due to failure policy.")
+	return loopReturn, cycleErr
+}
+
+// markQueueEntryFailed marks the queue entry as failed when appropriate.
+func markQueueEntryFailed(nextWorkPath string, sel *queueSelection, cycleErr error) {
+	if sel == nil {
+		return
+	}
+	if shouldMarkQueueEntryFailed(cycleErr) {
+		if markErr := markEntryFailed(nextWorkPath, sel.EntryIndex); markErr != nil {
+			VerbosePrintf("Warning: could not mark queue entry as failed: %v\n", markErr)
+		} else {
+			fmt.Printf("Queue entry marked failed (set consumed=false to retry): %q\n", sel.Item.Title)
+		}
+	} else {
+		fmt.Printf("Queue entry left unmodified (transient infra failure): %q\n", sel.Item.Title)
+	}
+}
+
+// markQueueEntryConsumed marks the queue entry as consumed after success.
+func markQueueEntryConsumed(nextWorkPath string, sel *queueSelection) {
+	if sel == nil {
+		return
+	}
+	if markErr := markEntryConsumed(nextWorkPath, sel.EntryIndex, "ao-rpi-loop"); markErr != nil {
+		VerbosePrintf("Warning: could not mark queue entry as consumed: %v\n", markErr)
+	} else {
+		fmt.Printf("Queue entry consumed: %q\n", sel.Item.Title)
+	}
 }
 
 // readUnconsumedItems reads next-work.jsonl and returns all unconsumed items

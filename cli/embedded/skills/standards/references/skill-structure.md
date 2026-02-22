@@ -65,9 +65,28 @@ Only `description` is technically required (recommended). If `name` is omitted, 
 | `user-invocable` | No | Set to `false` to hide from `/` menu. Use for background knowledge. Default: `true`. |
 | `allowed-tools` | No | Tools Claude can use without permission when skill is active (e.g., `Read, Grep, Glob`). |
 | `model` | No | Model to use when skill is active (`sonnet`, `opus`, `haiku`, `inherit`). |
-| `context` | No | Set to `fork` to run in a forked subagent context. |
+| `context` | No | Set to `fork` to run in a forked subagent context. **Only for worker spawner skills** (e.g., council, codex-team). Never set on orchestrators (evolve, rpi, crank) — they need visibility. See two-tier rule in SKILL-TIERS.md. |
 | `agent` | No | Which subagent type to use when `context: fork` is set (e.g., `Explore`, `Plan`, `general-purpose`). |
 | `hooks` | No | Hooks scoped to this skill's lifecycle. |
+
+### Execution Mode (Two-Tier Rule)
+
+Skills follow a two-tier execution model: **orchestrators stay in the main context, workers fork.**
+
+| Mode | `context: fork` | When to use |
+|------|-----------------|-------------|
+| Orchestrator | Do NOT set | Skills that loop, gate phases, or report progress (evolve, rpi, crank, vibe, post-mortem, etc.) |
+| Worker spawner | Set `context: fork` | Skills that fan out parallel workers and merge results (council, codex-team) |
+
+Add `execution_mode: orchestrator` or `execution_mode: worker` to the `metadata` block for documentation:
+
+```yaml
+metadata:
+  tier: execution
+  execution_mode: orchestrator  # informational — stays in main context
+```
+
+See `SKILL-TIERS.md` for the full classification table.
 
 ### Invocation Control Matrix
 
