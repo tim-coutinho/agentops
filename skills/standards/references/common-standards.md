@@ -56,6 +56,17 @@ When errors are intentionally ignored (e.g., best-effort cleanup), document the 
 | TypeScript | `void promise.catch(() => {}); // fire-and-forget, logged elsewhere` |
 | Shell | `rm -rf "$TMPDIR" 2>/dev/null \|\| true` |
 
+### Error Aggregation
+
+When multiple operations can fail independently (parallel execution, multi-step cleanup), use the language's error aggregation mechanism rather than discarding all but the first error.
+
+| Language | Mechanism |
+|----------|-----------|
+| Go | `errors.Join(err1, err2)` (1.20+) |
+| Python | `ExceptionGroup` (3.11+) |
+| Rust | Custom `Vec<Error>` or `anyhow` context chain |
+| TypeScript | `AggregateError` |
+
 ### Custom Error Hierarchies
 
 Define a base error type per project/crate/package. Subtypes encode categories.
@@ -316,6 +327,17 @@ Validate at system boundaries (user input, external APIs, file reads). Trust int
 | 500-800 lines | Warning | Consider splitting |
 | 800+ lines | Critical | Split into submodules |
 
+### Version-Aware Development
+
+Language-specific standards SHOULD declare the target language/runtime version and organize modern features by version availability. This prevents using features unavailable in the target version and ensures developers adopt modern alternatives when available.
+
+| Language | Version Source | Example Modern Features |
+|----------|---------------|------------------------|
+| Go | `go.mod` `go` directive | `slices` (1.21+), `range n` (1.22+), `t.Context()` (1.24+) |
+| Python | `pyproject.toml` `requires-python` | `match` (3.10+), `tomllib` (3.11+), exception groups (3.11+) |
+| Rust | `Cargo.toml` `edition` | `let-else` (2021+), `async fn in trait` (2024+) |
+| TypeScript | `tsconfig.json` `target` | `satisfies` (4.9+), `using` (5.2+) |
+
 ### Import Ordering
 
 All languages follow the same conceptual grouping:
@@ -334,10 +356,10 @@ This table maps which sections in each language-specific file contain universal 
 
 | Language File | Section | Action | Rationale |
 |---------------|---------|--------|-----------|
-| `go-standards.md` | Error Handling Patterns | keep-as-is | Go-specific `%w`, `errors.Is()`, custom error types with Go interfaces |
-| `go-standards.md` | Security Practices | keep-as-is | Go-specific `crypto/subtle`, `hmac.Equal()`, TLS config structs |
-| `go-standards.md` | Testing Patterns | keep-as-is | Go-specific `t.Run()`, `t.Helper()`, mock interfaces, benchmarks |
-| `go-standards.md` | Package Organization | keep-as-is | Go-specific `cmd/`, `internal/`, `pkg/` layout, import grouping |
+| `go.md` | Error Handling | keep-as-is | Go-specific `%w`, `errors.Is()`, `errors.Join()`, custom error types |
+| `go.md` | Modern Standard Library | keep-as-is | Entirely Go-specific stdlib packages (`slices`, `maps`, `cmp`) and version-gated features |
+| `go.md` | Concurrency | keep-as-is | Go-specific `sync.OnceFunc`, type-safe atomics, context patterns |
+| `go.md` | Future Features | keep-as-is | Go-specific version-gated features for upgrade readiness |
 | `python-standards.md` | Error Handling | keep-as-is | Python-specific exception hierarchy, `from exc` chaining, bare except rules |
 | `python-standards.md` | Testing | keep-as-is | Pytest-specific fixtures, `conftest.py`, testcontainers, `parametrize` |
 | `python-standards.md` | Docstrings | keep-as-is | Google style docstrings, Python-specific sections (Args, Returns, Raises) |
@@ -363,4 +385,4 @@ This table maps which sections in each language-specific file contain universal 
 
 ---
 
-**Related:** Language-specific standards in `go-standards.md`, `python-standards.md`, `rust-standards.md`, `typescript-standards.md`, `shell-standards.md`
+**Related:** Language-specific standards in `go.md`, `python.md`, `rust.md`, `typescript.md`, `shell.md`
