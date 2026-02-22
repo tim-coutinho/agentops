@@ -223,6 +223,18 @@ func projectConfigPath() string {
 	return filepath.Join(cwd, ".agentops", "config.yaml")
 }
 
+// loadHomeConfig loads the home directory config, returning nil on error.
+func loadHomeConfig() *Config {
+	cfg, _ := loadFromPath(homeConfigPath())
+	return cfg
+}
+
+// loadProjectConfig loads the project config, returning nil on error.
+func loadProjectConfig() *Config {
+	cfg, _ := loadFromPath(projectConfigPath())
+	return cfg
+}
+
 // loadFromPath loads config from a YAML file.
 func loadFromPath(path string) (*Config, error) {
 	if path == "" {
@@ -425,86 +437,96 @@ type resolved struct {
 	Source Source      `json:"source"`
 }
 
+// configFields holds extracted string fields from a Config for resolution.
+type configFields struct {
+	output, baseDir                          string
+	verbose                                  bool
+	rpiWorktreeMode, rpiRuntimeMode          string
+	rpiRuntimeCommand, rpiAOCommand          string
+	rpiBDCommand, rpiTmuxCommand             string
+}
+
+// extractFields pulls resolution-relevant fields from a Config.
+// Returns zero-value fields when cfg is nil.
+func extractFields(cfg *Config) configFields {
+	if cfg == nil {
+		return configFields{}
+	}
+	return configFields{
+		output:            cfg.Output,
+		baseDir:           cfg.BaseDir,
+		verbose:           cfg.Verbose,
+		rpiWorktreeMode:   cfg.RPI.WorktreeMode,
+		rpiRuntimeMode:    cfg.RPI.RuntimeMode,
+		rpiRuntimeCommand: cfg.RPI.RuntimeCommand,
+		rpiAOCommand:      cfg.RPI.AOCommand,
+		rpiBDCommand:      cfg.RPI.BDCommand,
+		rpiTmuxCommand:    cfg.RPI.TmuxCommand,
+	}
+}
+
+// envFields holds environment variable values for resolution.
+type envFields struct {
+	output, baseDir                          string
+	verbose                                  bool
+	verboseSet                               bool
+	rpiWorktreeMode, rpiRuntimeMode          string
+	rpiRuntimeCommand, rpiAOCommand          string
+	rpiBDCommand, rpiTmuxCommand             string
+}
+
+// loadEnvFields reads all resolution-relevant environment variables.
+func loadEnvFields() envFields {
+	ef := envFields{}
+	ef.output, _ = getEnvString("AGENTOPS_OUTPUT")
+	ef.baseDir, _ = getEnvString("AGENTOPS_BASE_DIR")
+	ef.verbose, ef.verboseSet = getEnvBool("AGENTOPS_VERBOSE")
+	ef.rpiWorktreeMode, _ = getEnvString("AGENTOPS_RPI_WORKTREE_MODE")
+	ef.rpiRuntimeMode, _ = getEnvString("AGENTOPS_RPI_RUNTIME")
+	if modeOverride, ok := getEnvString("AGENTOPS_RPI_RUNTIME_MODE"); ok {
+		ef.rpiRuntimeMode = modeOverride
+	}
+	ef.rpiRuntimeCommand, _ = getEnvString("AGENTOPS_RPI_RUNTIME_COMMAND")
+	ef.rpiAOCommand, _ = getEnvString("AGENTOPS_RPI_AO_COMMAND")
+	ef.rpiBDCommand, _ = getEnvString("AGENTOPS_RPI_BD_COMMAND")
+	ef.rpiTmuxCommand, _ = getEnvString("AGENTOPS_RPI_TMUX_COMMAND")
+	return ef
+}
+
+// resolveVerbose resolves the verbose flag through the precedence chain.
+func resolveVerbose(home, project configFields, env envFields, flagVerbose bool) resolved {
+	r := resolved{Value: false, Source: SourceDefault}
+	if home.verbose {
+		r = resolved{Value: true, Source: SourceHome}
+	}
+	if project.verbose {
+		r = resolved{Value: true, Source: SourceProject}
+	}
+	if env.verboseSet && env.verbose {
+		r = resolved{Value: true, Source: SourceEnv}
+	}
+	if flagVerbose {
+		r = resolved{Value: true, Source: SourceFlag}
+	}
+	return r
+}
+
 // Resolve returns configuration with source tracking.
 // Uses precedence chain: flags > env > project > home > defaults.
 func Resolve(flagOutput, flagBaseDir string, flagVerbose bool) *ResolvedConfig {
-	// Load configs once
-	homeConfig, _ := loadFromPath(homeConfigPath())
-	projectConfig, _ := loadFromPath(projectConfigPath())
+	home := extractFields(loadHomeConfig())
+	project := extractFields(loadProjectConfig())
+	env := loadEnvFields()
 
-	// Get config values (empty string if not set)
-	var homeOutput, homeBaseDir string
-	var homeVerbose bool
-	var homeRPIWorktreeMode, homeRPIRuntimeMode, homeRPIRuntimeCommand string
-	var homeRPIAOCommand, homeRPIBDCommand, homeRPITmuxCommand string
-	if homeConfig != nil {
-		homeOutput = homeConfig.Output
-		homeBaseDir = homeConfig.BaseDir
-		homeVerbose = homeConfig.Verbose
-		homeRPIWorktreeMode = homeConfig.RPI.WorktreeMode
-		homeRPIRuntimeMode = homeConfig.RPI.RuntimeMode
-		homeRPIRuntimeCommand = homeConfig.RPI.RuntimeCommand
-		homeRPIAOCommand = homeConfig.RPI.AOCommand
-		homeRPIBDCommand = homeConfig.RPI.BDCommand
-		homeRPITmuxCommand = homeConfig.RPI.TmuxCommand
+	return &ResolvedConfig{
+		Output:            resolveStringField(home.output, project.output, env.output, flagOutput, defaultOutput),
+		BaseDir:           resolveStringField(home.baseDir, project.baseDir, env.baseDir, flagBaseDir, defaultBaseDir),
+		Verbose:           resolveVerbose(home, project, env, flagVerbose),
+		RPIWorktreeMode:   resolveStringField(home.rpiWorktreeMode, project.rpiWorktreeMode, env.rpiWorktreeMode, "", "auto"),
+		RPIRuntimeMode:    resolveStringField(home.rpiRuntimeMode, project.rpiRuntimeMode, env.rpiRuntimeMode, "", "auto"),
+		RPIRuntimeCommand: resolveStringField(home.rpiRuntimeCommand, project.rpiRuntimeCommand, env.rpiRuntimeCommand, "", "claude"),
+		RPIAOCommand:      resolveStringField(home.rpiAOCommand, project.rpiAOCommand, env.rpiAOCommand, "", "ao"),
+		RPIBDCommand:      resolveStringField(home.rpiBDCommand, project.rpiBDCommand, env.rpiBDCommand, "", "bd"),
+		RPITmuxCommand:    resolveStringField(home.rpiTmuxCommand, project.rpiTmuxCommand, env.rpiTmuxCommand, "", "tmux"),
 	}
-
-	var projectOutput, projectBaseDir string
-	var projectVerbose bool
-	var projectRPIWorktreeMode, projectRPIRuntimeMode, projectRPIRuntimeCommand string
-	var projectRPIAOCommand, projectRPIBDCommand, projectRPITmuxCommand string
-	if projectConfig != nil {
-		projectOutput = projectConfig.Output
-		projectBaseDir = projectConfig.BaseDir
-		projectVerbose = projectConfig.Verbose
-		projectRPIWorktreeMode = projectConfig.RPI.WorktreeMode
-		projectRPIRuntimeMode = projectConfig.RPI.RuntimeMode
-		projectRPIRuntimeCommand = projectConfig.RPI.RuntimeCommand
-		projectRPIAOCommand = projectConfig.RPI.AOCommand
-		projectRPIBDCommand = projectConfig.RPI.BDCommand
-		projectRPITmuxCommand = projectConfig.RPI.TmuxCommand
-	}
-
-	// Get environment values
-	envOutput, _ := getEnvString("AGENTOPS_OUTPUT")
-	envBaseDir, _ := getEnvString("AGENTOPS_BASE_DIR")
-	envVerbose, envVerboseSet := getEnvBool("AGENTOPS_VERBOSE")
-	envRPIWorktreeMode, _ := getEnvString("AGENTOPS_RPI_WORKTREE_MODE")
-	envRPIRuntimeMode, _ := getEnvString("AGENTOPS_RPI_RUNTIME")
-	if modeOverride, ok := getEnvString("AGENTOPS_RPI_RUNTIME_MODE"); ok {
-		envRPIRuntimeMode = modeOverride
-	}
-	envRPIRuntimeCommand, _ := getEnvString("AGENTOPS_RPI_RUNTIME_COMMAND")
-	envRPIAOCommand, _ := getEnvString("AGENTOPS_RPI_AO_COMMAND")
-	envRPIBDCommand, _ := getEnvString("AGENTOPS_RPI_BD_COMMAND")
-	envRPITmuxCommand, _ := getEnvString("AGENTOPS_RPI_TMUX_COMMAND")
-
-	// Resolve string fields through precedence chain
-	rc := &ResolvedConfig{
-		Output:            resolveStringField(homeOutput, projectOutput, envOutput, flagOutput, defaultOutput),
-		BaseDir:           resolveStringField(homeBaseDir, projectBaseDir, envBaseDir, flagBaseDir, defaultBaseDir),
-		Verbose:           resolved{Value: false, Source: SourceDefault},
-		RPIWorktreeMode:   resolveStringField(homeRPIWorktreeMode, projectRPIWorktreeMode, envRPIWorktreeMode, "", "auto"),
-		RPIRuntimeMode:    resolveStringField(homeRPIRuntimeMode, projectRPIRuntimeMode, envRPIRuntimeMode, "", "auto"),
-		RPIRuntimeCommand: resolveStringField(homeRPIRuntimeCommand, projectRPIRuntimeCommand, envRPIRuntimeCommand, "", "claude"),
-		RPIAOCommand:      resolveStringField(homeRPIAOCommand, projectRPIAOCommand, envRPIAOCommand, "", "ao"),
-		RPIBDCommand:      resolveStringField(homeRPIBDCommand, projectRPIBDCommand, envRPIBDCommand, "", "bd"),
-		RPITmuxCommand:    resolveStringField(homeRPITmuxCommand, projectRPITmuxCommand, envRPITmuxCommand, "", "tmux"),
-	}
-
-	// Resolve verbose (boolean with OR semantics through chain)
-	if homeVerbose {
-		rc.Verbose = resolved{Value: true, Source: SourceHome}
-	}
-	if projectVerbose {
-		rc.Verbose = resolved{Value: true, Source: SourceProject}
-	}
-	if envVerboseSet && envVerbose {
-		rc.Verbose = resolved{Value: true, Source: SourceEnv}
-	}
-	if flagVerbose {
-		rc.Verbose = resolved{Value: true, Source: SourceFlag}
-	}
-
-	return rc
 }
