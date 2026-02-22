@@ -704,7 +704,8 @@ run_gosec() {
         # G306: file perms (CLI creates user-owned files)
         # G702: command injection via taint (CLI runs user-specified commands)
         # G703: path traversal via taint (CLI operates on user-specified paths)
-        (cd "$module_dir" && gosec -quiet -fmt json -exclude=G104,G115,G204,G301,G302,G304,G306,G702,G703 ./... > "$module_json" 2> "$module_stderr") || true
+        # G704: SSRF via taint (CLI makes HTTP requests to configured endpoints)
+        (cd "$module_dir" && gosec -quiet -fmt json -exclude=G104,G115,G204,G301,G302,G304,G306,G702,G703,G704 ./... > "$module_json" 2> "$module_stderr") || true
 
         if jq empty "$module_json" >/dev/null 2>&1; then
             cat "$module_json" >> "$output_file"
