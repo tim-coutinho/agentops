@@ -176,7 +176,7 @@ func applyConfidenceDecay(l learning, filePath string, now time.Time) learning {
 				}
 
 				// Update the learning's composite score weight
-				l.Utility = l.Utility * (newConfidence / confidence)
+				l.Utility *= newConfidence / confidence
 			}
 		}
 	}

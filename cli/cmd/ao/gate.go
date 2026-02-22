@@ -95,12 +95,13 @@ func outputGatePending(entries []pool.PoolEntry) error {
 		fmt.Fprintln(w, "--\t----\t---\t-------\t-------")
 
 		for _, e := range entries {
-			urgency := ""
-			if e.ApproachingAutoPromote {
+			var urgency string
+			switch {
+			case e.ApproachingAutoPromote:
 				urgency = "HIGH (approaching 24h)"
-			} else if e.Age > 12*time.Hour {
+			case e.Age > 12*time.Hour:
 				urgency = "MEDIUM"
-			} else {
+			default:
 				urgency = "LOW"
 			}
 

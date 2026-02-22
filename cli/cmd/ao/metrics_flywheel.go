@@ -140,13 +140,14 @@ func printFlywheelStatus(w io.Writer, m *types.FlywheelMetrics) {
 	fmt.Fprintf(w, "    δ     = %.3f\n", m.Delta)
 	fmt.Fprintln(w, "    ───────────────")
 
-	if m.AboveEscapeVelocity {
+	switch {
+	case m.AboveEscapeVelocity:
 		fmt.Fprintf(w, "    σρ > δ ✓ (velocity: +%.3f/week)\n", m.Velocity)
 		fmt.Fprintln(w, "    → Knowledge is COMPOUNDING")
-	} else if m.Velocity > -0.05 {
+	case m.Velocity > -0.05:
 		fmt.Fprintf(w, "    σρ ≈ δ (velocity: %.3f/week)\n", m.Velocity)
 		fmt.Fprintln(w, "    → NEAR escape velocity, keep building!")
-	} else {
+	default:
 		fmt.Fprintf(w, "    σρ < δ ✗ (velocity: %.3f/week)\n", m.Velocity)
 		fmt.Fprintln(w, "    → Knowledge is DECAYING")
 		fmt.Fprintln(w)

@@ -614,14 +614,15 @@ func computeResult(checks []doctorCheck) doctorOutput {
 	}
 
 	var summary string
-	if fails == 0 && warns == 0 {
+	switch {
+	case fails == 0 && warns == 0:
 		summary = fmt.Sprintf("%d/%d checks passed", passes, total)
-	} else if fails == 0 {
+	case fails == 0:
 		summary = fmt.Sprintf("%d/%d checks passed, %d warning", passes, total, warns)
 		if warns > 1 {
 			summary += "s"
 		}
-	} else {
+	default:
 		parts := []string{fmt.Sprintf("%d/%d checks passed", passes, total)}
 		if warns > 0 {
 			w := fmt.Sprintf("%d warning", warns)

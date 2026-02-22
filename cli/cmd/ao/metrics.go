@@ -504,11 +504,12 @@ func printMetricsTable(m *types.FlywheelMetrics) {
 		fmt.Printf("  Low utility (<0.3):  %d\n", m.LowUtilityCount)
 
 		// Health indicator
-		if m.MeanUtility >= 0.6 {
+		switch {
+		case m.MeanUtility >= 0.6:
 			fmt.Printf("  Status:              HEALTHY ✓ (learnings are effective)\n")
-		} else if m.MeanUtility >= 0.4 {
+		case m.MeanUtility >= 0.4:
 			fmt.Printf("  Status:              NEUTRAL (need more feedback data)\n")
-		} else {
+		default:
 			fmt.Printf("  Status:              REVIEW ✗ (learnings may need updating)\n")
 		}
 	}

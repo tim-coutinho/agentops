@@ -99,10 +99,12 @@ func TestStallTimeoutClassification(t *testing.T) {
 	timeoutMsg := string(failReasonTimeout)
 	stallMsg := string(failReasonStall)
 
-	if !strings.Contains("phase 1 (timeout) timed out after 30m0s", timeoutMsg) {
-		t.Errorf("expected %q in timeout error format", timeoutMsg)
+	exampleTimeout := "phase 1 (timeout) timed out after 30m0s"
+	if !strings.Contains(exampleTimeout, timeoutMsg) {
+		t.Errorf("expected %q in timeout error format %q", timeoutMsg, exampleTimeout)
 	}
-	if !strings.Contains("phase 1 (stall): stall detected: no stream activity for 5m0s", stallMsg) {
-		t.Errorf("expected %q in stall error format", stallMsg)
+	exampleStall := "phase 1 (stall): stall detected: no stream activity for 5m0s"
+	if !strings.Contains(exampleStall, stallMsg) {
+		t.Errorf("expected %q in stall error format %q", stallMsg, exampleStall)
 	}
 }

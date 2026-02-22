@@ -127,7 +127,9 @@ func runRPIStatusOnce() error {
 
 func buildRPIStatusOutput(cwd string) rpiStatusOutput {
 	active, historical := discoverRPIRunsRegistryFirst(cwd)
-	allRuns := append(active, historical...)
+	allRuns := make([]rpiRunInfo, 0, len(active)+len(historical))
+	allRuns = append(allRuns, active...)
+	allRuns = append(allRuns, historical...)
 
 	return rpiStatusOutput{
 		Active:       active,
@@ -663,7 +665,9 @@ func discoverRPIRunsRegistryFirst(cwd string) (active, historical []rpiRunInfo) 
 // when the registry is empty.
 func discoverRPIRuns(cwd string) []rpiRunInfo {
 	active, historical := discoverRPIRunsRegistryFirst(cwd)
-	all := append(active, historical...)
+	all := make([]rpiRunInfo, 0, len(active)+len(historical))
+	all = append(all, active...)
+	all = append(all, historical...)
 	if len(all) > 0 {
 		return all
 	}

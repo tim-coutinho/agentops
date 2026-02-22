@@ -362,17 +362,20 @@ func createIndexEntry(path string, categorize bool) (*IndexEntry, error) {
 	text := string(content)
 
 	// Determine type from path
-	artifactType := "unknown"
-	if strings.Contains(path, "/learnings/") {
+	var artifactType string
+	switch {
+	case strings.Contains(path, "/learnings/"):
 		artifactType = "learning"
-	} else if strings.Contains(path, "/patterns/") {
+	case strings.Contains(path, "/patterns/"):
 		artifactType = "pattern"
-	} else if strings.Contains(path, "/research/") {
+	case strings.Contains(path, "/research/"):
 		artifactType = "research"
-	} else if strings.Contains(path, "/retros/") {
+	case strings.Contains(path, "/retros/"):
 		artifactType = "retro"
-	} else if strings.Contains(path, "/candidates/") {
+	case strings.Contains(path, "/candidates/"):
 		artifactType = "candidate"
+	default:
+		artifactType = "unknown"
 	}
 
 	// Extract title from first heading
@@ -715,7 +718,7 @@ func createSearchSnippet(content, query string, maxLen int) string {
 		snippet = "..." + snippet
 	}
 	if end < len(content) {
-		snippet = snippet + "..."
+		snippet += "..."
 	}
 
 	return snippet
