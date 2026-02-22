@@ -1452,3 +1452,26 @@ rpi:
 			rc.RPITmuxCommand.Value, rc.RPITmuxCommand.Source, SourceHome)
 	}
 }
+
+// --- Benchmarks ---
+
+func BenchmarkDefault(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		Default()
+	}
+}
+
+func BenchmarkMerge(b *testing.B) {
+	base := Default()
+	overlay := &Config{
+		Output:  "json",
+		BaseDir: "/tmp/bench",
+		Verbose: true,
+		Forge:   ForgeConfig{MaxContentLength: 5000},
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		dst := *base // copy
+		merge(&dst, overlay)
+	}
+}

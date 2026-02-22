@@ -693,3 +693,65 @@ func TestLoadState_MalformedJSON(t *testing.T) {
 		t.Error("expected error when loading malformed JSON state file")
 	}
 }
+
+// --- Benchmarks ---
+
+func BenchmarkEstimateTokens(b *testing.B) {
+	text := "This is a sample string that represents typical content for token estimation benchmarking. "
+	// Build ~1000 chars
+	long := ""
+	for i := 0; i < 10; i++ {
+		long += text
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		EstimateTokens(long)
+	}
+}
+
+func BenchmarkSummarizeContext(b *testing.B) {
+	tracker := NewBudgetTracker("bench-session")
+	summarizer := NewSummarizer(tracker)
+	items := make([]ContextItem, 20)
+	for i := range items {
+		items[i] = ContextItem{
+			Type:          "file_change",
+			Priority:      PriorityHigh,
+			Content:       "Modified cli/internal/context/summarize.go with refactoring changes",
+			TokenEstimate: 15,
+		}
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		summarizer.SummarizeContext(items)
+	}
+}
+
+func BenchmarkClassifyItem(b *testing.B) {
+	tracker := NewBudgetTracker("bench-session")
+	summarizer := NewSummarizer(tracker)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		summarizer.ClassifyItem("failing_test", "TestFoo failed")
+		summarizer.ClassifyItem("file_change", "modified foo.go")
+		summarizer.ClassifyItem("low_finding", "minor style issue")
+	}
+}
+
+func BenchmarkGenerateResumptionContext(b *testing.B) {
+	tracker := NewBudgetTracker("bench-session")
+	summarizer := NewSummarizer(tracker)
+	state := SummarizeState{
+		FilesChanged:     []string{"file1.go", "file2.go", "file3.go"},
+		TestStatus:       "3 passed, 1 failed",
+		FailingTests:     []string{"TestFoo"},
+		CriticalFindings: []string{"race condition in handler"},
+		CurrentTask:      "Fix concurrency bug",
+		CompletedTasks:   []string{"Refactored config", "Added tests"},
+		Notes:            "Need to check edge cases",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		summarizer.GenerateResumptionContext(state)
+	}
+}
