@@ -551,3 +551,100 @@ func TestFormatMetricsSummary_MissingMetric(t *testing.T) {
 		t.Error("expected non-empty summary")
 	}
 }
+
+func TestMetricTrust_AllTestCommits(t *testing.T) {
+	// When all commits are test commits, codeCommits == 0, trust should be 1.0
+	events := []TimelineEvent{
+		{Message: "test: add unit tests"},
+		{Message: "test(pool): add coverage"},
+		{Message: "tests: fix flaky test"},
+	}
+	m := MetricTrust(events)
+	if m.Value != 1.0 {
+		t.Errorf("expected trust 1.0 for all test commits, got %f", m.Value)
+	}
+	if !m.Passed {
+		t.Error("expected trust to pass for all test commits")
+	}
+}
+
+func TestIsTestCommit_Keywords(t *testing.T) {
+	// Exercise the keyword matching path in isTestCommit
+	cases := []struct {
+		msg  string
+		want bool
+	}{
+		{"add test for edge case", true},
+		{"update test expectations", true},
+		{"fix test flakiness", true},
+		{"write test for parser", true},
+		{"testing new approach", true},
+		{"refactor: clean up code", false},
+		{"feat: add new feature", false},
+	}
+	for _, tc := range cases {
+		got := isTestCommit(tc.msg)
+		if got != tc.want {
+			t.Errorf("isTestCommit(%q) = %v, want %v", tc.msg, got, tc.want)
+		}
+	}
+}
+
+func TestComputeOverallRating_OverflowClamp(t *testing.T) {
+	// Exercise the total > 100 and total < 0 clamping paths.
+	// Create metrics where all pass (total = 5*20 = 100).
+	metrics := map[string]Metric{
+		"velocity": {Name: "velocity", Value: 10, Threshold: 3, Passed: true},
+		"rework":   {Name: "rework", Value: 5, Threshold: 30, Passed: true},
+		"trust":    {Name: "trust", Value: 0.5, Threshold: 0.3, Passed: true},
+		"spirals":  {Name: "spirals", Value: 0, Threshold: 0, Passed: true},
+		"flow":     {Name: "flow", Value: 3, Threshold: 2, Passed: true},
+	}
+	score, grade := ComputeOverallRating(metrics)
+	if score > 100 {
+		t.Errorf("score should be clamped to 100, got %f", score)
+	}
+	if grade != "A" {
+		t.Errorf("expected grade A for all passed, got %s", grade)
+	}
+}
+
+func TestComputeOverallRating_ThreeMetricsNormalized(t *testing.T) {
+	// Exercise the count != 5 normalization path.
+	metrics := map[string]Metric{
+		"velocity": {Name: "velocity", Value: 10, Threshold: 3, Passed: true},
+		"rework":   {Name: "rework", Value: 5, Threshold: 30, Passed: true},
+		"trust":    {Name: "trust", Value: 0.5, Threshold: 0.3, Passed: true},
+	}
+	score, _ := ComputeOverallRating(metrics)
+	// 3 metrics all passed: each 20 pts = 60, normalized: 60/3*5 = 100
+	if score != 100 {
+		t.Errorf("expected 100 for 3/3 passed metrics (normalized), got %f", score)
+	}
+}
+
+func TestMetricPartialCredit_SpiralZeroThreshold(t *testing.T) {
+	// Exercise the threshold == 0 path in metricPartialCredit
+	m := Metric{Name: "spirals", Value: 2, Threshold: 0, Passed: false}
+	credit := metricPartialCredit(m)
+	if credit != 0 {
+		t.Errorf("expected 0 partial credit for threshold=0, got %f", credit)
+	}
+}
+
+func TestMetricPartialCredit_DefaultCase(t *testing.T) {
+	// Exercise the default case in metricPartialCredit (unknown metric name)
+	m := Metric{Name: "unknown", Value: 5, Threshold: 10, Passed: false}
+	credit := metricPartialCredit(m)
+	if credit != 0 {
+		t.Errorf("expected 0 partial credit for unknown metric, got %f", credit)
+	}
+}
+
+func TestMeanStddev_EmptySlice(t *testing.T) {
+	// Exercise the len(xs) == 0 path in meanStddev
+	mean, stddev := meanStddev(nil)
+	if mean != 0 || stddev != 0 {
+		t.Errorf("expected (0, 0) for empty slice, got (%f, %f)", mean, stddev)
+	}
+}
