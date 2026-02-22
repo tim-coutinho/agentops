@@ -368,44 +368,48 @@ func GetMaturityDistribution(learningsDir string) (*MaturityDistribution, error)
 	}
 
 	dist := &MaturityDistribution{}
-
 	for _, file := range files {
-		f, err := os.Open(file)
-		if err != nil {
-			continue
-		}
+		classifyLearningFile(file, dist)
+	}
+	return dist, nil
+}
 
-		scanner := bufio.NewScanner(f)
-		if scanner.Scan() {
-			var data map[string]interface{}
-			if err := json.Unmarshal(scanner.Bytes(), &data); err != nil {
-				_ = f.Close() //nolint:errcheck // read-only, moving to next file
-				dist.Unknown++
-				dist.Total++
-				continue
-			}
+// classifyLearningFile reads the first line of a JSONL file and updates the distribution.
+func classifyLearningFile(file string, dist *MaturityDistribution) {
+	f, err := os.Open(file)
+	if err != nil {
+		return
+	}
+	defer f.Close() //nolint:errcheck // read-only
 
-			maturity, ok := data["maturity"].(string)
-			if !ok || maturity == "" {
-				maturity = string(types.MaturityProvisional)
-			}
-
-			switch types.Maturity(maturity) {
-			case types.MaturityProvisional:
-				dist.Provisional++
-			case types.MaturityCandidate:
-				dist.Candidate++
-			case types.MaturityEstablished:
-				dist.Established++
-			case types.MaturityAntiPattern:
-				dist.AntiPattern++
-			default:
-				dist.Unknown++
-			}
-			dist.Total++
-		}
-		_ = f.Close() //nolint:errcheck // read-only, moving to next file
+	scanner := bufio.NewScanner(f)
+	if !scanner.Scan() {
+		return
 	}
 
-	return dist, nil
+	var data map[string]interface{}
+	if err := json.Unmarshal(scanner.Bytes(), &data); err != nil {
+		dist.Unknown++
+		dist.Total++
+		return
+	}
+
+	maturity, ok := data["maturity"].(string)
+	if !ok || maturity == "" {
+		maturity = string(types.MaturityProvisional)
+	}
+
+	switch types.Maturity(maturity) {
+	case types.MaturityProvisional:
+		dist.Provisional++
+	case types.MaturityCandidate:
+		dist.Candidate++
+	case types.MaturityEstablished:
+		dist.Established++
+	case types.MaturityAntiPattern:
+		dist.AntiPattern++
+	default:
+		dist.Unknown++
+	}
+	dist.Total++
 }

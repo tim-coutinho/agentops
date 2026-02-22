@@ -428,6 +428,17 @@ func ruleSpecificity(rule MemRLPolicyRule) int {
 
 // ValidateMemRLPolicyContract ensures policy and rollback matrix are complete.
 func ValidateMemRLPolicyContract(contract MemRLPolicyContract) error {
+	if err := validateContractFields(contract); err != nil {
+		return err
+	}
+	if err := validateContractRules(contract.Rules); err != nil {
+		return err
+	}
+	return validateContractRollbacks(contract.RollbackMatrix)
+}
+
+// validateContractFields checks the top-level scalar fields and non-empty collection invariants.
+func validateContractFields(contract MemRLPolicyContract) error {
 	if contract.SchemaVersion < 1 {
 		return fmt.Errorf("schema_version must be >= 1")
 	}
@@ -446,15 +457,25 @@ func ValidateMemRLPolicyContract(contract MemRLPolicyContract) error {
 	if len(contract.Rules) == 0 {
 		return fmt.Errorf("rules must not be empty")
 	}
-	for _, rule := range contract.Rules {
+	if len(contract.RollbackMatrix) == 0 {
+		return fmt.Errorf("rollback_matrix must not be empty")
+	}
+	return nil
+}
+
+// validateContractRules validates all policy rules in the contract.
+func validateContractRules(rules []MemRLPolicyRule) error {
+	for _, rule := range rules {
 		if err := validatePolicyRule(rule); err != nil {
 			return err
 		}
 	}
-	if len(contract.RollbackMatrix) == 0 {
-		return fmt.Errorf("rollback_matrix must not be empty")
-	}
-	for _, trigger := range contract.RollbackMatrix {
+	return nil
+}
+
+// validateContractRollbacks validates all rollback triggers in the contract.
+func validateContractRollbacks(triggers []MemRLRollbackTrigger) error {
+	for _, trigger := range triggers {
 		if err := validateRollbackTrigger(trigger); err != nil {
 			return err
 		}
