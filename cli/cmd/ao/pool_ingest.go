@@ -57,6 +57,53 @@ func init() {
 	poolIngestCmd.Flags().StringVar(&poolIngestDir, "dir", filepath.Join(".agents", "knowledge", "pending"), "Directory to ingest from when no args are provided")
 }
 
+// ingestFileBlocks processes all learning blocks from one file, updating res.
+// Returns true if any block had an add error (not skipped or malformed).
+func ingestFileBlocks(p *pool.Pool, blocks []learningBlock, f string, fileDate time.Time, sessionHint string, res *poolIngestResult) bool {
+	hadError := false
+	for _, b := range blocks {
+		cand, scoring, ok := buildCandidateFromLearningBlock(b, f, fileDate, sessionHint)
+		if !ok {
+			res.SkippedMalformed++
+			continue
+		}
+		// Idempotency: skip if already present in any pool directory.
+		if _, gerr := p.Get(cand.ID); gerr == nil {
+			res.SkippedExisting++
+			continue
+		}
+		if GetDryRun() {
+			res.Added++
+			res.AddedIDs = append(res.AddedIDs, cand.ID)
+			continue
+		}
+		if err := p.AddAt(cand, scoring, cand.ExtractedAt); err != nil {
+			res.Errors++
+			hadError = true
+			VerbosePrintf("Warning: add %s: %v\n", cand.ID, err)
+			continue
+		}
+		res.Added++
+		res.AddedIDs = append(res.AddedIDs, cand.ID)
+	}
+	return hadError
+}
+
+// moveIngestedFiles moves successfully processed files to the processed directory.
+func moveIngestedFiles(cwd string, processedFiles []string) {
+	processedDir := filepath.Join(cwd, ".agents", "knowledge", "processed")
+	if err := os.MkdirAll(processedDir, 0755); err != nil {
+		VerbosePrintf("Warning: create processed dir: %v\n", err)
+		return
+	}
+	for _, f := range processedFiles {
+		dst := filepath.Join(processedDir, filepath.Base(f))
+		if merr := os.Rename(f, dst); merr != nil {
+			VerbosePrintf("Warning: move %s to processed: %v\n", filepath.Base(f), merr)
+		}
+	}
+}
+
 func runPoolIngest(cmd *cobra.Command, args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -74,8 +121,6 @@ func runPoolIngest(cmd *cobra.Command, args []string) error {
 	}
 
 	res := poolIngestResult{FilesScanned: len(files)}
-
-	// Track files that were successfully processed (no read/add errors).
 	var processedFiles []string
 
 	for _, f := range files {
@@ -90,54 +135,14 @@ func runPoolIngest(cmd *cobra.Command, args []string) error {
 		blocks := parseLearningBlocks(string(data))
 		res.CandidatesFound += len(blocks)
 
-		fileHadError := false
-		for _, b := range blocks {
-			cand, scoring, ok := buildCandidateFromLearningBlock(b, f, fileDate, sessionHint)
-			if !ok {
-				res.SkippedMalformed++
-				continue
-			}
-
-			// Idempotency: skip if already present in any pool directory.
-			if _, gerr := p.Get(cand.ID); gerr == nil {
-				res.SkippedExisting++
-				continue
-			}
-
-			if GetDryRun() {
-				res.Added++
-				res.AddedIDs = append(res.AddedIDs, cand.ID)
-				continue
-			}
-
-			if err := p.AddAt(cand, scoring, cand.ExtractedAt); err != nil {
-				res.Errors++
-				fileHadError = true
-				VerbosePrintf("Warning: add %s: %v\n", cand.ID, err)
-				continue
-			}
-			res.Added++
-			res.AddedIDs = append(res.AddedIDs, cand.ID)
-		}
-
-		if !fileHadError && !GetDryRun() {
+		hadError := ingestFileBlocks(p, blocks, f, fileDate, sessionHint, &res)
+		if !hadError && !GetDryRun() {
 			processedFiles = append(processedFiles, f)
 		}
 	}
 
-	// Move successfully processed files to .agents/knowledge/processed/.
 	if len(processedFiles) > 0 {
-		processedDir := filepath.Join(cwd, ".agents", "knowledge", "processed")
-		if err := os.MkdirAll(processedDir, 0755); err != nil {
-			VerbosePrintf("Warning: create processed dir: %v\n", err)
-		} else {
-			for _, f := range processedFiles {
-				dst := filepath.Join(processedDir, filepath.Base(f))
-				if merr := os.Rename(f, dst); merr != nil {
-					VerbosePrintf("Warning: move %s to processed: %v\n", filepath.Base(f), merr)
-				}
-			}
-		}
+		moveIngestedFiles(cwd, processedFiles)
 	}
 
 	return outputPoolIngestResult(res)
@@ -472,9 +477,7 @@ func confidenceToScore(s string) float64 {
 	}
 }
 
-func computeRubricScores(body string, confidence float64) types.RubricScores {
-	lower := strings.ToLower(body)
-
+func computeSpecificityScore(body, lower string) float64 {
 	spec := 0.4
 	if strings.Contains(body, "`") || strings.Contains(body, "```") {
 		spec += 0.2
@@ -491,7 +494,10 @@ func computeRubricScores(body string, confidence float64) types.RubricScores {
 	if spec > 1.0 {
 		spec = 1.0
 	}
+	return spec
+}
 
+func computeActionabilityScore(body string) float64 {
 	act := 0.4
 	if regexp.MustCompile(`(?m)^\s*[-*]\s+`).MatchString(body) {
 		act += 0.2
@@ -505,7 +511,10 @@ func computeRubricScores(body string, confidence float64) types.RubricScores {
 	if act > 1.0 {
 		act = 1.0
 	}
+	return act
+}
 
+func computeNoveltyScore(body string) float64 {
 	nov := 0.5
 	if len(body) > 800 {
 		nov += 0.1
@@ -519,7 +528,10 @@ func computeRubricScores(body string, confidence float64) types.RubricScores {
 	if nov < 0.0 {
 		nov = 0.0
 	}
+	return nov
+}
 
+func computeContextScore(lower string) float64 {
 	ctx := 0.5
 	if strings.Contains(lower, "## source") || strings.Contains(lower, "**source**") {
 		ctx += 0.2
@@ -530,12 +542,16 @@ func computeRubricScores(body string, confidence float64) types.RubricScores {
 	if ctx > 1.0 {
 		ctx = 1.0
 	}
+	return ctx
+}
 
+func computeRubricScores(body string, confidence float64) types.RubricScores {
+	lower := strings.ToLower(body)
 	return types.RubricScores{
-		Specificity:   spec,
-		Actionability: act,
-		Novelty:       nov,
-		Context:       ctx,
+		Specificity:   computeSpecificityScore(body, lower),
+		Actionability: computeActionabilityScore(body),
+		Novelty:       computeNoveltyScore(body),
+		Context:       computeContextScore(lower),
 		Confidence:    confidence,
 	}
 }

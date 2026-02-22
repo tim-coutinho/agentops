@@ -67,3 +67,7 @@ AgentOps is where you learn to be a context engineer. Olympus is what you build 
 2. **Least-privilege loading.** Agents receive only the context necessary for their task — phase-specific, role-scoped, freshness-weighted.
 3. **The cycle is the product.** No single skill is the value. The compounding loop — research, plan, validate, build, validate, learn, repeat — is what makes the system improve.
 4. **Dormancy is success.** When all goals pass and no work remains, the system stops. It does not manufacture work to justify its existence.
+
+## See Also
+
+- [Scale Without Swarms](docs/scale-without-swarms.md) — why 3-5 focused agents with fresh context and regression gates outperform massive uncoordinated swarms; the AgentOps model of waves, isolation, and gates explained.

@@ -366,11 +366,8 @@ func countNewArtifacts(baseDir string, since time.Time) (int, error) {
 	return count, nil
 }
 
-// countStaleArtifacts counts artifacts not cited in N days.
-func countStaleArtifacts(baseDir string, citations []types.CitationEvent, staleDays int) (int, error) {
-	staleThreshold := time.Now().AddDate(0, 0, -staleDays)
-
-	// Track last-cited time for each artifact.
+// buildLastCitedMap builds a map of normalized artifact path → last citation time.
+func buildLastCitedMap(baseDir string, citations []types.CitationEvent) map[string]time.Time {
 	lastCited := make(map[string]time.Time)
 	for _, c := range citations {
 		norm := normalizeArtifactPath(baseDir, c.ArtifactPath)
@@ -381,77 +378,80 @@ func countStaleArtifacts(baseDir string, citations []types.CitationEvent, staleD
 			lastCited[norm] = c.CitedAt
 		}
 	}
+	return lastCited
+}
 
-	// Count stale artifacts:
-	// - artifact file itself must be older than threshold
-	// - and either never cited or last citation older than threshold
+// countStaleInDir counts stale artifacts in one directory.
+func countStaleInDir(baseDir, dir string, staleThreshold time.Time, lastCited map[string]time.Time) int {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return 0
+	}
 	staleCount := 0
+	if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(path, ".md") && !strings.HasSuffix(path, ".jsonl") {
+			return nil
+		}
+		if info.ModTime().After(staleThreshold) {
+			return nil
+		}
+		norm := normalizeArtifactPath(baseDir, path)
+		last, ok := lastCited[norm]
+		if !ok || last.Before(staleThreshold) {
+			staleCount++
+		}
+		return nil
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to walk %s: %v\n", dir, err)
+	}
+	return staleCount
+}
+
+// countStaleArtifacts counts artifacts not cited in N days.
+func countStaleArtifacts(baseDir string, citations []types.CitationEvent, staleDays int) (int, error) {
+	staleThreshold := time.Now().AddDate(0, 0, -staleDays)
+	lastCited := buildLastCitedMap(baseDir, citations)
+
 	dirs := []string{
 		filepath.Join(baseDir, ".agents", "learnings"),
 		filepath.Join(baseDir, ".agents", "patterns"),
 	}
-
+	total := 0
 	for _, dir := range dirs {
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			continue
-		}
-		if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
-				return nil
-			}
-			if !strings.HasSuffix(path, ".md") && !strings.HasSuffix(path, ".jsonl") {
-				return nil
-			}
-			if info.ModTime().After(staleThreshold) {
-				return nil
-			}
-			norm := normalizeArtifactPath(baseDir, path)
-			last, ok := lastCited[norm]
-			if !ok || last.Before(staleThreshold) {
-				staleCount++
-			}
-			return nil
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to walk %s: %v\n", dir, err)
-		}
+		total += countStaleInDir(baseDir, dir, staleThreshold, lastCited)
 	}
-
-	return staleCount, nil
+	return total, nil
 }
 
-// printMetricsTable prints a formatted metrics table.
-func printMetricsTable(m *types.FlywheelMetrics) {
-	fmt.Println()
-	fmt.Println("Knowledge Flywheel Metrics")
-	fmt.Println("==========================")
-	fmt.Printf("Period: %s to %s\n\n",
-		m.PeriodStart.Format("2006-01-02"),
-		m.PeriodEnd.Format("2006-01-02"))
-
+func printMetricsParameters(m *types.FlywheelMetrics) {
 	fmt.Println("PARAMETERS:")
 	fmt.Printf("  δ (decay rate):     %.2f/week (literature baseline)\n", m.Delta)
 	fmt.Printf("  σ (retrieval):      %.2f (%d%% relevant artifacts surfaced)\n",
 		m.Sigma, int(m.Sigma*100))
 	fmt.Printf("  ρ (citation rate):  %.2f refs/artifact/week\n", m.Rho)
 	fmt.Println()
+}
 
-	fmt.Println("DERIVED:")
-	fmt.Printf("  σ × ρ = %.3f\n", m.SigmaRho)
-	fmt.Printf("  δ     = %.3f\n", m.Delta)
-	fmt.Println("  ────────────────")
-
+func printMetricsDerived(m *types.FlywheelMetrics) {
 	velocitySign := "+"
 	if m.Velocity < 0 {
 		velocitySign = ""
 	}
-	status := m.EscapeVelocityStatus()
 	statusIndicator := "✗"
 	if m.AboveEscapeVelocity {
 		statusIndicator = "✓"
 	}
-	fmt.Printf("  VELOCITY: %s%.3f/week (%s %s)\n", velocitySign, m.Velocity, status, statusIndicator)
+	fmt.Println("DERIVED:")
+	fmt.Printf("  σ × ρ = %.3f\n", m.SigmaRho)
+	fmt.Printf("  δ     = %.3f\n", m.Delta)
+	fmt.Println("  ────────────────")
+	fmt.Printf("  VELOCITY: %s%.3f/week (%s %s)\n", velocitySign, m.Velocity, m.EscapeVelocityStatus(), statusIndicator)
 	fmt.Println()
+}
 
+func printMetricsCounts(m *types.FlywheelMetrics) {
 	fmt.Println("COUNTS:")
 	fmt.Printf("  Knowledge items:    %d\n", m.TotalArtifacts)
 	fmt.Printf("  Citation events:    %d this period\n", m.CitationsThisPeriod)
@@ -462,57 +462,72 @@ func printMetricsTable(m *types.FlywheelMetrics) {
 
 	if len(m.TierCounts) > 0 {
 		fmt.Println("TIER DISTRIBUTION:")
-		tiers := []string{"observation", "learning", "pattern", "skill", "core"}
-		for _, tier := range tiers {
+		for _, tier := range []string{"observation", "learning", "pattern", "skill", "core"} {
 			if count, ok := m.TierCounts[tier]; ok && count > 0 {
 				fmt.Printf("  %-12s: %d\n", tier, count)
 			}
 		}
 		fmt.Println()
 	}
+}
 
-	fmt.Printf("STATUS: %s\n", status)
-
-	// Loop closure metrics section
-	if m.LearningsCreated > 0 || m.LearningsFound > 0 || m.TotalRetros > 0 {
-		fmt.Println()
-		fmt.Println("LOOP CLOSURE (R1):")
-		fmt.Printf("  Learnings created:  %d\n", m.LearningsCreated)
-		fmt.Printf("  Learnings found:    %d\n", m.LearningsFound)
-		loopStatus := "OPEN"
-		if m.LoopClosureRatio >= 1.0 {
-			loopStatus = "CLOSED ✓"
-		} else if m.LoopClosureRatio > 0 {
-			loopStatus = "PARTIAL"
-		}
-		fmt.Printf("  Closure ratio:      %.2f (%s)\n", m.LoopClosureRatio, loopStatus)
-		if m.TotalRetros > 0 {
-			fmt.Printf("  Retros:             %d (%d with learnings)\n", m.TotalRetros, m.RetrosWithLearnings)
-		}
-		if m.PriorArtBypasses > 0 {
-			fmt.Printf("  Prior art bypasses: %d (review recommended)\n", m.PriorArtBypasses)
-		}
+func printMetricsLoopClosure(m *types.FlywheelMetrics) {
+	if m.LearningsCreated == 0 && m.LearningsFound == 0 && m.TotalRetros == 0 {
+		return
 	}
-
-	// MemRL utility metrics section
-	if m.MeanUtility > 0 || m.HighUtilityCount > 0 || m.LowUtilityCount > 0 {
-		fmt.Println()
-		fmt.Println("UTILITY (MemRL):")
-		fmt.Printf("  Mean utility:        %.3f\n", m.MeanUtility)
-		fmt.Printf("  Std deviation:       %.3f\n", m.UtilityStdDev)
-		fmt.Printf("  High utility (>0.7): %d\n", m.HighUtilityCount)
-		fmt.Printf("  Low utility (<0.3):  %d\n", m.LowUtilityCount)
-
-		// Health indicator
-		switch {
-		case m.MeanUtility >= 0.6:
-			fmt.Printf("  Status:              HEALTHY ✓ (learnings are effective)\n")
-		case m.MeanUtility >= 0.4:
-			fmt.Printf("  Status:              NEUTRAL (need more feedback data)\n")
-		default:
-			fmt.Printf("  Status:              REVIEW ✗ (learnings may need updating)\n")
-		}
+	loopStatus := "OPEN"
+	if m.LoopClosureRatio >= 1.0 {
+		loopStatus = "CLOSED ✓"
+	} else if m.LoopClosureRatio > 0 {
+		loopStatus = "PARTIAL"
 	}
+	fmt.Println()
+	fmt.Println("LOOP CLOSURE (R1):")
+	fmt.Printf("  Learnings created:  %d\n", m.LearningsCreated)
+	fmt.Printf("  Learnings found:    %d\n", m.LearningsFound)
+	fmt.Printf("  Closure ratio:      %.2f (%s)\n", m.LoopClosureRatio, loopStatus)
+	if m.TotalRetros > 0 {
+		fmt.Printf("  Retros:             %d (%d with learnings)\n", m.TotalRetros, m.RetrosWithLearnings)
+	}
+	if m.PriorArtBypasses > 0 {
+		fmt.Printf("  Prior art bypasses: %d (review recommended)\n", m.PriorArtBypasses)
+	}
+}
+
+func printMetricsUtility(m *types.FlywheelMetrics) {
+	if m.MeanUtility == 0 && m.HighUtilityCount == 0 && m.LowUtilityCount == 0 {
+		return
+	}
+	fmt.Println()
+	fmt.Println("UTILITY (MemRL):")
+	fmt.Printf("  Mean utility:        %.3f\n", m.MeanUtility)
+	fmt.Printf("  Std deviation:       %.3f\n", m.UtilityStdDev)
+	fmt.Printf("  High utility (>0.7): %d\n", m.HighUtilityCount)
+	fmt.Printf("  Low utility (<0.3):  %d\n", m.LowUtilityCount)
+	switch {
+	case m.MeanUtility >= 0.6:
+		fmt.Printf("  Status:              HEALTHY ✓ (learnings are effective)\n")
+	case m.MeanUtility >= 0.4:
+		fmt.Printf("  Status:              NEUTRAL (need more feedback data)\n")
+	default:
+		fmt.Printf("  Status:              REVIEW ✗ (learnings may need updating)\n")
+	}
+}
+
+// printMetricsTable prints a formatted metrics table.
+func printMetricsTable(m *types.FlywheelMetrics) {
+	fmt.Println()
+	fmt.Println("Knowledge Flywheel Metrics")
+	fmt.Println("==========================")
+	fmt.Printf("Period: %s to %s\n\n",
+		m.PeriodStart.Format("2006-01-02"),
+		m.PeriodEnd.Format("2006-01-02"))
+	printMetricsParameters(m)
+	printMetricsDerived(m)
+	printMetricsCounts(m)
+	fmt.Printf("STATUS: %s\n", m.EscapeVelocityStatus())
+	printMetricsLoopClosure(m)
+	printMetricsUtility(m)
 }
 
 // countNewArtifactsInDir counts artifacts created after a time in a specific directory.
@@ -580,58 +595,45 @@ type utilityStats struct {
 	lowCount  int // utility < 0.3
 }
 
-// computeUtilityMetrics calculates MemRL utility statistics from learnings.
-func computeUtilityMetrics(baseDir string) utilityStats {
-	var stats utilityStats
-	var utilities []float64
-
-	artifactDirs := []string{
-		filepath.Join(baseDir, ".agents", "learnings"),
-		filepath.Join(baseDir, ".agents", "patterns"),
+// collectUtilityValuesFromDir walks a directory and collects utility values from files.
+func collectUtilityValuesFromDir(dir string) []float64 {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return nil
 	}
-
-	for _, dir := range artifactDirs {
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			continue
-		}
-
-		if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
-				return nil
-			}
-			if !strings.HasSuffix(path, ".jsonl") && !strings.HasSuffix(path, ".md") {
-				return nil
-			}
-
-			utility := parseUtilityFromFile(path)
-			if utility > 0 {
-				utilities = append(utilities, utility)
-			}
+	var values []float64
+	if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
 			return nil
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to walk %s: %v\n", dir, err)
 		}
+		if !strings.HasSuffix(path, ".jsonl") && !strings.HasSuffix(path, ".md") {
+			return nil
+		}
+		if u := parseUtilityFromFile(path); u > 0 {
+			values = append(values, u)
+		}
+		return nil
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to walk %s: %v\n", dir, err)
 	}
+	return values
+}
 
+// computeUtilityStats calculates statistics from a slice of utility values.
+func computeUtilityStats(utilities []float64) utilityStats {
+	var stats utilityStats
 	if len(utilities) == 0 {
 		return stats
 	}
-
-	// Calculate mean
 	var sum float64
 	for _, u := range utilities {
 		sum += u
 	}
 	stats.mean = sum / float64(len(utilities))
-
-	// Calculate standard deviation
 	var variance float64
 	for _, u := range utilities {
 		variance += (u - stats.mean) * (u - stats.mean)
 	}
 	stats.stdDev = math.Sqrt(variance / float64(len(utilities)))
-
-	// Count high/low utility
 	for _, u := range utilities {
 		if u > 0.7 {
 			stats.highCount++
@@ -640,8 +642,19 @@ func computeUtilityMetrics(baseDir string) utilityStats {
 			stats.lowCount++
 		}
 	}
-
 	return stats
+}
+
+// computeUtilityMetrics calculates MemRL utility statistics from learnings.
+func computeUtilityMetrics(baseDir string) utilityStats {
+	var utilities []float64
+	for _, dir := range []string{
+		filepath.Join(baseDir, ".agents", "learnings"),
+		filepath.Join(baseDir, ".agents", "patterns"),
+	} {
+		utilities = append(utilities, collectUtilityValuesFromDir(dir)...)
+	}
+	return computeUtilityStats(utilities)
 }
 
 // parseUtilityFromFile extracts utility value from JSONL or markdown front matter.

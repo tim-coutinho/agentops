@@ -82,6 +82,7 @@ type phasedState struct {
 	FastPath        bool                `json:"fast_path"`
 	TestFirst       bool                `json:"test_first"`
 	SwarmFirst      bool                `json:"swarm_first"`
+	Complexity      ComplexityLevel     `json:"complexity,omitempty"` // fast, standard, full
 	Verdicts        map[string]string   `json:"verdicts"`
 	Attempts        map[string]int      `json:"attempts"`
 	StartedAt       string              `json:"started_at"`

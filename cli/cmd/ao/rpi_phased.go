@@ -193,6 +193,19 @@ func runRPIPhasedWithOpts(opts phasedEngineOptions, args []string) (retErr error
 	}
 	state := newPhasedState(opts, startPhase, goal)
 
+	// Classify goal complexity and apply fast-path ceremony reduction.
+	// This runs at RPI start so all downstream phase logic can reference state.Complexity.
+	complexity := classifyComplexity(goal)
+	state.Complexity = complexity
+	// Map complexity to a mode label for user-visible logging.
+	mode := "rpi-phased"
+	fmt.Printf("RPI mode: %s (complexity: %s)\n", mode, complexity)
+	// For fast complexity, activate the fast path (skips council validation).
+	if complexity == ComplexityFast && !opts.FastPath {
+		state.FastPath = true
+		fmt.Println("Complexity: fast — skipping validation phase (phase 3)")
+	}
+
 	spawnCwd, err := resumePhasedStateIfNeeded(cwd, opts, startPhase, goal, state)
 	if err != nil {
 		return err
@@ -219,7 +232,7 @@ func runRPIPhasedWithOpts(opts phasedEngineOptions, args []string) (retErr error
 	}
 	logPath = runLogPath
 
-	logPhaseTransition(logPath, state.RunID, "start", fmt.Sprintf("goal=%q from=%s", state.Goal, opts.From))
+	logPhaseTransition(logPath, state.RunID, "start", fmt.Sprintf("goal=%q from=%s complexity=%s fast_path=%v", state.Goal, opts.From, state.Complexity, state.FastPath))
 
 	// Resolve executor backend once for the entire run.
 	// selectExecutorWithLog records the selection and reason to the orchestration log.

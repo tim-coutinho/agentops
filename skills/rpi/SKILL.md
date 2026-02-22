@@ -202,6 +202,48 @@ Read `references/report-template.md` for the final output format and next-work h
 
 Read `references/error-handling.md` for failure semantics and retries.
 
+## Complexity-Aware Ceremony
+
+RPI automatically classifies each goal's complexity at startup and adjusts the ceremony accordingly. This prevents trivial tasks from paying the full validation overhead of a refactor.
+
+### Classification Levels
+
+| Level | Criteria | Behavior |
+|-------|----------|----------|
+| `fast` | Goal ≤30 chars, no complex/scope keywords | Skips Phase 3 (validation). Runs discovery → implementation only. |
+| `standard` | Goal 31–120 chars, or 1 scope keyword | Full 3-phase lifecycle. Gates use `--quick` shortcuts. |
+| `full` | Complex-operation keyword (refactor, migrate, rewrite, …), 2+ scope keywords, or >120 chars | Full 3-phase lifecycle. Gates use full council (no shortcuts). |
+
+### Keyword Signals
+
+**Complex-operation keywords** (trigger `full`): `refactor`, `migrate`, `migration`, `rewrite`, `redesign`, `rearchitect`, `overhaul`, `restructure`, `reorganize`, `decouple`, `deprecate`, `split`, `extract module`, `port`
+
+**Scope keywords** (1 → `standard`; 2+ → `full`): `all`, `entire`, `across`, `everywhere`, `every file`, `every module`, `system-wide`, `global`, `throughout`, `codebase`
+
+All keywords are matched as **whole words** to prevent false positives (e.g. "support" does not match "port").
+
+### Logged Output
+
+At RPI start you will see:
+
+```
+RPI mode: rpi-phased (complexity: fast)
+Complexity: fast — skipping validation phase (phase 3)
+```
+
+or for standard/full:
+
+```
+RPI mode: rpi-phased (complexity: standard)
+```
+
+The complexity level is persisted in `.agents/rpi/phased-state.json` as the `complexity` field.
+
+### Override
+
+- `--fast-path`: force fast-path regardless of classification (useful for quick patches).
+- `--deep`: force full-ceremony regardless of classification (useful for sensitive changes).
+
 ## Flags
 
 | Flag | Default | Description |

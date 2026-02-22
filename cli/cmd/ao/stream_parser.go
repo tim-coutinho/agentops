@@ -26,6 +26,42 @@ type PhaseProgress struct {
 	LastUpdate    time.Time
 }
 
+// applyEventToProgress updates PhaseProgress based on the event type.
+func applyEventToProgress(p *PhaseProgress, ev StreamEvent) {
+	switch ev.Type {
+	case EventTypeInit:
+		p.SessionID = ev.SessionID
+		p.Model = ev.Model
+		p.CurrentAction = "initialized"
+	case EventTypeAssistant:
+		if ev.ToolName != "" {
+			p.ToolCount++
+			p.LastToolCall = ev.ToolName
+			p.CurrentAction = "tool: " + ev.ToolName
+			break
+		}
+		if ev.Message != "" {
+			p.CurrentAction = summarizeStatusAction(ev.Message)
+		}
+	case EventTypeResult:
+		p.CostUSD = ev.CostUSD
+		p.TurnCount = ev.NumTurns
+		if ev.DurationMS > 0 {
+			p.Elapsed = time.Duration(ev.DurationMS * float64(time.Millisecond))
+		}
+		if ev.IsError {
+			p.CurrentAction = "result error"
+			if ev.Message != "" {
+				p.LastError = summarizeStatusAction(ev.Message)
+			} else {
+				p.LastError = "result event reported error"
+			}
+		} else {
+			p.CurrentAction = "result received"
+		}
+	}
+}
+
 // ParseStreamEvents reads newline-delimited JSON events from r, updating
 // a PhaseProgress as it goes.  If onUpdate is non-nil it is called after
 // every successfully parsed event.  The final PhaseProgress is returned
@@ -38,66 +74,15 @@ func ParseStreamEvents(r io.Reader, onUpdate func(PhaseProgress)) (PhaseProgress
 
 	for {
 		line, readErr := reader.readLine()
-		if len(line) == 0 {
-			if errors.Is(readErr, io.EOF) {
-				break
-			}
-			if readErr != nil {
-				return p, readErr
-			}
-			continue
-		}
-
-		ev, err := ParseStreamEvent(line)
-		if err != nil {
-			// Skip malformed lines.
-			if errors.Is(readErr, io.EOF) {
-				break
-			}
-			if readErr != nil {
-				return p, readErr
-			}
-			continue
-		}
-
-		switch ev.Type {
-		case EventTypeInit:
-			p.SessionID = ev.SessionID
-			p.Model = ev.Model
-			p.CurrentAction = "initialized"
-
-		case EventTypeAssistant:
-			if ev.ToolName != "" {
-				p.ToolCount++
-				p.LastToolCall = ev.ToolName
-				p.CurrentAction = "tool: " + ev.ToolName
-			} else if ev.Message != "" {
-				p.CurrentAction = summarizeStatusAction(ev.Message)
-			}
-
-		case EventTypeResult:
-			p.CostUSD = ev.CostUSD
-			p.TurnCount = ev.NumTurns
-			if ev.DurationMS > 0 {
-				p.Elapsed = time.Duration(ev.DurationMS * float64(time.Millisecond))
-			}
-			if ev.IsError {
-				p.CurrentAction = "result error"
-				if ev.Message != "" {
-					p.LastError = summarizeStatusAction(ev.Message)
-				} else {
-					p.LastError = "result event reported error"
+		if len(line) > 0 {
+			if ev, err := ParseStreamEvent(line); err == nil {
+				applyEventToProgress(&p, ev)
+				p.LastUpdate = time.Now()
+				if onUpdate != nil {
+					onUpdate(p)
 				}
-			} else {
-				p.CurrentAction = "result received"
 			}
 		}
-		p.LastUpdate = time.Now()
-
-		if onUpdate != nil {
-			onUpdate(p)
-		}
-
 		if errors.Is(readErr, io.EOF) {
 			break
 		}

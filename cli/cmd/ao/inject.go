@@ -255,58 +255,70 @@ func findAgentsSubdir(startDir, subdir string) string {
 	return ""
 }
 
+func writeLearningsSection(sb *strings.Builder, learnings []learning) {
+	if len(learnings) == 0 {
+		return
+	}
+	sb.WriteString("### Recent Learnings\n")
+	for _, l := range learnings {
+		text := l.Title
+		if l.Summary != "" {
+			text = l.Summary
+		}
+		sb.WriteString(fmt.Sprintf("- **%s**: %s\n", l.ID, text))
+	}
+	sb.WriteString("\n")
+}
+
+func writePatternsSection(sb *strings.Builder, patterns []pattern) {
+	if len(patterns) == 0 {
+		return
+	}
+	sb.WriteString("### Active Patterns\n")
+	for _, p := range patterns {
+		if p.Description != "" {
+			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", p.Name, p.Description))
+		} else {
+			sb.WriteString(fmt.Sprintf("- **%s**\n", p.Name))
+		}
+	}
+	sb.WriteString("\n")
+}
+
+func writeSessionsSection(sb *strings.Builder, sessions []session) {
+	if len(sessions) == 0 {
+		return
+	}
+	sb.WriteString("### Recent Sessions\n")
+	for _, s := range sessions {
+		sb.WriteString(fmt.Sprintf("- [%s] %s\n", s.Date, s.Summary))
+	}
+	sb.WriteString("\n")
+}
+
+func writeConstraintsSection(sb *strings.Builder, constraints []olConstraint) {
+	if len(constraints) == 0 {
+		return
+	}
+	sb.WriteString("### Olympus Constraints\n")
+	for _, c := range constraints {
+		sb.WriteString(fmt.Sprintf("- **[olympus constraint]** %s: %s\n", c.Pattern, c.Detection))
+	}
+	sb.WriteString("\n")
+}
+
 // formatKnowledgeMarkdown formats knowledge as markdown
 func formatKnowledgeMarkdown(k *injectedKnowledge) string {
 	var sb strings.Builder
-
 	sb.WriteString("## Injected Knowledge (ol inject)\n\n")
-
-	if len(k.Learnings) > 0 {
-		sb.WriteString("### Recent Learnings\n")
-		for _, l := range k.Learnings {
-			if l.Summary != "" {
-				sb.WriteString(fmt.Sprintf("- **%s**: %s\n", l.ID, l.Summary))
-			} else {
-				sb.WriteString(fmt.Sprintf("- **%s**: %s\n", l.ID, l.Title))
-			}
-		}
-		sb.WriteString("\n")
-	}
-
-	if len(k.Patterns) > 0 {
-		sb.WriteString("### Active Patterns\n")
-		for _, p := range k.Patterns {
-			if p.Description != "" {
-				sb.WriteString(fmt.Sprintf("- **%s**: %s\n", p.Name, p.Description))
-			} else {
-				sb.WriteString(fmt.Sprintf("- **%s**\n", p.Name))
-			}
-		}
-		sb.WriteString("\n")
-	}
-
-	if len(k.Sessions) > 0 {
-		sb.WriteString("### Recent Sessions\n")
-		for _, s := range k.Sessions {
-			sb.WriteString(fmt.Sprintf("- [%s] %s\n", s.Date, s.Summary))
-		}
-		sb.WriteString("\n")
-	}
-
-	if len(k.OLConstraints) > 0 {
-		sb.WriteString("### Olympus Constraints\n")
-		for _, c := range k.OLConstraints {
-			sb.WriteString(fmt.Sprintf("- **[olympus constraint]** %s: %s\n", c.Pattern, c.Detection))
-		}
-		sb.WriteString("\n")
-	}
-
+	writeLearningsSection(&sb, k.Learnings)
+	writePatternsSection(&sb, k.Patterns)
+	writeSessionsSection(&sb, k.Sessions)
+	writeConstraintsSection(&sb, k.OLConstraints)
 	if len(k.Learnings) == 0 && len(k.Patterns) == 0 && len(k.Sessions) == 0 && len(k.OLConstraints) == 0 {
 		sb.WriteString("*No prior knowledge found.*\n\n")
 	}
-
 	sb.WriteString(fmt.Sprintf("*Last injection: %s*\n", k.Timestamp.Format(time.RFC3339)))
-
 	return sb.String()
 }
 

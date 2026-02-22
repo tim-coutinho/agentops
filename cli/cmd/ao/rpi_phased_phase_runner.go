@@ -28,9 +28,17 @@ func handlePostPhaseGate(spawnCwd string, state *phasedState, p phase, logPath, 
 }
 
 // runPhaseLoop executes phases sequentially and applies standard fatal logging on failures.
+// For fast-complexity runs, the validation phase (phase 3) is skipped to reduce ceremony.
 func runPhaseLoop(cwd, spawnCwd string, state *phasedState, startPhase int, opts phasedEngineOptions, statusPath string, allPhases []PhaseProgress, logPath string, executor PhaseExecutor) error {
 	for i := startPhase; i <= len(phases); i++ {
 		p := phases[i-1]
+		// Fast-path: skip validation (phase 3) for trivial goals.
+		// The fast path is set either by --fast-path flag or by complexity classification.
+		if p.Num == 3 && state.FastPath && state.Complexity == ComplexityFast {
+			fmt.Printf("\n--- Phase 3: validation (skipped — complexity: fast) ---\n")
+			logPhaseTransition(logPath, state.RunID, "validation", "skipped — complexity: fast")
+			continue
+		}
 		if err := runSinglePhase(cwd, spawnCwd, state, startPhase, p, opts, statusPath, allPhases, logPath, executor); err != nil {
 			return logAndFailPhase(state, p.Name, logPath, spawnCwd, err)
 		}
