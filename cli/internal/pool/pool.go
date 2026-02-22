@@ -385,56 +385,25 @@ func (p *Pool) Promote(candidateID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
-	// Prevent promoting rejected candidates
-	if entry.Status == types.PoolStatusRejected {
-		return "", fmt.Errorf("cannot promote rejected candidate")
-	}
-	if entry.Status != types.PoolStatusStaged {
-		return "", fmt.Errorf("candidate must be staged before promotion (current: %s)", entry.Status)
+	if err := validatePromotable(entry); err != nil {
+		return "", err
 	}
 
-	// Determine destination based on type
-	var destDir string
-	switch entry.Candidate.Type {
-	case types.KnowledgeTypeLearning, types.KnowledgeTypeSolution:
-		destDir = filepath.Join(p.BaseDir, ".agents", "learnings")
-	case types.KnowledgeTypeDecision:
-		destDir = filepath.Join(p.BaseDir, ".agents", "patterns")
-	default:
-		destDir = filepath.Join(p.BaseDir, ".agents", "learnings")
-	}
-
+	destDir := promotionDir(p.BaseDir, entry.Candidate.Type)
 	if err := os.MkdirAll(destDir, 0700); err != nil {
 		return "", fmt.Errorf("create destination: %w", err)
 	}
 
-	// Generate artifact filename using full candidate ID to avoid collisions.
-	// Previous truncation to 8 chars caused all candidates with shared prefixes
-	// (e.g., "pend-202...") to overwrite each other — data loss bug.
-	timestamp := time.Now().Format("2006-01-02")
-	artifactName := fmt.Sprintf("%s-%s.md", timestamp, candidateID)
-	artifactPath := filepath.Join(destDir, artifactName)
+	artifactPath := resolveArtifactPath(destDir, candidateID)
 
-	// Guard against unlikely collisions (same ID promoted twice in one day).
-	if _, err := os.Stat(artifactPath); err == nil {
-		h := sha256.Sum256([]byte(candidateID + time.Now().String()))
-		suffix := hex.EncodeToString(h[:4])
-		artifactName = fmt.Sprintf("%s-%s-%s.md", timestamp, candidateID, suffix)
-		artifactPath = filepath.Join(destDir, artifactName)
-	}
-
-	// Write artifact as markdown
 	if err := p.writeArtifact(artifactPath, entry); err != nil {
 		return "", fmt.Errorf("write artifact: %w", err)
 	}
 
-	// Remove from pool
 	if err := os.Remove(entry.FilePath); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to remove pool entry: %v\n", err)
 	}
 
-	// Record chain event
 	if err := p.recordEvent(ChainEvent{
 		Timestamp:    time.Now(),
 		Operation:    "promote",
@@ -447,6 +416,42 @@ func (p *Pool) Promote(candidateID string) (string, error) {
 	}
 
 	return artifactPath, nil
+}
+
+// validatePromotable checks that a pool entry is eligible for promotion.
+func validatePromotable(entry *PoolEntry) error {
+	if entry.Status == types.PoolStatusRejected {
+		return fmt.Errorf("cannot promote rejected candidate")
+	}
+	if entry.Status != types.PoolStatusStaged {
+		return fmt.Errorf("candidate must be staged before promotion (current: %s)", entry.Status)
+	}
+	return nil
+}
+
+// promotionDir returns the destination directory for a given knowledge type.
+func promotionDir(baseDir string, knowledgeType types.KnowledgeType) string {
+	switch knowledgeType {
+	case types.KnowledgeTypeDecision:
+		return filepath.Join(baseDir, ".agents", "patterns")
+	default:
+		return filepath.Join(baseDir, ".agents", "learnings")
+	}
+}
+
+// resolveArtifactPath generates a unique artifact file path, adding a hash suffix on collision.
+func resolveArtifactPath(destDir, candidateID string) string {
+	timestamp := time.Now().Format("2006-01-02")
+	artifactName := fmt.Sprintf("%s-%s.md", timestamp, candidateID)
+	artifactPath := filepath.Join(destDir, artifactName)
+
+	if _, err := os.Stat(artifactPath); err == nil {
+		h := sha256.Sum256([]byte(candidateID + time.Now().String()))
+		suffix := hex.EncodeToString(h[:4])
+		artifactName = fmt.Sprintf("%s-%s-%s.md", timestamp, candidateID, suffix)
+		artifactPath = filepath.Join(destDir, artifactName)
+	}
+	return artifactPath
 }
 
 // Reject marks a candidate as rejected.

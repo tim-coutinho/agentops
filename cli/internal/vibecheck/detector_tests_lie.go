@@ -99,39 +99,36 @@ func DetectTestsLie(events []TimelineEvent) []Finding {
 	sortOldestFirst(sorted)
 
 	var findings []Finding
-
 	for i, ev := range sorted {
-		msg := ev.Message
-		if !claimsSuccess(msg) || isTentative(msg) {
+		if !claimsSuccess(ev.Message) || isTentative(ev.Message) {
 			continue
 		}
-
-		// Look at following commits within the window.
-		for j := i + 1; j < len(sorted); j++ {
-			next := sorted[j]
-			gap := next.Timestamp.Sub(ev.Timestamp)
-			if gap > followUpWindow {
-				break
-			}
-
-			if !isFixMessage(next.Message) {
-				continue
-			}
-
-			// Check file overlap or both have no file info (fallback).
-			overlap := hasFileOverlap(ev.Files, next.Files)
-			bothEmpty := len(ev.Files) == 0 && len(next.Files) == 0
-
-			if overlap || bothEmpty {
-				findings = append(findings, Finding{
-					Severity: "critical",
-					Category: "tests-passing-lie",
-					Message:  "Claimed success (" + ev.Message + ") but fix followed within " + gap.String() + ": " + next.Message,
-				})
-				break // One finding per claim commit.
-			}
+		if f, ok := findContradictingFix(ev, sorted[i+1:]); ok {
+			findings = append(findings, f)
 		}
 	}
-
 	return findings
+}
+
+// findContradictingFix scans subsequent events for a fix that contradicts the claimed success.
+func findContradictingFix(claim TimelineEvent, following []TimelineEvent) (Finding, bool) {
+	for _, next := range following {
+		gap := next.Timestamp.Sub(claim.Timestamp)
+		if gap > followUpWindow {
+			break
+		}
+		if !isFixMessage(next.Message) {
+			continue
+		}
+		overlap := hasFileOverlap(claim.Files, next.Files)
+		bothEmpty := len(claim.Files) == 0 && len(next.Files) == 0
+		if overlap || bothEmpty {
+			return Finding{
+				Severity: "critical",
+				Category: "tests-passing-lie",
+				Message:  "Claimed success (" + claim.Message + ") but fix followed within " + gap.String() + ": " + next.Message,
+			}, true
+		}
+	}
+	return Finding{}, false
 }
