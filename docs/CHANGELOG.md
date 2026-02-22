@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.15.1] - 2026-02-22
+
+### Changed
+
+- **Hook consolidation** — Reduced session startup/shutdown from 14 Go process startups to 4. Removed 4 redundant SessionStart hooks (already called inside session-start.sh), merged 4 SessionEnd thin wrappers into session-end-maintenance.sh, moved maturity scan to session end.
+
 ## [2.15.0] - 2026-02-22
 
 ### Added
