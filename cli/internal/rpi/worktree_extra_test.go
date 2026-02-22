@@ -923,3 +923,164 @@ func TestGetCurrentBranch_Timeout(t *testing.T) {
 	}
 	// Timeout or other error -- both acceptable
 }
+
+func TestEnsureAttachedBranch_BranchCreateFailsInvalidRef(t *testing.T) {
+	// Test the path where git branch -f fails with a non-worktree error message.
+	// Using an invalid git ref name (containing ".." or ending with ".lock") will
+	// cause "git branch -f <name> HEAD" to fail.
+	repo := initGitRepo(t)
+
+	// Detach HEAD
+	sha := strings.TrimSpace(runGitOutput(t, repo, "rev-parse", "HEAD"))
+	runGit(t, repo, "checkout", sha)
+
+	// Use a prefix that produces an invalid branch name (containing "..")
+	_, _, err := EnsureAttachedBranch(repo, 30*time.Second, "invalid..ref")
+	// "git branch -f invalid..ref-recovery HEAD" should fail with an error
+	// message about invalid ref, which is not a worktree conflict.
+	if err == nil {
+		t.Fatal("expected error for invalid branch ref name")
+	}
+	if !strings.Contains(err.Error(), "detached HEAD self-heal failed") {
+		t.Errorf("expected 'detached HEAD self-heal failed' error, got: %v", err)
+	}
+}
+
+func TestEnsureAttachedBranch_SwitchFailsCorruptedBranch(t *testing.T) {
+	// Test the path where git branch -f succeeds but git switch fails
+	// with a non-worktree error. We do this by creating the branch ref,
+	// then corrupting it before the switch can happen.
+	// Since EnsureAttachedBranch calls both in sequence, we instead
+	// create a situation where switch fails for another reason:
+	// lock file exists for the branch ref.
+	repo := initGitRepo(t)
+
+	// Detach HEAD
+	sha := strings.TrimSpace(runGitOutput(t, repo, "rev-parse", "HEAD"))
+	runGit(t, repo, "checkout", sha)
+
+	// Create a lock file on the recovery branch ref to make switch fail.
+	// git branch -f will succeed (or bypass the lock), but git switch
+	// will fail with "cannot lock ref".
+	recoveryRef := filepath.Join(repo, ".git", "refs", "heads", "lock-test-recovery")
+	if err := os.MkdirAll(filepath.Dir(recoveryRef), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Write a valid ref for the branch so "git branch -f" effectively succeeds
+	lockFile := recoveryRef + ".lock"
+	if err := os.WriteFile(lockFile, []byte(sha+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(lockFile) })
+
+	_, _, err := EnsureAttachedBranch(repo, 30*time.Second, "lock-test")
+	// The branch creation may or may not fail depending on how git handles locks.
+	// Either way, we exercise more of the error-handling paths.
+	if err == nil {
+		// If it succeeded despite the lock, that's ok -- git may not check locks on branch -f
+		t.Log("EnsureAttachedBranch succeeded despite lock file (git version dependent)")
+		return
+	}
+	if !strings.Contains(err.Error(), "detached HEAD self-heal failed") {
+		t.Errorf("expected 'self-heal failed' error, got: %v", err)
+	}
+}
+
+func TestCreateWorktree_AgentsDirWarning(t *testing.T) {
+	// Exercise the MkdirAll warning path in CreateWorktree.
+	// After the worktree is created successfully, .agents/rpi creation should
+	// be attempted. We make it fail by pre-creating a file at .agents so
+	// MkdirAll fails.
+	repo := initGitRepo(t)
+
+	// Pre-create a file called ".agents" in the repo so that when the worktree
+	// is created (as a copy of HEAD), it inherits this file, making MkdirAll fail.
+	agentsFile := filepath.Join(repo, ".agents")
+	if err := os.WriteFile(agentsFile, []byte("block\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", ".agents")
+	runGit(t, repo, "commit", "-m", "add .agents file to block directory creation")
+
+	var warnings []string
+	verbosef := func(f string, a ...interface{}) {
+		warnings = append(warnings, fmt.Sprintf(f, a...))
+	}
+
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, verbosef)
+	if err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+	defer func() {
+		_ = RemoveWorktree(repo, worktreePath, runID, 30*time.Second)
+	}()
+
+	// Should have logged a warning about .agents/rpi creation failure
+	foundWarning := false
+	for _, w := range warnings {
+		if strings.Contains(w, "Warning") && strings.Contains(w, ".agents/rpi") {
+			foundWarning = true
+			break
+		}
+	}
+	if !foundWarning {
+		t.Errorf("expected warning about .agents/rpi creation failure, got: %v", warnings)
+	}
+}
+
+func TestEnsureAttachedBranch_SwitchFailsIndexLocked(t *testing.T) {
+	// Exercise the path where git branch -f succeeds but git switch fails
+	// with a non-worktree error. We lock the index so switch cannot update it.
+	repo := initGitRepo(t)
+
+	// Detach HEAD
+	sha := strings.TrimSpace(runGitOutput(t, repo, "rev-parse", "HEAD"))
+	runGit(t, repo, "checkout", sha)
+
+	// Create index.lock to block git switch
+	indexLock := filepath.Join(repo, ".git", "index.lock")
+	if err := os.WriteFile(indexLock, []byte("locked\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(indexLock) })
+
+	_, _, err := EnsureAttachedBranch(repo, 30*time.Second, "indexlock-test")
+	if err == nil {
+		t.Fatal("expected error when index is locked")
+	}
+	if !strings.Contains(err.Error(), "detached HEAD self-heal failed") {
+		t.Errorf("expected 'detached HEAD self-heal failed' error, got: %v", err)
+	}
+}
+
+func TestRemoveWorktree_EvalSymlinksAndAbsFail(t *testing.T) {
+	// Exercise the path where EvalSymlinks fails AND filepath.Abs fails.
+	// filepath.Abs only fails if os.Getwd() fails, which is nearly impossible.
+	// But we can at least test with a path that makes EvalSymlinks fail,
+	// exercising the Abs fallback path.
+	repo := initGitRepo(t)
+
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, nil)
+	if err != nil {
+		t.Fatalf("CreateWorktree: %v", err)
+	}
+
+	// Use a path with a nonexistent symlink component -- EvalSymlinks will fail
+	// but filepath.Abs should succeed and then path validation will fail.
+	brokenPath := filepath.Join(t.TempDir(), "broken-link")
+	if err := os.Symlink("/nonexistent/target", brokenPath); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	err = RemoveWorktree(repo, brokenPath, runID, 30*time.Second)
+	if err == nil {
+		t.Fatal("expected error for broken symlink path")
+	}
+	// Should fall back to filepath.Abs and then fail path validation
+	if !strings.Contains(err.Error(), "refusing to remove") && !strings.Contains(err.Error(), "path validation failed") {
+		t.Errorf("expected path validation error, got: %v", err)
+	}
+
+	// Clean up the actual worktree
+	_ = RemoveWorktree(repo, worktreePath, runID, 30*time.Second)
+}
