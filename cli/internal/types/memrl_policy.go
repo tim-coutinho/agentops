@@ -423,44 +423,60 @@ func ValidateMemRLPolicyContract(contract MemRLPolicyContract) error {
 		return fmt.Errorf("rules must not be empty")
 	}
 	for _, rule := range contract.Rules {
-		if rule.RuleID == "" {
-			return fmt.Errorf("rule_id must not be empty")
-		}
-		if !isValidMemRLMode(rule.Mode) {
-			return fmt.Errorf("rule %s has invalid mode %q", rule.RuleID, rule.Mode)
-		}
-		if !isValidMemRLAction(rule.Action) {
-			return fmt.Errorf("rule %s has invalid action %q", rule.RuleID, rule.Action)
-		}
-		if !isValidAttemptBucket(rule.AttemptBucket) {
-			return fmt.Errorf("rule %s has invalid attempt_bucket %q", rule.RuleID, rule.AttemptBucket)
-		}
-		if rule.FailureClass != MemRLFailureClassAny && !IsKnownMemRLFailureClass(rule.FailureClass) {
-			return fmt.Errorf("rule %s has unknown failure_class %q", rule.RuleID, rule.FailureClass)
+		if err := validatePolicyRule(rule); err != nil {
+			return err
 		}
 	}
 	if len(contract.RollbackMatrix) == 0 {
 		return fmt.Errorf("rollback_matrix must not be empty")
 	}
 	for _, trigger := range contract.RollbackMatrix {
-		switch {
-		case trigger.TriggerID == "":
-			return fmt.Errorf("rollback trigger id must not be empty")
-		case trigger.Metric == "":
-			return fmt.Errorf("rollback trigger %s missing metric", trigger.TriggerID)
-		case trigger.MetricSourceCommand == "":
-			return fmt.Errorf("rollback trigger %s missing metric_source_command", trigger.TriggerID)
-		case trigger.LookbackWindow == "":
-			return fmt.Errorf("rollback trigger %s missing lookback_window", trigger.TriggerID)
-		case trigger.MinSampleSize <= 0:
-			return fmt.Errorf("rollback trigger %s min_sample_size must be > 0", trigger.TriggerID)
-		case trigger.Threshold == "":
-			return fmt.Errorf("rollback trigger %s missing threshold", trigger.TriggerID)
-		case trigger.OperatorAction == "":
-			return fmt.Errorf("rollback trigger %s missing operator_action", trigger.TriggerID)
-		case trigger.VerificationCommand == "":
-			return fmt.Errorf("rollback trigger %s missing verification_command", trigger.TriggerID)
+		if err := validateRollbackTrigger(trigger); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// validatePolicyRule validates a single policy rule.
+func validatePolicyRule(rule MemRLPolicyRule) error {
+	if rule.RuleID == "" {
+		return fmt.Errorf("rule_id must not be empty")
+	}
+	if !isValidMemRLMode(rule.Mode) {
+		return fmt.Errorf("rule %s has invalid mode %q", rule.RuleID, rule.Mode)
+	}
+	if !isValidMemRLAction(rule.Action) {
+		return fmt.Errorf("rule %s has invalid action %q", rule.RuleID, rule.Action)
+	}
+	if !isValidAttemptBucket(rule.AttemptBucket) {
+		return fmt.Errorf("rule %s has invalid attempt_bucket %q", rule.RuleID, rule.AttemptBucket)
+	}
+	if rule.FailureClass != MemRLFailureClassAny && !IsKnownMemRLFailureClass(rule.FailureClass) {
+		return fmt.Errorf("rule %s has unknown failure_class %q", rule.RuleID, rule.FailureClass)
+	}
+	return nil
+}
+
+// validateRollbackTrigger validates a single rollback trigger.
+func validateRollbackTrigger(trigger MemRLRollbackTrigger) error {
+	switch {
+	case trigger.TriggerID == "":
+		return fmt.Errorf("rollback trigger id must not be empty")
+	case trigger.Metric == "":
+		return fmt.Errorf("rollback trigger %s missing metric", trigger.TriggerID)
+	case trigger.MetricSourceCommand == "":
+		return fmt.Errorf("rollback trigger %s missing metric_source_command", trigger.TriggerID)
+	case trigger.LookbackWindow == "":
+		return fmt.Errorf("rollback trigger %s missing lookback_window", trigger.TriggerID)
+	case trigger.MinSampleSize <= 0:
+		return fmt.Errorf("rollback trigger %s min_sample_size must be > 0", trigger.TriggerID)
+	case trigger.Threshold == "":
+		return fmt.Errorf("rollback trigger %s missing threshold", trigger.TriggerID)
+	case trigger.OperatorAction == "":
+		return fmt.Errorf("rollback trigger %s missing operator_action", trigger.TriggerID)
+	case trigger.VerificationCommand == "":
+		return fmt.Errorf("rollback trigger %s missing verification_command", trigger.TriggerID)
 	}
 	return nil
 }
