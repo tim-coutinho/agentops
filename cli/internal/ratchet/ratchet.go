@@ -108,7 +108,7 @@ func (t Tier) String() string {
 	}
 }
 
-// TierLocation returns the canonical storage location for a tier.
+// Location returns the canonical storage location for a tier.
 func (t Tier) Location() string {
 	switch t {
 	case TierObservation:

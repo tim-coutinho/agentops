@@ -1,3 +1,5 @@
+// Package goals manages GOALS.yaml fitness specifications, including loading,
+// validation, drift detection, and historical measurement snapshots.
 package goals
 
 import (

@@ -1,3 +1,5 @@
+// Package rpi implements the Research-Plan-Implement workflow orchestrator,
+// including worktree management, toolchain execution, and branch lifecycle.
 package rpi
 
 import (
