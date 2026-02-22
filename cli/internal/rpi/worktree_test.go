@@ -1,6 +1,7 @@
 package rpi
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -192,4 +193,73 @@ func runGitIgnoreError(t *testing.T, cwd string, args ...string) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = cwd
 	_ = cmd.Run()
+}
+
+func TestClassifyWorktreeError_AlreadyExists(t *testing.T) {
+	output := []byte("fatal: '/path/foo' already exists")
+	retryable, err := classifyWorktreeError(output, nil, nil, 30*time.Second)
+	if !retryable {
+		t.Error("expected retryable for 'already exists' output")
+	}
+	if err != nil {
+		t.Errorf("expected nil error for retryable case, got: %v", err)
+	}
+}
+
+func TestClassifyWorktreeError_Timeout(t *testing.T) {
+	output := []byte("signal: killed")
+	retryable, err := classifyWorktreeError(output, context.DeadlineExceeded, nil, 30*time.Second)
+	if retryable {
+		t.Error("expected non-retryable for timeout")
+	}
+	if err == nil {
+		t.Fatal("expected error for timeout")
+	}
+	if !strings.Contains(err.Error(), "timed out") {
+		t.Errorf("expected 'timed out' in error, got: %v", err)
+	}
+}
+
+func TestClassifyWorktreeError_GenericFailure(t *testing.T) {
+	cmdErr := os.ErrPermission
+	output := []byte("fatal: unable to create")
+	retryable, err := classifyWorktreeError(output, nil, cmdErr, 30*time.Second)
+	if retryable {
+		t.Error("expected non-retryable for generic failure")
+	}
+	if err == nil {
+		t.Fatal("expected error for generic failure")
+	}
+	if !strings.Contains(err.Error(), "git worktree add failed") {
+		t.Errorf("expected 'git worktree add failed' in error, got: %v", err)
+	}
+}
+
+func TestInitWorktreeAgentsDir_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Should create the directory without error
+	initWorktreeAgentsDir(tmpDir, nil)
+
+	agentsDir := filepath.Join(tmpDir, ".agents", "rpi")
+	if _, err := os.Stat(agentsDir); os.IsNotExist(err) {
+		t.Error("expected .agents/rpi directory to be created")
+	}
+}
+
+func TestInitWorktreeAgentsDir_WarningLogged(t *testing.T) {
+	// Use a read-only path to trigger warning
+	var logged bool
+	verbosef := func(format string, args ...any) {
+		logged = true
+	}
+	// A path that cannot be created (nested under a file)
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "blocker")
+	if err := os.WriteFile(filePath, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	initWorktreeAgentsDir(filePath, verbosef)
+	if !logged {
+		t.Error("expected warning to be logged when MkdirAll fails")
+	}
 }
