@@ -1791,6 +1791,218 @@ func TestValidate_PreMortemStep_ReadError(t *testing.T) {
 	}
 }
 
+// --- countSessionRefs ---
+
+func TestCountSessionRefs(t *testing.T) {
+	v, tmpDir := helperNewValidator(t)
+
+	// Create the artifact file
+	artifact := filepath.Join(tmpDir, "target-artifact.md")
+	if err := os.WriteFile(artifact, []byte("Content of target."), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create .agents/ao/sessions/ with files that reference the artifact
+	sessionsDir := filepath.Join(tmpDir, ".agents", "ao", "sessions")
+	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Session file that references our artifact
+	sess1 := filepath.Join(sessionsDir, "sess1.jsonl")
+	if err := os.WriteFile(sess1, []byte("worked on target-artifact.md\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Session file that does NOT reference our artifact
+	sess2 := filepath.Join(sessionsDir, "sess2.jsonl")
+	if err := os.WriteFile(sess2, []byte("worked on other-file.md\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A markdown session file that references artifact
+	sess3 := filepath.Join(sessionsDir, "sess3.md")
+	if err := os.WriteFile(sess3, []byte("# Session 3\nUsed target-artifact.md for research.\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A .txt file that references artifact (should be skipped -- only .jsonl and .md)
+	sess4 := filepath.Join(sessionsDir, "sess4.txt")
+	if err := os.WriteFile(sess4, []byte("target-artifact.md\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	count := v.countSessionRefs(artifact)
+	if count != 2 {
+		t.Errorf("expected 2 session refs, got %d", count)
+	}
+}
+
+func TestCountSessionRefs_NoSessionsDirs(t *testing.T) {
+	v, _ := helperNewValidator(t)
+	// No .agents/ao/sessions/ exists at all
+	artifact := "/some/nonexistent/artifact.md"
+	count := v.countSessionRefs(artifact)
+	if count != 0 {
+		t.Errorf("expected 0 session refs when no sessions dirs, got %d", count)
+	}
+}
+
+// --- validatePlan via ValidateWithOptions with epic: prefix ---
+
+func TestValidatePlan_EpicPrefixReachesValidateEpicIssue(t *testing.T) {
+	v, _ := helperNewValidator(t)
+
+	// The validatePlan function detects the epic: prefix and delegates
+	// to validateEpicIssue. We test this directly since ValidateWithOptions
+	// does os.Stat first, and epic: paths fail os.Stat.
+	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	v.validatePlan("epic:ag-0001", result)
+	// Should pass and not have issues (it delegates to validateEpicIssue)
+	if !result.Valid {
+		t.Error("expected valid=true for well-formed epic ID via validatePlan")
+	}
+
+	// With empty epic ID
+	result2 := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	v.validatePlan("epic:", result2)
+	if result2.Valid {
+		t.Error("expected valid=false for empty epic ID via validatePlan")
+	}
+}
+
+// --- validatePlan read error (direct call) ---
+
+func TestValidatePlan_ReadErrorDirect(t *testing.T) {
+	v, _ := helperNewValidator(t)
+	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	v.validatePlan("/nonexistent/plan.md", result)
+	if result.Valid {
+		t.Error("expected valid=false when validatePlan can't read file")
+	}
+	found := false
+	for _, issue := range result.Issues {
+		if strings.Contains(issue, "Cannot read file") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'Cannot read file' issue, got %v", result.Issues)
+	}
+}
+
+// --- validatePreMortem read error (direct call) ---
+
+func TestValidatePreMortem_ReadErrorDirect(t *testing.T) {
+	v, _ := helperNewValidator(t)
+	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	v.validatePreMortem("/nonexistent/premortem.md", result)
+	if result.Valid {
+		t.Error("expected valid=false when validatePreMortem can't read file")
+	}
+}
+
+// --- validatePostMortem read error (direct call) ---
+
+func TestValidatePostMortem_ReadErrorDirect(t *testing.T) {
+	v, _ := helperNewValidator(t)
+	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	v.validatePostMortem("/nonexistent/postmortem.md", result)
+	if result.Valid {
+		t.Error("expected valid=false when validatePostMortem can't read file")
+	}
+}
+
+// --- validateResearch read error (direct call) ---
+
+func TestValidateResearch_ReadErrorDirect(t *testing.T) {
+	v, _ := helperNewValidator(t)
+	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	v.validateResearch("/nonexistent/research.md", result)
+	if result.Valid {
+		t.Error("expected valid=false when validateResearch can't read file")
+	}
+}
+
+// --- countCitations walk error ---
+
+func TestCountCitations_NonexistentDir(t *testing.T) {
+	v, _ := helperNewValidator(t)
+	// Artifact path in a directory that doesn't exist
+	count := v.countCitations("/nonexistent/dir/artifact.md")
+	if count != 0 {
+		t.Errorf("expected 0 citations for nonexistent directory, got %d", count)
+	}
+}
+
+// --- validateStep unknown step ---
+
+func TestValidateStep_UnknownStep(t *testing.T) {
+	v, _ := helperNewValidator(t)
+	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	v.validateStep(Step("foobar"), "/tmp/file.md", result)
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "No validation rules") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'No validation rules' warning, got %v", result.Warnings)
+	}
+}
+
+// --- GetCitationsForSession with no file ---
+
+func TestGetCitationsForSession_NoFile(t *testing.T) {
+	baseDir := t.TempDir()
+	got, err := GetCitationsForSession(baseDir, "any-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected 0 citations for missing file, got %d", len(got))
+	}
+}
+
+// --- GetCitationsSince with no file ---
+
+func TestGetCitationsSince_NoFile(t *testing.T) {
+	baseDir := t.TempDir()
+	got, err := GetCitationsSince(baseDir, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Errorf("expected nil for missing file, got %v", got)
+	}
+}
+
+// --- CountCitationsForArtifact with permission error ---
+
+func TestCountCitationsForArtifact_PermissionError(t *testing.T) {
+	baseDir := t.TempDir()
+	citationsDir := filepath.Join(baseDir, ".agents", "ao")
+	if err := os.MkdirAll(citationsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	citationsPath := filepath.Join(citationsDir, "citations.jsonl")
+	if err := os.WriteFile(citationsPath, []byte(`{"artifact_path":"/a.md"}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(citationsPath, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(citationsPath, 0644) })
+
+	_, err := CountCitationsForArtifact(baseDir, "/a.md")
+	if err == nil {
+		t.Error("expected error when citations file is unreadable")
+	}
+}
+
 // longText generates filler text with the given number of words.
 func longText(wordCount int) string {
 	words := make([]string, wordCount)
