@@ -2080,3 +2080,173 @@ func TestRejectWriteEntryError(t *testing.T) {
 		t.Errorf("expected notes 'bad quality', got %s", entry.HumanReview.Notes)
 	}
 }
+
+func TestListPendingReviewSortByAge(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	// Add bronze candidates with different ages to exercise the sort callback
+	ids := []string{"recent-bronze", "old-bronze", "middle-bronze"}
+	ages := []time.Duration{-1 * time.Hour, -10 * time.Hour, -5 * time.Hour}
+
+	for i, id := range ids {
+		candidate := types.Candidate{
+			ID:      id,
+			Tier:    types.TierBronze,
+			Content: "Bronze content " + id,
+		}
+		addedAt := time.Now().Add(ages[i])
+		if err := p.AddAt(candidate, types.Scoring{GateRequired: true}, addedAt); err != nil {
+			t.Fatalf("AddAt failed: %v", err)
+		}
+	}
+
+	pending, err := p.ListPendingReview()
+	if err != nil {
+		t.Fatalf("ListPendingReview failed: %v", err)
+	}
+	if len(pending) != 3 {
+		t.Fatalf("expected 3 pending entries, got %d", len(pending))
+	}
+
+	// Should be sorted oldest first: old-bronze, middle-bronze, recent-bronze
+	if pending[0].Candidate.ID != "old-bronze" {
+		t.Errorf("expected oldest entry first (old-bronze), got %s", pending[0].Candidate.ID)
+	}
+	if pending[1].Candidate.ID != "middle-bronze" {
+		t.Errorf("expected middle entry second (middle-bronze), got %s", pending[1].Candidate.ID)
+	}
+	if pending[2].Candidate.ID != "recent-bronze" {
+		t.Errorf("expected newest entry last (recent-bronze), got %s", pending[2].Candidate.ID)
+	}
+}
+
+func TestGetChainPermissionError(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+	if err := p.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create chain file and make it unreadable (not a directory, just no perms)
+	chainPath := filepath.Join(p.PoolPath, ChainFile)
+	if err := os.WriteFile(chainPath, []byte(`{"operation":"add"}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(chainPath, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(chainPath, 0600) })
+
+	_, err := p.GetChain()
+	if err == nil {
+		t.Error("expected error when chain file is unreadable")
+	}
+}
+
+func TestAtomicMoveRenameError(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcPath := filepath.Join(tmpDir, "source.json")
+	if err := os.WriteFile(srcPath, []byte(`{"test": true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Destination in a nonexistent directory -- temp file creation will be in that
+	// nonexistent path, so this actually triggers "create temp file" error.
+	// Instead, use a path that will succeed for create but fail for rename:
+	// Create temp dir, write temp file, but make the final destination impossible
+	// by pointing to a file inside a non-directory.
+	blocker := filepath.Join(tmpDir, "blocker")
+	if err := os.WriteFile(blocker, []byte("file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Dest path goes through blocker which is a file, not a directory
+	destPath := filepath.Join(blocker, "subdir", "dest.json")
+
+	err := atomicMove(srcPath, destPath)
+	if err == nil {
+		t.Error("expected error when destination path is invalid")
+	}
+}
+
+func TestAtomicMoveSourceRemoveWarning(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcPath := filepath.Join(tmpDir, "source.json")
+	destPath := filepath.Join(tmpDir, "dest.json")
+
+	content := []byte(`{"test": true}`)
+	if err := os.WriteFile(srcPath, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make the source directory read-only after writing the source file.
+	// The file can still be read (already has 0600 perms) but Remove will fail
+	// because we can't modify the directory. This triggers the non-fatal
+	// source removal warning.
+	if err := os.Chmod(tmpDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(tmpDir, 0700) })
+
+	// atomicMove needs to create temp file in the same dir as dest.
+	// Since dest is also in tmpDir (now read-only), this would fail too.
+	// Instead, use a different writable dir for dest.
+	destDir := t.TempDir()
+	destPath = filepath.Join(destDir, "dest.json")
+
+	err := atomicMove(srcPath, destPath)
+	// Should succeed (source removal warning is non-fatal)
+	if err != nil {
+		t.Fatalf("atomicMove should succeed despite source removal warning: %v", err)
+	}
+
+	// Dest file should exist with correct content
+	data, err := os.ReadFile(destPath)
+	if err != nil {
+		t.Fatalf("ReadFile dest failed: %v", err)
+	}
+	if string(data) != string(content) {
+		t.Errorf("expected content %q, got %q", string(content), string(data))
+	}
+}
+
+func TestPoolAddAtGateRequired(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	candidate := types.Candidate{
+		ID:      "gated-at",
+		Tier:    types.TierBronze,
+		Content: "Gated content via AddAt",
+	}
+	scoring := types.Scoring{GateRequired: true}
+	pastTime := time.Now().Add(-2 * time.Hour)
+
+	if err := p.AddAt(candidate, scoring, pastTime); err != nil {
+		t.Fatalf("AddAt failed: %v", err)
+	}
+
+	entry, err := p.Get("gated-at")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if entry.HumanReview == nil {
+		t.Fatal("expected HumanReview to be set for gated candidate via AddAt")
+	}
+	if entry.HumanReview.Reviewed {
+		t.Error("expected HumanReview.Reviewed to be false for new gated candidate")
+	}
+}
+
+func TestPoolAddAtInvalidID(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewPool(tmpDir)
+
+	err := p.AddAt(types.Candidate{ID: "../evil", Content: "test"}, types.Scoring{}, time.Now())
+	if err == nil {
+		t.Error("expected error for path traversal ID in AddAt")
+	}
+	if !strings.Contains(err.Error(), "invalid candidate ID") {
+		t.Errorf("expected 'invalid candidate ID' error, got: %v", err)
+	}
+}
