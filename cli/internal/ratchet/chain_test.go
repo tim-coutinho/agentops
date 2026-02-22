@@ -2,6 +2,7 @@ package ratchet
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -219,8 +220,8 @@ func TestSaveNoPathError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when path is empty")
 	}
-	if err.Error() != "chain has no path set" {
-		t.Errorf("unexpected error: %v", err)
+	if !errors.Is(err, ErrChainNoPath) {
+		t.Errorf("expected ErrChainNoPath, got %v", err)
 	}
 }
 
@@ -307,8 +308,8 @@ func TestAppendNoPathError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when path is empty")
 	}
-	if err.Error() != "chain has no path set" {
-		t.Errorf("unexpected error: %v", err)
+	if !errors.Is(err, ErrChainNoPath) {
+		t.Errorf("expected ErrChainNoPath, got %v", err)
 	}
 }
 

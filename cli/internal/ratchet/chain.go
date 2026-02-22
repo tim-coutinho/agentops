@@ -185,7 +185,7 @@ func loadLegacyYAMLChain(path string) (*Chain, error) {
 // Save writes the chain to disk using JSONL format with file locking.
 func (c *Chain) Save() error {
 	if c.path == "" {
-		return fmt.Errorf("chain has no path set")
+		return ErrChainNoPath
 	}
 
 	// Ensure directory exists
@@ -244,7 +244,7 @@ func (c *Chain) Save() error {
 // This is atomic and safe for concurrent access.
 func (c *Chain) Append(entry ChainEntry) error {
 	if c.path == "" {
-		return fmt.Errorf("chain has no path set")
+		return ErrChainNoPath
 	}
 
 	// Ensure directory exists
@@ -373,7 +373,7 @@ func findAgentsDir(startDir string) (string, error) {
 
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf(".agents directory not found")
+			return "", ErrAgentsDirNotFound
 		}
 		dir = parent
 	}
@@ -388,7 +388,7 @@ func generateChainID() string {
 func MigrateChain(startDir string) error {
 	agentsDir, err := findAgentsDir(startDir)
 	if err != nil {
-		return fmt.Errorf("no .agents directory found")
+		return fmt.Errorf("%w", ErrAgentsDirNotFound)
 	}
 
 	legacyPath := filepath.Join(agentsDir, "provenance", LegacyChainFile)

@@ -77,7 +77,7 @@ func readLearningData(learningPath string) (map[string]interface{}, error) {
 
 	lines := strings.Split(string(content), "\n")
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
-		return nil, fmt.Errorf("empty learning file")
+		return nil, ErrEmptyLearningFile
 	}
 
 	var data map[string]interface{}
@@ -233,7 +233,7 @@ func ApplyMaturityTransition(learningPath string) (*MaturityTransitionResult, er
 
 	lines := strings.Split(string(content), "\n")
 	if len(lines) == 0 {
-		return nil, fmt.Errorf("empty file")
+		return nil, ErrEmptyFile
 	}
 
 	var data map[string]interface{}

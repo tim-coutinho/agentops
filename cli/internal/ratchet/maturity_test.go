@@ -2,6 +2,7 @@ package ratchet
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -465,6 +466,23 @@ func TestCheckMaturityTransition_Errors(t *testing.T) {
 				t.Errorf("error = %q, want substring %q", got, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestCheckMaturityTransition_SentinelErrors(t *testing.T) {
+	// Verify sentinel errors work with errors.Is.
+	dir := t.TempDir()
+	emptyPath := filepath.Join(dir, "empty.jsonl")
+	if err := os.WriteFile(emptyPath, []byte(""), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	_, err := CheckMaturityTransition(emptyPath)
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+	if !errors.Is(err, ErrEmptyLearningFile) {
+		t.Errorf("expected ErrEmptyLearningFile, got %v", err)
 	}
 }
 

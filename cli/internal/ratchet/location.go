@@ -125,7 +125,7 @@ func (l *Locator) searchLocation(loc LocationType, pattern string) ([]string, er
 		// Look for rig root (parent with .agents/)
 		rigDir := l.findRigRoot()
 		if rigDir == "" {
-			return nil, fmt.Errorf("no rig root found")
+			return nil, ErrNoRigRoot
 		}
 		searchRoot = filepath.Join(rigDir, ".agents")
 
