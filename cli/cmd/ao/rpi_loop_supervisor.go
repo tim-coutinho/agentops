@@ -79,7 +79,36 @@ type rpiLoopSupervisorConfig struct {
 }
 
 func resolveLoopSupervisorConfig(cmd *cobra.Command, cwd string) (rpiLoopSupervisorConfig, error) {
-	cfg := rpiLoopSupervisorConfig{
+	cfg := buildBaseLoopConfig()
+
+	if rpiSupervisor {
+		applySupervisorDefaults(cmd, &cfg)
+	}
+
+	if err := validateLoopConfigValues(&cfg, cmd); err != nil {
+		return cfg, err
+	}
+	if err := validateLoopConfigPolicies(cfg); err != nil {
+		return cfg, err
+	}
+	resolveLoopConfigPaths(&cfg, cwd)
+
+	toolchain, err := resolveRPIToolchainDefaults()
+	if err != nil {
+		return cfg, err
+	}
+	cfg.RuntimeMode = toolchain.RuntimeMode
+	cfg.RuntimeCommand = toolchain.RuntimeCommand
+	cfg.AOCommand = toolchain.AOCommand
+	cfg.BDCommand = toolchain.BDCommand
+	cfg.TmuxCommand = toolchain.TmuxCommand
+
+	return cfg, nil
+}
+
+// buildBaseLoopConfig creates an rpiLoopSupervisorConfig from global flag values.
+func buildBaseLoopConfig() rpiLoopSupervisorConfig {
+	return rpiLoopSupervisorConfig{
 		FailurePolicy:         strings.ToLower(strings.TrimSpace(rpiFailurePolicy)),
 		CycleRetries:          rpiCycleRetries,
 		RetryBackoff:          rpiRetryBackoff,
@@ -105,48 +134,54 @@ func resolveLoopSupervisorConfig(cmd *cobra.Command, cwd string) (rpiLoopSupervi
 		CommandTimeout:        rpiCommandTimeout,
 		KillSwitchPath:        strings.TrimSpace(rpiKillSwitchPath),
 	}
+}
 
-	if rpiSupervisor {
-		if !cmd.Flags().Changed("failure-policy") {
-			cfg.FailurePolicy = loopFailurePolicyContinue
-		}
-		if !cmd.Flags().Changed("cycle-retries") {
-			cfg.CycleRetries = 1
-		}
-		if !cmd.Flags().Changed("cycle-delay") {
-			cfg.CycleDelay = 5 * time.Minute
-		}
-		if !cmd.Flags().Changed("lease") {
-			cfg.LeaseEnabled = true
-		}
-		if !cmd.Flags().Changed("detached-heal") {
-			cfg.DetachedHeal = false
-		}
-		if !cmd.Flags().Changed("auto-clean") {
-			cfg.AutoClean = true
-		}
-		if !cmd.Flags().Changed("ensure-cleanup") {
-			cfg.EnsureCleanup = true
-		}
-		if !cmd.Flags().Changed("cleanup-prune-branches") {
-			cfg.CleanupPruneBranches = true
-		}
-		if !cmd.Flags().Changed("gate-policy") {
-			cfg.GatePolicy = loopGatePolicyRequired
-		}
+// applySupervisorDefaults overrides config values with supervisor-mode defaults
+// for any flags the user has not explicitly set.
+func applySupervisorDefaults(cmd *cobra.Command, cfg *rpiLoopSupervisorConfig) {
+	if !cmd.Flags().Changed("failure-policy") {
+		cfg.FailurePolicy = loopFailurePolicyContinue
 	}
+	if !cmd.Flags().Changed("cycle-retries") {
+		cfg.CycleRetries = 1
+	}
+	if !cmd.Flags().Changed("cycle-delay") {
+		cfg.CycleDelay = 5 * time.Minute
+	}
+	if !cmd.Flags().Changed("lease") {
+		cfg.LeaseEnabled = true
+	}
+	if !cmd.Flags().Changed("detached-heal") {
+		cfg.DetachedHeal = false
+	}
+	if !cmd.Flags().Changed("auto-clean") {
+		cfg.AutoClean = true
+	}
+	if !cmd.Flags().Changed("ensure-cleanup") {
+		cfg.EnsureCleanup = true
+	}
+	if !cmd.Flags().Changed("cleanup-prune-branches") {
+		cfg.CleanupPruneBranches = true
+	}
+	if !cmd.Flags().Changed("gate-policy") {
+		cfg.GatePolicy = loopGatePolicyRequired
+	}
+}
 
+// validateLoopConfigValues checks numeric constraints and applies defaults for
+// zero-valued fields. cmd may be nil when rpiSupervisor is false.
+func validateLoopConfigValues(cfg *rpiLoopSupervisorConfig, cmd *cobra.Command) error {
 	if cfg.CycleRetries < 0 {
-		return cfg, fmt.Errorf("cycle-retries must be >= 0")
+		return fmt.Errorf("cycle-retries must be >= 0")
 	}
 	if cfg.RetryBackoff < 0 {
-		return cfg, fmt.Errorf("retry-backoff must be >= 0")
+		return fmt.Errorf("retry-backoff must be >= 0")
 	}
 	if cfg.CycleDelay < 0 {
-		return cfg, fmt.Errorf("cycle-delay must be >= 0")
+		return fmt.Errorf("cycle-delay must be >= 0")
 	}
 	if cfg.CommandTimeout < 0 {
-		return cfg, fmt.Errorf("command-timeout must be >= 0")
+		return fmt.Errorf("command-timeout must be >= 0")
 	}
 	if cfg.LeaseTTL <= 0 {
 		cfg.LeaseTTL = 2 * time.Minute
@@ -157,7 +192,7 @@ func resolveLoopSupervisorConfig(cmd *cobra.Command, cwd string) (rpiLoopSupervi
 	if cfg.AutoCleanStaleAfter <= 0 {
 		cfg.AutoCleanStaleAfter = 24 * time.Hour
 	}
-	if rpiSupervisor && !cmd.Flags().Changed("auto-clean-stale-after") {
+	if rpiSupervisor && cmd != nil && !cmd.Flags().Changed("auto-clean-stale-after") {
 		cfg.AutoCleanStaleAfter = 0
 	}
 	if cfg.LeasePath == "" {
@@ -169,26 +204,34 @@ func resolveLoopSupervisorConfig(cmd *cobra.Command, cwd string) (rpiLoopSupervi
 	if cfg.KillSwitchPath == "" {
 		cfg.KillSwitchPath = filepath.Join(".agents", "rpi", "KILL")
 	}
+	return nil
+}
 
+// validateLoopConfigPolicies validates enum-style policy fields.
+func validateLoopConfigPolicies(cfg rpiLoopSupervisorConfig) error {
 	if cfg.FailurePolicy != loopFailurePolicyStop && cfg.FailurePolicy != loopFailurePolicyContinue {
-		return cfg, fmt.Errorf("invalid failure-policy %q (valid: stop|continue)", cfg.FailurePolicy)
+		return fmt.Errorf("invalid failure-policy %q (valid: stop|continue)", cfg.FailurePolicy)
 	}
 	switch cfg.GatePolicy {
 	case loopGatePolicyOff, loopGatePolicyBestEffort, loopGatePolicyRequired:
 	default:
-		return cfg, fmt.Errorf("invalid gate-policy %q (valid: off|best-effort|required)", cfg.GatePolicy)
+		return fmt.Errorf("invalid gate-policy %q (valid: off|best-effort|required)", cfg.GatePolicy)
 	}
 	switch cfg.LandingPolicy {
 	case loopLandingPolicyOff, loopLandingPolicyCommit, loopLandingPolicySyncPush:
 	default:
-		return cfg, fmt.Errorf("invalid landing-policy %q (valid: off|commit|sync-push)", cfg.LandingPolicy)
+		return fmt.Errorf("invalid landing-policy %q (valid: off|commit|sync-push)", cfg.LandingPolicy)
 	}
 	switch cfg.BDSyncPolicy {
 	case loopBDSyncPolicyAuto, loopBDSyncPolicyAlways, loopBDSyncPolicyNever:
 	default:
-		return cfg, fmt.Errorf("invalid bd-sync-policy %q (valid: auto|always|never)", cfg.BDSyncPolicy)
+		return fmt.Errorf("invalid bd-sync-policy %q (valid: auto|always|never)", cfg.BDSyncPolicy)
 	}
+	return nil
+}
 
+// resolveLoopConfigPaths converts relative paths to absolute paths.
+func resolveLoopConfigPaths(cfg *rpiLoopSupervisorConfig, cwd string) {
 	if !filepath.IsAbs(cfg.LeasePath) {
 		cfg.LeasePath = filepath.Join(cwd, cfg.LeasePath)
 	}
@@ -198,18 +241,6 @@ func resolveLoopSupervisorConfig(cmd *cobra.Command, cwd string) (rpiLoopSupervi
 	if !filepath.IsAbs(cfg.KillSwitchPath) {
 		cfg.KillSwitchPath = filepath.Join(cwd, cfg.KillSwitchPath)
 	}
-
-	toolchain, err := resolveRPIToolchainDefaults()
-	if err != nil {
-		return cfg, err
-	}
-	cfg.RuntimeMode = toolchain.RuntimeMode
-	cfg.RuntimeCommand = toolchain.RuntimeCommand
-	cfg.AOCommand = toolchain.AOCommand
-	cfg.BDCommand = toolchain.BDCommand
-	cfg.TmuxCommand = toolchain.TmuxCommand
-
-	return cfg, nil
 }
 
 func (c rpiLoopSupervisorConfig) MaxCycleAttempts() int {

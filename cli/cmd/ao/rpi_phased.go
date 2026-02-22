@@ -1219,81 +1219,29 @@ func spawnClaudeDirectImpl(prompt, cwd string, phaseNum int, phaseTimeout time.D
 // Stderr is passed through to os.Stderr for real-time error visibility.
 // phaseTimeout, stallTimeout, streamStartupTimeout, and checkInterval are passed
 // explicitly so the function does not read package-level globals.
+// streamWatchdogState holds the shared atomic state used by watchdog goroutines
+// and the stream event callback to coordinate stall/startup detection.
+type streamWatchdogState struct {
+	eventCount       atomic.Int64
+	lastActivityUnix atomic.Int64
+}
+
 func spawnRuntimePhaseWithStream(runtimeCommand, prompt, cwd, runID string, phaseNum int, statusPath string, allPhases []PhaseProgress, phaseTimeout, stallTimeout, streamStartupTimeout, checkInterval time.Duration) error {
 	command := effectiveRuntimeCommand(runtimeCommand)
 
-	ctx := context.Background()
-	cancel := func() {}
-	if phaseTimeout > 0 {
-		ctx, cancel = context.WithTimeout(context.Background(), phaseTimeout)
-	}
+	ctx, cancel := buildStreamPhaseContext(phaseTimeout)
 	defer cancel()
 
-	effectiveCheckInterval := checkInterval
-	if effectiveCheckInterval <= 0 {
-		effectiveCheckInterval = 1 * time.Second
-	}
-
+	effectiveCheckInterval := normalizeCheckInterval(checkInterval)
 	startedAt := time.Now()
 
-	// Track whether we received at least one parsed event.
-	var streamEventCount atomic.Int64
+	watchdog := &streamWatchdogState{}
+	watchdog.lastActivityUnix.Store(startedAt.UnixNano())
 
-	// Stall detection: track last activity time atomically.
-	// Updated on every stream event; a watchdog goroutine checks for staleness.
-	var lastActivityUnix atomic.Int64
-	lastActivityUnix.Store(startedAt.UnixNano())
-
-	// stallCtx wraps the timeout context with stall-cancellation capability.
 	stallCtx, stallCancel := context.WithCancelCause(ctx)
 	defer stallCancel(nil)
 
-	// Startup watchdog: fail stream backend if no first event arrives in time.
-	// This catches hangs where claude starts but stream-json never yields events.
-	if streamStartupTimeout > 0 {
-		startupCheckInterval := effectiveCheckInterval
-		if startupCheckInterval > 5*time.Second {
-			startupCheckInterval = 5 * time.Second
-		}
-		go func() {
-			ticker := time.NewTicker(startupCheckInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-stallCtx.Done():
-					return
-				case <-ticker.C:
-					if streamEventCount.Load() > 0 {
-						return
-					}
-					if time.Since(startedAt) > streamStartupTimeout {
-						stallCancel(fmt.Errorf("stream startup timeout: no events received after %s", streamStartupTimeout))
-						return
-					}
-				}
-			}
-		}()
-	}
-
-	// Start stall watchdog goroutine (if stall timeout is configured).
-	if stallTimeout > 0 {
-		go func() {
-			ticker := time.NewTicker(effectiveCheckInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-stallCtx.Done():
-					return
-				case <-ticker.C:
-					last := time.Unix(0, lastActivityUnix.Load())
-					if time.Since(last) > stallTimeout {
-						stallCancel(fmt.Errorf("stall detected: no stream activity for %s", stallTimeout))
-						return
-					}
-				}
-			}
-		}()
-	}
+	startStreamWatchdogs(stallCtx, stallCancel, watchdog, startedAt, effectiveCheckInterval, stallTimeout, streamStartupTimeout)
 
 	cmd := exec.CommandContext(stallCtx, command, "-p", prompt, "--output-format", "stream-json", "--verbose")
 	cmd.Dir = cwd
@@ -1304,53 +1252,127 @@ func spawnRuntimePhaseWithStream(runtimeCommand, prompt, cwd, runID string, phas
 	if err != nil {
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
-
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start %s: %w", command, err)
 	}
 
-	// phaseIdx is 0-based for allPhases slice.
-	phaseIdx := phaseNum - 1
+	onUpdate := buildStreamUpdateCallback(watchdog, allPhases, phaseNum, statusPath)
+	_, parseErr := ParseStreamEvents(stdout, onUpdate)
+	waitErr := cmd.Wait()
 
-	onUpdate := func(p PhaseProgress) {
-		// Record activity for stall detection.
-		streamEventCount.Add(1)
-		lastActivityUnix.Store(time.Now().UnixNano())
+	return classifyStreamResult(ctx, stallCtx, command, phaseNum, phaseTimeout, waitErr, parseErr, watchdog.eventCount.Load())
+}
+
+// buildStreamPhaseContext creates a context with optional timeout for a stream phase.
+func buildStreamPhaseContext(phaseTimeout time.Duration) (context.Context, context.CancelFunc) {
+	if phaseTimeout > 0 {
+		return context.WithTimeout(context.Background(), phaseTimeout)
+	}
+	return context.Background(), func() {}
+}
+
+// normalizeCheckInterval returns checkInterval or a 1s default.
+func normalizeCheckInterval(checkInterval time.Duration) time.Duration {
+	if checkInterval <= 0 {
+		return 1 * time.Second
+	}
+	return checkInterval
+}
+
+// startStreamWatchdogs launches startup and stall watchdog goroutines.
+func startStreamWatchdogs(stallCtx context.Context, stallCancel context.CancelCauseFunc, watchdog *streamWatchdogState, startedAt time.Time, checkInterval, stallTimeout, startupTimeout time.Duration) {
+	if startupTimeout > 0 {
+		startupCheckInterval := checkInterval
+		if startupCheckInterval > 5*time.Second {
+			startupCheckInterval = 5 * time.Second
+		}
+		go runStartupWatchdog(stallCtx, stallCancel, &watchdog.eventCount, startedAt, startupCheckInterval, startupTimeout)
+	}
+	if stallTimeout > 0 {
+		go runStallWatchdog(stallCtx, stallCancel, &watchdog.lastActivityUnix, checkInterval, stallTimeout)
+	}
+}
+
+// runStartupWatchdog cancels the context if no stream events arrive within the timeout.
+func runStartupWatchdog(ctx context.Context, cancel context.CancelCauseFunc, eventCount *atomic.Int64, startedAt time.Time, checkInterval, startupTimeout time.Duration) {
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if eventCount.Load() > 0 {
+				return
+			}
+			if time.Since(startedAt) > startupTimeout {
+				cancel(fmt.Errorf("stream startup timeout: no events received after %s", startupTimeout))
+				return
+			}
+		}
+	}
+}
+
+// runStallWatchdog cancels the context if no stream activity occurs within the timeout.
+func runStallWatchdog(ctx context.Context, cancel context.CancelCauseFunc, lastActivityUnix *atomic.Int64, checkInterval, stallTimeout time.Duration) {
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			last := time.Unix(0, lastActivityUnix.Load())
+			if time.Since(last) > stallTimeout {
+				cancel(fmt.Errorf("stall detected: no stream activity for %s", stallTimeout))
+				return
+			}
+		}
+	}
+}
+
+// buildStreamUpdateCallback creates the onUpdate callback for ParseStreamEvents
+// that records activity and merges progress into allPhases.
+func buildStreamUpdateCallback(watchdog *streamWatchdogState, allPhases []PhaseProgress, phaseNum int, statusPath string) func(PhaseProgress) {
+	phaseIdx := phaseNum - 1
+	return func(p PhaseProgress) {
+		watchdog.eventCount.Add(1)
+		watchdog.lastActivityUnix.Store(time.Now().UnixNano())
 
 		if phaseIdx >= 0 && phaseIdx < len(allPhases) {
-			existing := allPhases[phaseIdx]
-			if p.Name == "" {
-				p.Name = existing.Name
-			}
-			if p.CurrentAction == "" {
-				p.CurrentAction = existing.CurrentAction
-			}
-			if p.RetryCount == 0 {
-				p.RetryCount = existing.RetryCount
-			}
-			if p.LastError == "" {
-				p.LastError = existing.LastError
-			}
-			allPhases[phaseIdx] = p
+			mergePhaseProgress(&allPhases[phaseIdx], p)
 		}
 		if writeErr := WriteLiveStatus(statusPath, allPhases, phaseIdx); writeErr != nil {
 			VerbosePrintf("Warning: could not write live status: %v\n", writeErr)
 		}
 	}
+}
 
-	_, parseErr := ParseStreamEvents(stdout, onUpdate)
-	waitErr := cmd.Wait()
+// mergePhaseProgress updates dst with non-zero fields from src.
+func mergePhaseProgress(dst *PhaseProgress, src PhaseProgress) {
+	if src.Name != "" {
+		dst.Name = src.Name
+	}
+	if src.CurrentAction != "" {
+		dst.CurrentAction = src.CurrentAction
+	}
+	if src.RetryCount != 0 {
+		dst.RetryCount = src.RetryCount
+	}
+	if src.LastError != "" {
+		dst.LastError = src.LastError
+	}
+}
 
-	// Classify failure reason.
+// classifyStreamResult examines the context, wait error, and parse error to
+// produce the appropriate error for a completed stream-json phase.
+func classifyStreamResult(ctx, stallCtx context.Context, command string, phaseNum int, phaseTimeout time.Duration, waitErr, parseErr error, eventCount int64) error {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fmt.Errorf("phase %d (%s) timed out after %s (set --phase-timeout to increase)", phaseNum, failReasonTimeout, phaseTimeout)
 	}
 	if cause := context.Cause(stallCtx); cause != nil && stallCtx.Err() != nil && ctx.Err() == nil {
-		// Context was cancelled by stall watchdog, not by phase timeout.
 		return fmt.Errorf("phase %d (%s): %w", phaseNum, failReasonStall, cause)
 	}
-
-	// Prefer wait error (exit code) over parse error.
 	if waitErr != nil {
 		var exitErr *exec.ExitError
 		if errors.As(waitErr, &exitErr) {
@@ -1361,7 +1383,7 @@ func spawnRuntimePhaseWithStream(runtimeCommand, prompt, cwd, runID string, phas
 	if parseErr != nil {
 		return fmt.Errorf("stream parse error: %w", parseErr)
 	}
-	if streamEventCount.Load() == 0 {
+	if eventCount == 0 {
 		return fmt.Errorf("stream startup timeout: stream completed without parseable events")
 	}
 	return nil

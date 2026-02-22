@@ -62,6 +62,21 @@ func executeRPICleanup(cwd, runID string, all, prune, pruneBranches bool, dryRun
 		return fmt.Errorf("specify --all or --run-id <id>")
 	}
 
+	staleRuns := collectStaleRuns(cwd, runID, staleAfter)
+
+	if len(staleRuns) == 0 {
+		fmt.Println("No stale runs found.")
+	} else {
+		processStaleRuns(cwd, staleRuns, dryRun)
+	}
+
+	runCleanupPostActions(cwd, runID, all, prune, pruneBranches, dryRun)
+	return nil
+}
+
+// collectStaleRuns gathers deduplicated stale runs across all search roots,
+// optionally filtered to a specific runID.
+func collectStaleRuns(cwd, runID string, staleAfter time.Duration) []staleRunEntry {
 	roots := collectSearchRoots(cwd)
 	var staleRuns []staleRunEntry
 	seen := make(map[string]struct{})
@@ -74,78 +89,85 @@ func executeRPICleanup(cwd, runID string, all, prune, pruneBranches bool, dryRun
 				continue
 			}
 			seen[e.runID] = struct{}{}
-
 			if runID != "" && e.runID != runID {
 				continue
 			}
 			staleRuns = append(staleRuns, e)
 		}
 	}
+	return staleRuns
+}
 
-	if len(staleRuns) == 0 {
-		fmt.Println("No stale runs found.")
-		if pruneBranches {
-			if err := cleanupLegacyRPIBranches(cwd, runID, all, dryRun); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: legacy branch cleanup failed: %v\n", err)
-			}
-		}
-		if prune && !dryRun {
-			return pruneWorktrees(cwd)
-		}
-		return nil
-	}
-
+// processStaleRuns iterates over stale runs, marking or cleaning each one.
+func processStaleRuns(cwd string, staleRuns []staleRunEntry, dryRun bool) {
 	for _, sr := range staleRuns {
 		if dryRun {
-			if sr.terminal == "" {
-				fmt.Printf("[dry-run] Would mark run %s as stale (reason: %s)\n", sr.runID, sr.reason)
-			} else {
-				fmt.Printf("[dry-run] Would clean terminal run %s (%s)\n", sr.runID, sr.reason)
-			}
-			if sr.worktreePath != "" {
-				if _, err := os.Stat(sr.worktreePath); err == nil {
-					fmt.Printf("[dry-run] Would remove worktree: %s\n", sr.worktreePath)
-				}
-			}
+			reportDryRunCleanup(sr)
 			continue
 		}
+		cleanStaleRun(cwd, sr)
+	}
+}
 
-		if sr.terminal == "" {
-			if err := markRunStale(sr); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to mark run %s as stale: %v\n", sr.runID, err)
-				continue
-			}
-			fmt.Printf("Marked run %s as stale (reason: %s)\n", sr.runID, sr.reason)
-		} else {
-			fmt.Printf("Cleaning terminal run %s (%s)\n", sr.runID, sr.reason)
-		}
-
-		// Remove orphaned worktree directory if it still exists.
-		if sr.worktreePath != "" {
-			if _, statErr := os.Stat(sr.worktreePath); statErr == nil {
-				repoRoot := resolveCleanupRepoRoot(cwd, sr.worktreePath)
-				if rmErr := removeOrphanedWorktree(repoRoot, sr.worktreePath, sr.runID); rmErr != nil {
-					fmt.Fprintf(os.Stderr, "Warning: could not remove worktree %s: %v\n", sr.worktreePath, rmErr)
-				} else {
-					fmt.Printf("Removed worktree: %s\n", sr.worktreePath)
-				}
-			}
+// reportDryRunCleanup prints what would happen for a stale run without making changes.
+func reportDryRunCleanup(sr staleRunEntry) {
+	if sr.terminal == "" {
+		fmt.Printf("[dry-run] Would mark run %s as stale (reason: %s)\n", sr.runID, sr.reason)
+	} else {
+		fmt.Printf("[dry-run] Would clean terminal run %s (%s)\n", sr.runID, sr.reason)
+	}
+	if sr.worktreePath != "" {
+		if _, err := os.Stat(sr.worktreePath); err == nil {
+			fmt.Printf("[dry-run] Would remove worktree: %s\n", sr.worktreePath)
 		}
 	}
+}
 
+// cleanStaleRun marks a non-terminal run as stale and removes orphaned worktrees.
+func cleanStaleRun(cwd string, sr staleRunEntry) {
+	if sr.terminal == "" {
+		if err := markRunStale(sr); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to mark run %s as stale: %v\n", sr.runID, err)
+			return
+		}
+		fmt.Printf("Marked run %s as stale (reason: %s)\n", sr.runID, sr.reason)
+	} else {
+		fmt.Printf("Cleaning terminal run %s (%s)\n", sr.runID, sr.reason)
+	}
+
+	removeStaleWorktreeIfExists(cwd, sr)
+}
+
+// removeStaleWorktreeIfExists removes the worktree directory associated with
+// a stale run if it still exists on disk.
+func removeStaleWorktreeIfExists(cwd string, sr staleRunEntry) {
+	if sr.worktreePath == "" {
+		return
+	}
+	if _, statErr := os.Stat(sr.worktreePath); statErr != nil {
+		return
+	}
+	repoRoot := resolveCleanupRepoRoot(cwd, sr.worktreePath)
+	if rmErr := removeOrphanedWorktree(repoRoot, sr.worktreePath, sr.runID); rmErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not remove worktree %s: %v\n", sr.worktreePath, rmErr)
+	} else {
+		fmt.Printf("Removed worktree: %s\n", sr.worktreePath)
+	}
+}
+
+// runCleanupPostActions runs worktree pruning and legacy branch cleanup after
+// stale run processing.
+func runCleanupPostActions(cwd, runID string, all, prune, pruneBranches, dryRun bool) {
 	if prune && !dryRun {
 		if err := pruneWorktrees(cwd); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: git worktree prune failed: %v\n", err)
 		}
 	}
-
 	if pruneBranches {
 		if err := cleanupLegacyRPIBranches(cwd, runID, all, dryRun); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: legacy branch cleanup failed: %v\n", err)
 		}
 	}
-
-	return nil
 }
 
 // cleanupLegacyRPIBranches removes legacy RPI branches for the selected scope.
