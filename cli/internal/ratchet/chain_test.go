@@ -1047,3 +1047,68 @@ func TestLoadJSONLChain_CloseErrorExposed(t *testing.T) {
 		t.Errorf("expected 1 entry, got %d", len(chain.Entries))
 	}
 }
+
+// --- Benchmarks ---
+
+func benchWriteChainFile(b *testing.B, dir string, numEntries int) {
+	b.Helper()
+	chainDir := filepath.Join(dir, ".agents", "ao")
+	if err := os.MkdirAll(chainDir, 0755); err != nil {
+		b.Fatalf("mkdirall: %v", err)
+	}
+
+	meta := struct {
+		ID      string    `json:"id"`
+		Started time.Time `json:"started"`
+	}{ID: "bench", Started: time.Now()}
+	metaJSON, _ := json.Marshal(meta)
+	var lines []string
+	lines = append(lines, string(metaJSON))
+
+	for i := 0; i < numEntries; i++ {
+		entry := ChainEntry{
+			Step:      StepImplement,
+			Timestamp: time.Now(),
+			Output:    "/some/output/path.md",
+			Locked:    true,
+		}
+		entryJSON, _ := json.Marshal(entry)
+		lines = append(lines, string(entryJSON))
+	}
+
+	if err := os.WriteFile(filepath.Join(chainDir, ChainFile), []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
+		b.Fatalf("write chain: %v", err)
+	}
+}
+
+func BenchmarkLoadChain(b *testing.B) {
+	tmpDir := b.TempDir()
+	benchWriteChainFile(b, tmpDir, 20)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = LoadChain(tmpDir)
+	}
+}
+
+func BenchmarkChainAppend(b *testing.B) {
+	tmpDir := b.TempDir()
+	benchWriteChainFile(b, tmpDir, 5)
+
+	chain, err := LoadChain(tmpDir)
+	if err != nil {
+		b.Fatalf("load: %v", err)
+	}
+
+	entry := ChainEntry{
+		Step:      StepImplement,
+		Timestamp: time.Now(),
+		Output:    "/some/output/path.md",
+		Locked:    true,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = chain.Append(entry)
+	}
+}
