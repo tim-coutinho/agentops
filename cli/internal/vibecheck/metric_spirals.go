@@ -28,6 +28,34 @@ func MetricSpirals(events []TimelineEvent) Metric {
 	}
 }
 
+// spiralTracker tracks consecutive fix commits on the same component.
+type spiralTracker struct {
+	spirals       int
+	consecutive   int
+	lastComponent string
+}
+
+// flush closes out the current chain, counting it as a spiral if >= 3.
+func (st *spiralTracker) flush() {
+	if st.consecutive >= 3 {
+		st.spirals++
+	}
+	st.consecutive = 0
+	st.lastComponent = ""
+}
+
+// feedFix processes a fix commit for the given component.
+func (st *spiralTracker) feedFix(comp string) {
+	if comp == st.lastComponent || st.lastComponent == "" {
+		st.consecutive++
+		st.lastComponent = comp
+	} else {
+		st.flush()
+		st.consecutive = 1
+		st.lastComponent = comp
+	}
+}
+
 // countSpirals counts the number of fix-chain spirals (3+ consecutive fix
 // commits on the same component).
 func countSpirals(events []TimelineEvent) int {
@@ -38,42 +66,18 @@ func countSpirals(events []TimelineEvent) int {
 		return sorted[i].Timestamp.Before(sorted[j].Timestamp)
 	})
 
-	spirals := 0
-	consecutive := 0
-	lastComponent := ""
-
+	var st spiralTracker
 	for _, e := range sorted {
 		msg := strings.ToLower(strings.TrimSpace(e.Message))
 		if !strings.HasPrefix(msg, "fix") {
-			// Non-fix commit breaks any chain.
-			if consecutive >= 3 {
-				spirals++
-			}
-			consecutive = 0
-			lastComponent = ""
+			st.flush()
 			continue
 		}
-
-		comp := extractComponent(msg)
-		if comp == lastComponent || lastComponent == "" {
-			consecutive++
-			lastComponent = comp
-		} else {
-			// Different component resets the chain.
-			if consecutive >= 3 {
-				spirals++
-			}
-			consecutive = 1
-			lastComponent = comp
-		}
+		st.feedFix(extractComponent(msg))
 	}
+	st.flush()
 
-	// Flush final chain.
-	if consecutive >= 3 {
-		spirals++
-	}
-
-	return spirals
+	return st.spirals
 }
 
 // extractComponent extracts a component/scope from a commit message.

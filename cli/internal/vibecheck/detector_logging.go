@@ -33,6 +33,30 @@ func isLoggingMessage(msg string) bool {
 	return false
 }
 
+// isSmallLoggingCommit returns true if the event looks like a small
+// log/print/debug-only commit.
+func isSmallLoggingCommit(ev TimelineEvent) bool {
+	diffSize := ev.Insertions + ev.Deletions
+	return isLoggingMessage(ev.Message) && diffSize > 0 && diffSize <= maxSmallDiffLines
+}
+
+// maxConsecutiveRun returns the longest run of consecutive true values
+// from the predicate applied to each event.
+func maxConsecutiveRun(events []TimelineEvent, pred func(TimelineEvent) bool) int {
+	maxRun, run := 0, 0
+	for _, ev := range events {
+		if pred(ev) {
+			run++
+			if run > maxRun {
+				maxRun = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	return maxRun
+}
+
 // DetectLoggingOnly detects commits where the only changes appear to be
 // log/print/debug statements, identified by commit messages containing
 // logging keywords combined with small diffs.
@@ -41,36 +65,19 @@ func DetectLoggingOnly(events []TimelineEvent) []Finding {
 		return nil
 	}
 
-	// Sort oldest first.
 	sorted := make([]TimelineEvent, len(events))
 	copy(sorted, events)
 	sortOldestFirst(sorted)
 
-	var findings []Finding
-
-	// Track consecutive logging commits.
-	consecutive := 0
-	maxConsec := 0
-
-	for _, ev := range sorted {
-		diffSize := ev.Insertions + ev.Deletions
-		if isLoggingMessage(ev.Message) && diffSize <= maxSmallDiffLines && diffSize > 0 {
-			consecutive++
-			if consecutive > maxConsec {
-				maxConsec = consecutive
-			}
-		} else {
-			consecutive = 0
-		}
-	}
+	maxConsec := maxConsecutiveRun(sorted, isSmallLoggingCommit)
 
 	if maxConsec >= maxConsecutiveLogging {
-		findings = append(findings, Finding{
+		return []Finding{{
 			Severity: "warning",
 			Category: "logging-only",
 			Message:  itoa(maxConsec) + " consecutive commits appear to be logging/debug only, suggesting a debug spiral",
-		})
+		}}
 	}
 
-	return findings
+	return nil
 }

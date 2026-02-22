@@ -62,38 +62,44 @@ func ComputeOverallRating(metrics map[string]Metric) (float64, string) {
 	return total, grade
 }
 
+// partialCreditLowerIsBetter computes 0-20 partial credit when lower values
+// are better (e.g., rework percentage). Returns 20 if value < threshold.
+func partialCreditLowerIsBetter(value, threshold float64) float64 {
+	if value < threshold {
+		return 20
+	}
+	ratio := (100 - value) / (100 - threshold)
+	if ratio < 0 {
+		return 0
+	}
+	return ratio * 20
+}
+
+// partialCreditHigherIsBetter computes 0-20 partial credit when higher values
+// are better (e.g., velocity, trust, flow).
+func partialCreditHigherIsBetter(value, threshold float64) float64 {
+	if threshold <= 0 {
+		return 0
+	}
+	ratio := value / threshold
+	if ratio > 1 {
+		ratio = 1
+	}
+	return ratio * 20
+}
+
 // metricPartialCredit computes partial credit (0-20) for a metric that did
 // not pass its threshold.
 func metricPartialCredit(m Metric) float64 {
 	if m.Threshold == 0 {
-		// Threshold is 0 (e.g., spirals where 0 is perfect).
-		// If not passed, value > 0, so no partial credit.
 		return 0
 	}
 
 	switch m.Name {
 	case "rework":
-		// Lower is better: partial = (threshold - value) / threshold * 20
-		if m.Value >= m.Threshold {
-			ratio := (100 - m.Value) / (100 - m.Threshold)
-			if ratio < 0 {
-				return 0
-			}
-			return ratio * 20
-		}
-		return 20
-
+		return partialCreditLowerIsBetter(m.Value, m.Threshold)
 	case "velocity", "trust", "flow":
-		// Higher is better: partial = value / threshold * 20
-		if m.Threshold > 0 {
-			ratio := m.Value / m.Threshold
-			if ratio > 1 {
-				ratio = 1
-			}
-			return ratio * 20
-		}
-		return 0
-
+		return partialCreditHigherIsBetter(m.Value, m.Threshold)
 	default:
 		return 0
 	}
