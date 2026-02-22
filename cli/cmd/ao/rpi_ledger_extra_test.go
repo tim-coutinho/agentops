@@ -9,21 +9,6 @@ import (
 	"time"
 )
 
-// buildValidRecord constructs a valid RPILedgerRecord for testing.
-func buildValidRecord(t *testing.T, rootDir, runID, prevHash string) RPILedgerRecord {
-	t.Helper()
-	rec, err := AppendRPILedgerRecord(rootDir, RPILedgerAppendInput{
-		RunID:   runID,
-		Phase:   "research",
-		Action:  "started",
-		Details: nil,
-	})
-	if err != nil {
-		t.Fatalf("AppendRPILedgerRecord: %v", err)
-	}
-	return rec
-}
-
 func TestAppendRPILedgerRecord_HappyPath(t *testing.T) {
 	dir := t.TempDir()
 

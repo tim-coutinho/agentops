@@ -85,7 +85,7 @@ func TestFilterKillablePIDs_FiltersSelfAndZero(t *testing.T) {
 
 func TestFilterKillablePIDs_Empty(t *testing.T) {
 	filtered := filterKillablePIDs(nil, 100)
-	if filtered != nil && len(filtered) != 0 {
+	if len(filtered) != 0 {
 		t.Errorf("expected empty result for nil input, got %v", filtered)
 	}
 }

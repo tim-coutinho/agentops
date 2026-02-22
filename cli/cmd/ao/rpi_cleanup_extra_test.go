@@ -139,9 +139,15 @@ func TestPruneWorktrees_InGitRepo(t *testing.T) {
 	if err := initCmd.Run(); err != nil {
 		t.Skip("git not available")
 	}
-	exec.Command("git", "-C", dir, "config", "user.email", "test@example.com").Run()
-	exec.Command("git", "-C", dir, "config", "user.name", "Test").Run()
-	exec.Command("git", "-C", dir, "commit", "--allow-empty", "-m", "init").Run()
+	if err := exec.Command("git", "-C", dir, "config", "user.email", "test@example.com").Run(); err != nil {
+		t.Fatalf("git config user.email: %v", err)
+	}
+	if err := exec.Command("git", "-C", dir, "config", "user.name", "Test").Run(); err != nil {
+		t.Fatalf("git config user.name: %v", err)
+	}
+	if err := exec.Command("git", "-C", dir, "commit", "--allow-empty", "-m", "init").Run(); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
 
 	// pruneWorktrees should succeed in a valid git repo
 	err := pruneWorktrees(dir)

@@ -531,7 +531,9 @@ func TestReadPersistedAssignment(t *testing.T) {
 		data, _ := json.Marshal(snapshot)
 		sessionID := "empty-session"
 		filename := "assignment-" + sanitizeForFilename(sessionID) + ".json"
-		os.WriteFile(filepath.Join(contextDir, filename), data, 0644)
+		if err := os.WriteFile(filepath.Join(contextDir, filename), data, 0644); err != nil {
+			t.Fatal(err)
+		}
 		_, ok := readPersistedAssignment(dir, sessionID)
 		if ok {
 			t.Error("expected readPersistedAssignment to return false for empty snapshot")
@@ -542,7 +544,9 @@ func TestReadPersistedAssignment(t *testing.T) {
 		contextDir := filepath.Join(dir, ".agents", "ao", "context")
 		sessionID := "bad-json-session"
 		filename := "assignment-" + sanitizeForFilename(sessionID) + ".json"
-		os.WriteFile(filepath.Join(contextDir, filename), []byte("{invalid json}"), 0644)
+		if err := os.WriteFile(filepath.Join(contextDir, filename), []byte("{invalid json}"), 0644); err != nil {
+			t.Fatal(err)
+		}
 		_, ok := readPersistedAssignment(dir, sessionID)
 		if ok {
 			t.Error("expected readPersistedAssignment to return false for invalid JSON")
@@ -566,7 +570,9 @@ func TestMergePersistedAssignment(t *testing.T) {
 
 	t.Run("merges persisted agent name into empty field", func(t *testing.T) {
 		contextDir := filepath.Join(dir, ".agents", "ao", "context")
-		os.MkdirAll(contextDir, 0755)
+		if err := os.MkdirAll(contextDir, 0755); err != nil {
+			t.Fatal(err)
+		}
 
 		sessionID := "merge-test-session"
 		snapshot := contextAssignmentSnapshot{
@@ -575,7 +581,9 @@ func TestMergePersistedAssignment(t *testing.T) {
 		}
 		data, _ := json.Marshal(snapshot)
 		filename := "assignment-" + sanitizeForFilename(sessionID) + ".json"
-		os.WriteFile(filepath.Join(contextDir, filename), data, 0644)
+		if err := os.WriteFile(filepath.Join(contextDir, filename), data, 0644); err != nil {
+			t.Fatal(err)
+		}
 
 		status := &contextSessionStatus{
 			SessionID: sessionID,
@@ -598,7 +606,9 @@ func TestMergePersistedAssignment(t *testing.T) {
 		}
 		data, _ := json.Marshal(snapshot)
 		filename := "assignment-" + sanitizeForFilename(sessionID) + ".json"
-		os.WriteFile(filepath.Join(contextDir, filename), data, 0644)
+		if err := os.WriteFile(filepath.Join(contextDir, filename), data, 0644); err != nil {
+			t.Fatal(err)
+		}
 
 		status := &contextSessionStatus{
 			SessionID: sessionID,

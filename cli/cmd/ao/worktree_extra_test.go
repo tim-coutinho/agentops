@@ -11,11 +11,9 @@ import (
 func TestWorktreeReferenceTime_NoFiles(t *testing.T) {
 	dir := t.TempDir()
 	ref := worktreeReferenceTime(dir)
-	// When no state/status files exist, it should fall back to the dir's mod time
-	if ref.IsZero() {
-		// Might be zero if stat failed; acceptable
-	}
-	// At minimum, should not panic
+	// When no state/status files exist, it should fall back to the dir's mod time.
+	// ref.IsZero() is acceptable if stat failed; we just verify no panic.
+	_ = ref.IsZero()
 }
 
 func TestWorktreeReferenceTime_WithStateFile(t *testing.T) {
