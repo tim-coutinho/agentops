@@ -239,13 +239,29 @@ func (fs *FileStorage) Close() error {
 }
 
 // atomicWrite writes to a temp file and renames atomically.
+// writeSyncClose writes content to a file, syncs to disk, and closes.
+// On write or sync failure, the file is closed before returning.
+func writeSyncClose(f *os.File, writeFunc func(io.Writer) error) error {
+	if err := writeFunc(f); err != nil {
+		_ = f.Close() //nolint:errcheck // cleanup in error path
+		return fmt.Errorf("write content: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close() //nolint:errcheck // cleanup in error path
+		return fmt.Errorf("sync file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close temp file: %w", err)
+	}
+	return nil
+}
+
 func (fs *FileStorage) atomicWrite(path string, writeFunc func(io.Writer) error) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 
-	// Create temp file in same directory for atomic rename
 	tmpFile, err := os.CreateTemp(dir, ".tmp-")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
@@ -260,23 +276,10 @@ func (fs *FileStorage) atomicWrite(path string, writeFunc func(io.Writer) error)
 		}
 	}()
 
-	// Write content
-	if err := writeFunc(tmpFile); err != nil {
-		_ = tmpFile.Close() //nolint:errcheck // cleanup in error path
-		return fmt.Errorf("write content: %w", err)
+	if err := writeSyncClose(tmpFile, writeFunc); err != nil {
+		return err
 	}
 
-	// Sync to ensure data is on disk
-	if err := tmpFile.Sync(); err != nil {
-		_ = tmpFile.Close() //nolint:errcheck // cleanup in error path
-		return fmt.Errorf("sync file: %w", err)
-	}
-
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("close temp file: %w", err)
-	}
-
-	// Atomic rename
 	if err := os.Rename(tmpPath, path); err != nil {
 		return fmt.Errorf("rename to final: %w", err)
 	}
