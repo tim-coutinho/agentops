@@ -742,6 +742,35 @@ func benchEvents(n int) []TimelineEvent {
 	return events
 }
 
+func TestClampScore_NegativeClamps(t *testing.T) {
+	score := clampScore(-10.0, 5)
+	if score != 0 {
+		t.Errorf("clampScore(-10, 5) = %v, want 0", score)
+	}
+}
+
+func TestClampScore_Over100Clamps(t *testing.T) {
+	score := clampScore(120.0, 5)
+	if score != 100 {
+		t.Errorf("clampScore(120, 5) = %v, want 100", score)
+	}
+}
+
+func TestClampScore_NormalizeNon5Count(t *testing.T) {
+	// 3 metrics each scoring 20 = 60 raw, normalized: 60/3*5 = 100
+	score := clampScore(60.0, 3)
+	if score != 100 {
+		t.Errorf("clampScore(60, 3) = %v, want 100", score)
+	}
+}
+
+func TestClampScore_PassThrough(t *testing.T) {
+	score := clampScore(75.0, 5)
+	if score != 75.0 {
+		t.Errorf("clampScore(75, 5) = %v, want 75", score)
+	}
+}
+
 func BenchmarkComputeMetrics(b *testing.B) {
 	events := benchEvents(100)
 	b.ResetTimer()

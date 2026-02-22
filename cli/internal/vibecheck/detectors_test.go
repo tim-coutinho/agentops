@@ -353,3 +353,35 @@ func TestDetectTestsLie_NonFixFollowUp(t *testing.T) {
 		t.Errorf("expected no findings when follow-up is not a fix, got %d", len(findings))
 	}
 }
+
+func TestFilesRelated_BothEmpty(t *testing.T) {
+	// Exercise the len(a)==0 && len(b)==0 branch.
+	if !filesRelated(nil, nil) {
+		t.Error("expected filesRelated(nil, nil) == true")
+	}
+	if !filesRelated([]string{}, []string{}) {
+		t.Error("expected filesRelated([], []) == true")
+	}
+}
+
+func TestFilesRelated_OneEmptyOneNot(t *testing.T) {
+	// One empty, one not: no overlap, not both empty.
+	if filesRelated(nil, []string{"a.go"}) {
+		t.Error("expected filesRelated(nil, [a.go]) == false")
+	}
+	if filesRelated([]string{"a.go"}, nil) {
+		t.Error("expected filesRelated([a.go], nil) == false")
+	}
+}
+
+func TestFilesRelated_Overlap(t *testing.T) {
+	if !filesRelated([]string{"a.go", "b.go"}, []string{"b.go", "c.go"}) {
+		t.Error("expected overlap to return true")
+	}
+}
+
+func TestFilesRelated_NoOverlap(t *testing.T) {
+	if filesRelated([]string{"a.go"}, []string{"b.go"}) {
+		t.Error("expected no overlap to return false")
+	}
+}
