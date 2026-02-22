@@ -2550,3 +2550,105 @@ func TestGetChain_NonExistentFile(t *testing.T) {
 		t.Errorf("expected 0 events for nonexistent chain, got %d", len(events))
 	}
 }
+
+func TestWriteEntry_DirectoryAsPath(t *testing.T) {
+	// Exercise writeEntry with a path that is a directory -- os.WriteFile fails.
+	tmpDir := t.TempDir()
+	p := &Pool{PoolPath: tmpDir}
+
+	targetPath := filepath.Join(tmpDir, "blocked-entry")
+	if err := os.MkdirAll(targetPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	entry := &PoolEntry{
+		PoolEntry: types.PoolEntry{
+			Candidate: types.Candidate{ID: "test-write", Content: "test"},
+			Status:    types.PoolStatusPending,
+		},
+	}
+
+	err := p.writeEntry(targetPath, entry)
+	if err == nil {
+		t.Error("expected error when path is a directory")
+	}
+}
+
+func TestRecordEvent_DirectoryAsChainFile(t *testing.T) {
+	// Exercise recordEvent with chain file path that is a directory.
+	tmpDir := t.TempDir()
+	p := &Pool{PoolPath: tmpDir}
+
+	// Create a directory at the chain file path to block OpenFile
+	chainPath := filepath.Join(tmpDir, ChainFile)
+	if err := os.MkdirAll(chainPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	event := ChainEvent{
+		Timestamp:   time.Now(),
+		Operation:   "test",
+		CandidateID: "test-id",
+	}
+
+	err := p.recordEvent(event)
+	if err == nil {
+		t.Error("expected error when chain file path is a directory")
+	}
+}
+
+func TestAtomicMove_WriteTempFileError(t *testing.T) {
+	// Exercise atomicMove with a read-only destination directory.
+	// atomicMove creates a temp file in the same directory as destPath,
+	// so a read-only directory will block temp file creation.
+	tmpDir := t.TempDir()
+
+	srcPath := filepath.Join(tmpDir, "source.json")
+	if err := os.WriteFile(srcPath, []byte(`{"test": true}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	roDir := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(roDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(roDir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(roDir, 0755) })
+
+	destPath := filepath.Join(roDir, "dest.json")
+	err := atomicMove(srcPath, destPath)
+	if err == nil {
+		t.Error("expected error when dest directory is read-only")
+	}
+	if !strings.Contains(err.Error(), "create temp file") {
+		t.Errorf("expected 'create temp file' error, got: %v", err)
+	}
+}
+
+func TestAtomicMove_RenameError(t *testing.T) {
+	// Exercise atomicMove where write succeeds but rename fails.
+	// This is hard to trigger on a normal filesystem, but we can test
+	// by having the destPath be a directory (rename over a directory fails).
+	tmpDir := t.TempDir()
+
+	srcPath := filepath.Join(tmpDir, "source.json")
+	if err := os.WriteFile(srcPath, []byte(`{"test": true}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create destPath as a non-empty directory -- os.Rename to a non-empty dir fails
+	destPath := filepath.Join(tmpDir, "dest-dir.json")
+	if err := os.MkdirAll(filepath.Join(destPath, "blocker"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := atomicMove(srcPath, destPath)
+	if err == nil {
+		t.Error("expected error when dest is a non-empty directory")
+	}
+	if !strings.Contains(err.Error(), "rename to destination") {
+		t.Errorf("expected 'rename to destination' error, got: %v", err)
+	}
+}

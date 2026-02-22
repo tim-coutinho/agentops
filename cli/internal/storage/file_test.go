@@ -1161,6 +1161,98 @@ func TestAppendJSONL_WriteError(t *testing.T) {
 	}
 }
 
+func TestAtomicWrite_WriteFuncErrorCleansTempFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	fs := NewFileStorage(WithBaseDir(tmpDir))
+
+	targetPath := filepath.Join(tmpDir, "atomic-test.json")
+
+	// writeFunc that returns an error -- verify temp file cleanup
+	writeErr := fmt.Errorf("simulated write failure")
+	err := fs.atomicWrite(targetPath, func(w io.Writer) error {
+		return writeErr
+	})
+	if err == nil {
+		t.Fatal("expected error from failing writeFunc")
+	}
+
+	// Temp file should have been cleaned up
+	entries, _ := os.ReadDir(tmpDir)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".tmp-") {
+			t.Errorf("temp file %q should have been cleaned up", e.Name())
+		}
+	}
+}
+
+func TestAtomicWrite_ReadOnlyParentDir(t *testing.T) {
+	// Exercise the MkdirAll error path: make the parent dir read-only
+	// so that the subdirectory can't be created.
+	tmpDir := t.TempDir()
+	fs := NewFileStorage(WithBaseDir(tmpDir))
+
+	roDir := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(roDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(roDir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(roDir, 0755) })
+
+	// Path whose parent requires creating a subdirectory inside roDir
+	targetPath := filepath.Join(roDir, "subdir", "file.json")
+	err := fs.atomicWrite(targetPath, func(w io.Writer) error {
+		_, e := w.Write([]byte("data"))
+		return e
+	})
+	if err == nil {
+		t.Error("expected error when parent directory is read-only")
+	}
+}
+
+func TestListSessions_OpenError(t *testing.T) {
+	tmpDir := t.TempDir()
+	fs := NewFileStorage(WithBaseDir(tmpDir))
+
+	// Create the index directory with the index file as a directory
+	// to force an open error (not "not exists", but actual open error)
+	indexDir := filepath.Join(tmpDir, IndexDir)
+	if err := os.MkdirAll(indexDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Create a directory at the index file path
+	indexFilePath := filepath.Join(indexDir, IndexFile)
+	if err := os.MkdirAll(indexFilePath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := fs.ListSessions()
+	if err == nil {
+		t.Error("expected error when index file path is a directory")
+	}
+}
+
+func TestQueryProvenance_OpenError(t *testing.T) {
+	tmpDir := t.TempDir()
+	fs := NewFileStorage(WithBaseDir(tmpDir))
+
+	// Create provenance directory with provenance file as a directory
+	provDir := filepath.Join(tmpDir, ProvenanceDir)
+	if err := os.MkdirAll(provDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	provFilePath := filepath.Join(provDir, ProvenanceFile)
+	if err := os.MkdirAll(provFilePath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := fs.QueryProvenance("some/artifact")
+	if err == nil {
+		t.Error("expected error when provenance file path is a directory")
+	}
+}
+
 // contains is a test helper for substring matching.
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr))

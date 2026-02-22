@@ -1284,3 +1284,171 @@ forge:
 		t.Errorf("loadFromPath Forge.ProgressInterval = %d, want 200", cfg.Forge.ProgressInterval)
 	}
 }
+
+func TestLoad_WithHomeConfig(t *testing.T) {
+	// Create a temporary home config file at the actual home config path.
+	homePath := homeConfigPath()
+	if homePath == "" {
+		t.Skip("cannot determine home config path")
+	}
+
+	// Ensure the directory exists
+	if err := os.MkdirAll(filepath.Dir(homePath), 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	// Backup any existing config
+	origData, origErr := os.ReadFile(homePath)
+	existed := origErr == nil
+
+	// Write test home config
+	content := `
+output: markdown
+base_dir: /home-base
+verbose: true
+rpi:
+  worktree_mode: never
+  runtime_mode: stream
+  runtime_command: home-claude
+  ao_command: home-ao
+  bd_command: home-bd
+  tmux_command: home-tmux
+`
+	if err := os.WriteFile(homePath, []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	t.Cleanup(func() {
+		if existed {
+			_ = os.WriteFile(homePath, origData, 0644)
+		} else {
+			_ = os.Remove(homePath)
+		}
+	})
+
+	// Clear env vars and project config
+	t.Setenv("AGENTOPS_CONFIG", "/nonexistent/project.yaml") // force no project config
+	for _, key := range []string{
+		"AGENTOPS_OUTPUT", "AGENTOPS_BASE_DIR", "AGENTOPS_VERBOSE",
+		"AGENTOPS_NO_SC",
+		"AGENTOPS_RPI_WORKTREE_MODE", "AGENTOPS_RPI_RUNTIME",
+		"AGENTOPS_RPI_RUNTIME_MODE", "AGENTOPS_RPI_RUNTIME_COMMAND",
+		"AGENTOPS_RPI_AO_COMMAND", "AGENTOPS_RPI_BD_COMMAND",
+		"AGENTOPS_RPI_TMUX_COMMAND",
+		"AGENTOPS_FLYWHEEL_AUTO_PROMOTE_THRESHOLD",
+	} {
+		t.Setenv(key, "")
+	}
+
+	// Test Load picks up home config
+	cfg, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Output != "markdown" {
+		t.Errorf("Load with home config: Output = %q, want %q", cfg.Output, "markdown")
+	}
+	if cfg.BaseDir != "/home-base" {
+		t.Errorf("Load with home config: BaseDir = %q, want %q", cfg.BaseDir, "/home-base")
+	}
+	if !cfg.Verbose {
+		t.Error("Load with home config: Verbose = false, want true")
+	}
+	if cfg.RPI.WorktreeMode != "never" {
+		t.Errorf("Load with home config: RPI.WorktreeMode = %q, want %q", cfg.RPI.WorktreeMode, "never")
+	}
+}
+
+func TestResolve_WithHomeConfig(t *testing.T) {
+	// Create a temporary home config file at the actual home config path.
+	homePath := homeConfigPath()
+	if homePath == "" {
+		t.Skip("cannot determine home config path")
+	}
+
+	// Ensure the directory exists
+	if err := os.MkdirAll(filepath.Dir(homePath), 0755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	// Backup any existing config
+	origData, origErr := os.ReadFile(homePath)
+	existed := origErr == nil
+
+	// Write test home config with verbose: true
+	content := `
+output: markdown
+base_dir: /home-resolve
+verbose: true
+rpi:
+  worktree_mode: always
+  runtime_mode: direct
+  runtime_command: home-runtime
+  ao_command: home-ao
+  bd_command: home-bd
+  tmux_command: home-tmux
+`
+	if err := os.WriteFile(homePath, []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	t.Cleanup(func() {
+		if existed {
+			_ = os.WriteFile(homePath, origData, 0644)
+		} else {
+			_ = os.Remove(homePath)
+		}
+	})
+
+	// Clear env vars and project config
+	t.Setenv("AGENTOPS_CONFIG", "/nonexistent/project.yaml")
+	for _, key := range []string{
+		"AGENTOPS_OUTPUT", "AGENTOPS_BASE_DIR", "AGENTOPS_VERBOSE",
+		"AGENTOPS_NO_SC",
+		"AGENTOPS_RPI_WORKTREE_MODE", "AGENTOPS_RPI_RUNTIME",
+		"AGENTOPS_RPI_RUNTIME_MODE", "AGENTOPS_RPI_RUNTIME_COMMAND",
+		"AGENTOPS_RPI_AO_COMMAND", "AGENTOPS_RPI_BD_COMMAND",
+		"AGENTOPS_RPI_TMUX_COMMAND",
+		"AGENTOPS_FLYWHEEL_AUTO_PROMOTE_THRESHOLD",
+	} {
+		t.Setenv(key, "")
+	}
+
+	// Test Resolve picks up home config values (covers lines 453-463 and 509-511)
+	rc := Resolve("", "", false)
+
+	if rc.Output.Value != "markdown" || rc.Output.Source != SourceHome {
+		t.Errorf("Resolve with home config: Output = (%v, %v), want (markdown, %v)",
+			rc.Output.Value, rc.Output.Source, SourceHome)
+	}
+	if rc.BaseDir.Value != "/home-resolve" || rc.BaseDir.Source != SourceHome {
+		t.Errorf("Resolve with home config: BaseDir = (%v, %v), want (/home-resolve, %v)",
+			rc.BaseDir.Value, rc.BaseDir.Source, SourceHome)
+	}
+	if rc.Verbose.Value != true || rc.Verbose.Source != SourceHome {
+		t.Errorf("Resolve with home config: Verbose = (%v, %v), want (true, %v)",
+			rc.Verbose.Value, rc.Verbose.Source, SourceHome)
+	}
+	if rc.RPIWorktreeMode.Value != "always" || rc.RPIWorktreeMode.Source != SourceHome {
+		t.Errorf("Resolve with home config: RPIWorktreeMode = (%v, %v), want (always, %v)",
+			rc.RPIWorktreeMode.Value, rc.RPIWorktreeMode.Source, SourceHome)
+	}
+	if rc.RPIRuntimeMode.Value != "direct" || rc.RPIRuntimeMode.Source != SourceHome {
+		t.Errorf("Resolve with home config: RPIRuntimeMode = (%v, %v), want (direct, %v)",
+			rc.RPIRuntimeMode.Value, rc.RPIRuntimeMode.Source, SourceHome)
+	}
+	if rc.RPIRuntimeCommand.Value != "home-runtime" || rc.RPIRuntimeCommand.Source != SourceHome {
+		t.Errorf("Resolve with home config: RPIRuntimeCommand = (%v, %v), want (home-runtime, %v)",
+			rc.RPIRuntimeCommand.Value, rc.RPIRuntimeCommand.Source, SourceHome)
+	}
+	if rc.RPIAOCommand.Value != "home-ao" || rc.RPIAOCommand.Source != SourceHome {
+		t.Errorf("Resolve with home config: RPIAOCommand = (%v, %v), want (home-ao, %v)",
+			rc.RPIAOCommand.Value, rc.RPIAOCommand.Source, SourceHome)
+	}
+	if rc.RPIBDCommand.Value != "home-bd" || rc.RPIBDCommand.Source != SourceHome {
+		t.Errorf("Resolve with home config: RPIBDCommand = (%v, %v), want (home-bd, %v)",
+			rc.RPIBDCommand.Value, rc.RPIBDCommand.Source, SourceHome)
+	}
+	if rc.RPITmuxCommand.Value != "home-tmux" || rc.RPITmuxCommand.Source != SourceHome {
+		t.Errorf("Resolve with home config: RPITmuxCommand = (%v, %v), want (home-tmux, %v)",
+			rc.RPITmuxCommand.Value, rc.RPITmuxCommand.Source, SourceHome)
+	}
+}
