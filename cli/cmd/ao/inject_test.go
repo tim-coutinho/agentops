@@ -306,7 +306,11 @@ func TestApplyCompositeScoring(t *testing.T) {
 			learnings := make([]learning, len(tt.learnings))
 			copy(learnings, tt.learnings)
 
-			applyCompositeScoring(learnings, tt.lambda)
+			items := make([]scorable, len(learnings))
+			for i := range learnings {
+				items[i] = &learnings[i]
+			}
+			applyCompositeScoringTo(items, tt.lambda)
 
 			if tt.wantFirst == "" {
 				return // Empty case
@@ -343,7 +347,11 @@ func TestCompositeScoringZNormalization(t *testing.T) {
 		{ID: "L5", FreshnessScore: 0.2, Utility: 0.1},
 	}
 
-	applyCompositeScoring(learnings, 0.5)
+	items := make([]scorable, len(learnings))
+	for i := range learnings {
+		items[i] = &learnings[i]
+	}
+	applyCompositeScoringTo(items, 0.5)
 
 	// All learnings should have composite scores set
 	// Verify all learnings have composite scores computed.
@@ -398,7 +406,11 @@ func TestOlderItemScoresLowerThanNewerItem(t *testing.T) {
 			{ID: "older", FreshnessScore: freshnessScore(8.0), Utility: sameUtility},
 		}
 
-		applyCompositeScoring(learnings, types.DefaultLambda)
+		items := make([]scorable, len(learnings))
+		for i := range learnings {
+			items[i] = &learnings[i]
+		}
+		applyCompositeScoringTo(items, types.DefaultLambda)
 
 		// Find the scores
 		var newerScore, olderScore float64

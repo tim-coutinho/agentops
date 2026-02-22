@@ -87,7 +87,11 @@ func collectLearnings(cwd, query string, limit int) ([]learning, error) {
 
 	// Phase B: Calculate composite scores with z-normalization
 	// Score = z_norm(freshness) + λ × z_norm(utility)
-	applyCompositeScoring(learnings, types.DefaultLambda)
+	items := make([]scorable, len(learnings))
+	for i := range learnings {
+		items[i] = &learnings[i]
+	}
+	applyCompositeScoringTo(items, types.DefaultLambda)
 
 	// Sort by composite score (highest first) - Two-Phase retrieval
 	sort.Slice(learnings, func(i, j int) bool {

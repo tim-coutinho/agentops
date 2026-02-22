@@ -368,7 +368,11 @@ func TestKnowledgeLoopCompositeScoring(t *testing.T) {
 		{ID: "L3", FreshnessScore: 0.7, Utility: 0.5}, // Balanced
 	}
 
-	applyCompositeScoring(learnings, types.DefaultLambda)
+	items := make([]scorable, len(learnings))
+	for i := range learnings {
+		items[i] = &learnings[i]
+	}
+	applyCompositeScoringTo(items, types.DefaultLambda)
 
 	// With λ=0.5, utility matters but freshness too
 	// L2 should rank higher due to high utility

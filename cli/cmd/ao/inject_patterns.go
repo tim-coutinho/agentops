@@ -1,7 +1,6 @@
 package main
 
 import (
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -62,7 +61,11 @@ func collectPatterns(cwd, query string, limit int) ([]pattern, error) {
 		patterns = append(patterns, p)
 	}
 
-	applyPatternCompositeScoring(patterns, types.DefaultLambda)
+	items := make([]scorable, len(patterns))
+	for i := range patterns {
+		items[i] = &patterns[i]
+	}
+	applyCompositeScoringTo(items, types.DefaultLambda)
 	sort.Slice(patterns, func(i, j int) bool {
 		return patterns[i].CompositeScore > patterns[j].CompositeScore
 	})
@@ -136,37 +139,3 @@ func parsePatternFile(path string) (pattern, error) {
 	return p, nil
 }
 
-func applyPatternCompositeScoring(patterns []pattern, lambda float64) {
-	if len(patterns) == 0 {
-		return
-	}
-
-	var sumF, sumU float64
-	for _, p := range patterns {
-		sumF += p.FreshnessScore
-		sumU += p.Utility
-	}
-	n := float64(len(patterns))
-	meanF := sumF / n
-	meanU := sumU / n
-
-	var varF, varU float64
-	for _, p := range patterns {
-		varF += (p.FreshnessScore - meanF) * (p.FreshnessScore - meanF)
-		varU += (p.Utility - meanU) * (p.Utility - meanU)
-	}
-	stdF := math.Sqrt(varF / n)
-	stdU := math.Sqrt(varU / n)
-	if stdF < 0.001 {
-		stdF = 0.001
-	}
-	if stdU < 0.001 {
-		stdU = 0.001
-	}
-
-	for i := range patterns {
-		zFresh := (patterns[i].FreshnessScore - meanF) / stdF
-		zUtility := (patterns[i].Utility - meanU) / stdU
-		patterns[i].CompositeScore = zFresh + lambda*zUtility
-	}
-}

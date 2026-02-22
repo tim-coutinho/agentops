@@ -2,6 +2,21 @@ package main
 
 import "math"
 
+// scorable is the interface for items that participate in MemRL Two-Phase
+// composite scoring. Both learning and pattern implement this interface.
+type scorable interface {
+	getFreshness() float64
+	getUtility() float64
+	setComposite(float64)
+}
+
+func (l *learning) getFreshness() float64    { return l.FreshnessScore }
+func (l *learning) getUtility() float64      { return l.Utility }
+func (l *learning) setComposite(v float64)   { l.CompositeScore = v }
+func (p *pattern) getFreshness() float64     { return p.FreshnessScore }
+func (p *pattern) getUtility() float64       { return p.Utility }
+func (p *pattern) setComposite(v float64)    { p.CompositeScore = v }
+
 // freshnessScore calculates decay-adjusted score: exp(-ageWeeks * decayRate)
 // Based on knowledge decay rate δ = 0.17/week (Darr et al.)
 func freshnessScore(ageWeeks float64) float64 {
@@ -14,29 +29,31 @@ func freshnessScore(ageWeeks float64) float64 {
 	return score
 }
 
-// applyCompositeScoring implements MemRL Two-Phase scoring.
+// applyCompositeScoringTo implements MemRL Two-Phase scoring for any scorable slice.
 // Score = z_norm(freshness) + λ × z_norm(utility)
 // This combines recency (Phase A) with learned utility (Phase B).
-func applyCompositeScoring(learnings []learning, lambda float64) {
-	if len(learnings) == 0 {
+func applyCompositeScoringTo(items []scorable, lambda float64) {
+	if len(items) == 0 {
 		return
 	}
 
-	// Calculate means and standard deviations for z-normalization
+	// Calculate means for z-normalization
 	var sumF, sumU float64
-	for _, l := range learnings {
-		sumF += l.FreshnessScore
-		sumU += l.Utility
+	for _, item := range items {
+		sumF += item.getFreshness()
+		sumU += item.getUtility()
 	}
-	n := float64(len(learnings))
+	n := float64(len(items))
 	meanF := sumF / n
 	meanU := sumU / n
 
 	// Calculate standard deviations
 	var varF, varU float64
-	for _, l := range learnings {
-		varF += (l.FreshnessScore - meanF) * (l.FreshnessScore - meanF)
-		varU += (l.Utility - meanU) * (l.Utility - meanU)
+	for _, item := range items {
+		f := item.getFreshness()
+		u := item.getUtility()
+		varF += (f - meanF) * (f - meanF)
+		varU += (u - meanU) * (u - meanU)
 	}
 	stdF := math.Sqrt(varF / n)
 	stdU := math.Sqrt(varU / n)
@@ -50,11 +67,9 @@ func applyCompositeScoring(learnings []learning, lambda float64) {
 	}
 
 	// Apply z-normalization and calculate composite scores
-	for i := range learnings {
-		zFresh := (learnings[i].FreshnessScore - meanF) / stdF
-		zUtility := (learnings[i].Utility - meanU) / stdU
-
-		// Composite score: z_norm(freshness) + λ × z_norm(utility)
-		learnings[i].CompositeScore = zFresh + lambda*zUtility
+	for _, item := range items {
+		zFresh := (item.getFreshness() - meanF) / stdF
+		zUtility := (item.getUtility() - meanU) / stdU
+		item.setComposite(zFresh + lambda*zUtility)
 	}
 }
