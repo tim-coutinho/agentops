@@ -375,6 +375,14 @@ jobs:
           fi
           ./scripts/check-go-complexity.sh --base "$BASE_REF" --warn 15 --fail 25
 
+      - name: Upload coverage to Codecov
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./cli/coverage.out
+          flags: cli
+          fail_ci_if_error: false
+
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v6
         if: always()
