@@ -440,7 +440,7 @@ func ValidateMemRLPolicyContract(contract MemRLPolicyContract) error {
 // validateContractFields checks the top-level scalar fields and non-empty collection invariants.
 func validateContractFields(contract MemRLPolicyContract) error {
 	if contract.SchemaVersion < 1 {
-		return fmt.Errorf("schema_version must be >= 1")
+		return ErrSchemaVersionInvalid
 	}
 	if !isValidMemRLMode(contract.DefaultMode) {
 		return fmt.Errorf("invalid default_mode: %q", contract.DefaultMode)
@@ -452,13 +452,13 @@ func validateContractFields(contract MemRLPolicyContract) error {
 		return fmt.Errorf("invalid missing_metadata_action: %q", contract.MissingMetadataAction)
 	}
 	if len(contract.TieBreakRules) == 0 {
-		return fmt.Errorf("tie_break_rules must not be empty")
+		return ErrTieBreakRulesEmpty
 	}
 	if len(contract.Rules) == 0 {
-		return fmt.Errorf("rules must not be empty")
+		return ErrRulesEmpty
 	}
 	if len(contract.RollbackMatrix) == 0 {
-		return fmt.Errorf("rollback_matrix must not be empty")
+		return ErrRollbackMatrixEmpty
 	}
 	return nil
 }
@@ -486,7 +486,7 @@ func validateContractRollbacks(triggers []MemRLRollbackTrigger) error {
 // validatePolicyRule validates a single policy rule.
 func validatePolicyRule(rule MemRLPolicyRule) error {
 	if rule.RuleID == "" {
-		return fmt.Errorf("rule_id must not be empty")
+		return ErrRuleIDEmpty
 	}
 	if !isValidMemRLMode(rule.Mode) {
 		return fmt.Errorf("rule %s has invalid mode %q", rule.RuleID, rule.Mode)
@@ -507,7 +507,7 @@ func validatePolicyRule(rule MemRLPolicyRule) error {
 func validateRollbackTrigger(trigger MemRLRollbackTrigger) error {
 	switch {
 	case trigger.TriggerID == "":
-		return fmt.Errorf("rollback trigger id must not be empty")
+		return ErrTriggerIDEmpty
 	case trigger.Metric == "":
 		return fmt.Errorf("rollback trigger %s missing metric", trigger.TriggerID)
 	case trigger.MetricSourceCommand == "":

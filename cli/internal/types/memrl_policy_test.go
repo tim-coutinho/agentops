@@ -1,6 +1,7 @@
 package types
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -209,8 +210,12 @@ func TestValidateMemRLPolicyContract_AllErrors(t *testing.T) {
 	t.Run("schema_version_zero", func(t *testing.T) {
 		c := valid
 		c.SchemaVersion = 0
-		if err := ValidateMemRLPolicyContract(c); err == nil {
+		err := ValidateMemRLPolicyContract(c)
+		if err == nil {
 			t.Error("expected error for schema_version 0")
+		}
+		if !errors.Is(err, ErrSchemaVersionInvalid) {
+			t.Errorf("expected ErrSchemaVersionInvalid, got %v", err)
 		}
 	})
 
@@ -241,8 +246,12 @@ func TestValidateMemRLPolicyContract_AllErrors(t *testing.T) {
 	t.Run("empty_tie_break_rules", func(t *testing.T) {
 		c := valid
 		c.TieBreakRules = nil
-		if err := ValidateMemRLPolicyContract(c); err == nil {
+		err := ValidateMemRLPolicyContract(c)
+		if err == nil {
 			t.Error("expected error for empty tie_break_rules")
+		}
+		if !errors.Is(err, ErrTieBreakRulesEmpty) {
+			t.Errorf("expected ErrTieBreakRulesEmpty, got %v", err)
 		}
 	})
 
