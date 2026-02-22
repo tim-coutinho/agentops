@@ -114,38 +114,9 @@ func (l *Locator) FindFirst(pattern string) (string, LocationType, error) {
 
 // searchLocation searches a specific location for the pattern.
 func (l *Locator) searchLocation(loc LocationType, pattern string) ([]string, error) {
-	var searchRoot string
-
-	switch loc {
-	case LocationCrew:
-		// Current directory's .agents/
-		searchRoot = filepath.Join(l.startDir, ".agents")
-
-	case LocationRig:
-		// Look for rig root (parent with .agents/)
-		rigDir := l.findRigRoot()
-		if rigDir == "" {
-			return nil, ErrNoRigRoot
-		}
-		searchRoot = filepath.Join(rigDir, ".agents")
-
-	case LocationTown:
-		// ~/gt/.agents/
-		searchRoot = filepath.Join(l.townDir, ".agents")
-
-	case LocationPlugins:
-		// plugins/*/ in current directory
-		searchRoot = filepath.Join(l.startDir, "plugins")
-		if _, err := os.Stat(searchRoot); os.IsNotExist(err) {
-			// Also try from rig root
-			rigDir := l.findRigRoot()
-			if rigDir != "" {
-				searchRoot = filepath.Join(rigDir, "plugins")
-			}
-		}
-
-	default:
-		return nil, fmt.Errorf("unknown location: %s", loc)
+	searchRoot, err := l.resolveSearchRoot(loc)
+	if err != nil {
+		return nil, err
 	}
 
 	// Check if search root exists
@@ -153,8 +124,39 @@ func (l *Locator) searchLocation(loc LocationType, pattern string) ([]string, er
 		return nil, fmt.Errorf("location not found: %s", searchRoot)
 	}
 
-	// Perform glob search
 	return l.glob(searchRoot, pattern)
+}
+
+// resolveSearchRoot determines the filesystem path for a given location type.
+func (l *Locator) resolveSearchRoot(loc LocationType) (string, error) {
+	switch loc {
+	case LocationCrew:
+		return filepath.Join(l.startDir, ".agents"), nil
+	case LocationRig:
+		rigDir := l.findRigRoot()
+		if rigDir == "" {
+			return "", ErrNoRigRoot
+		}
+		return filepath.Join(rigDir, ".agents"), nil
+	case LocationTown:
+		return filepath.Join(l.townDir, ".agents"), nil
+	case LocationPlugins:
+		return l.resolvePluginsRoot(), nil
+	default:
+		return "", fmt.Errorf("unknown location: %s", loc)
+	}
+}
+
+// resolvePluginsRoot finds the plugins directory, trying the current dir first
+// then falling back to the rig root.
+func (l *Locator) resolvePluginsRoot() string {
+	path := filepath.Join(l.startDir, "plugins")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if rigDir := l.findRigRoot(); rigDir != "" {
+			return filepath.Join(rigDir, "plugins")
+		}
+	}
+	return path
 }
 
 // glob performs pattern matching in the search root.
