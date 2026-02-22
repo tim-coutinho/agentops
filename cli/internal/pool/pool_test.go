@@ -2768,7 +2768,7 @@ func TestWriteTempFile_ReadOnlyDir(t *testing.T) {
 	if err := os.Mkdir(roDir, 0555); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chmod(roDir, 0755) })
+	t.Cleanup(func() { _ = os.Chmod(roDir, 0755) })
 
 	err := writeTempFile(filepath.Join(roDir, "test.tmp"), []byte("data"))
 	if err == nil {
@@ -2783,7 +2783,9 @@ func TestWriteTempFile_ExistingFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	tempPath := filepath.Join(tmpDir, "existing.tmp")
 	// Create the file first so O_EXCL fails
-	os.WriteFile(tempPath, []byte("existing"), 0600)
+	if err := os.WriteFile(tempPath, []byte("existing"), 0600); err != nil {
+		t.Fatal(err)
+	}
 
 	err := writeTempFile(tempPath, []byte("new data"))
 	if err == nil {

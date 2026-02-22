@@ -2246,7 +2246,9 @@ func TestReadArtifactText_FileNotFound(t *testing.T) {
 func TestReadArtifactText_MissingSchemaVersion(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "artifact.md")
-	os.WriteFile(path, []byte("# No frontmatter\nSome content"), 0644)
+	if err := os.WriteFile(path, []byte("# No frontmatter\nSome content"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	v := &Validator{}
 	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
@@ -2264,7 +2266,9 @@ func TestReadArtifactText_WithSchemaVersion(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "artifact.md")
 	content := "---\nschema_version: 1\n---\n# Content"
-	os.WriteFile(path, []byte(content), 0644)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	v := &Validator{}
 	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
@@ -2311,7 +2315,9 @@ func TestCheckSectionAny_SecondMarkerFound(t *testing.T) {
 func TestCheckTierRequirements_TierCore(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "artifact.md")
-	os.WriteFile(path, []byte("content"), 0644)
+	if err := os.WriteFile(path, []byte("content"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	v := &Validator{}
 	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
