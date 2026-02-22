@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-02-22
+
+### Added
+
+- **cmd/ao test coverage to 60.2%** — 5 rounds of targeted tests covering badge, store, fire, batch_promote, rpi_phased, context, and 30+ helper functions. Coverage floor goal now passing.
+- **Vibe-kit selection manifest** for plugin packaging
+- **CI badges and Codecov integration** with complexity and race detection pre-push gates
+- **Infrastructure scripts** — `--per-file`, `--track-delta`, and cycle estimator for evolve tooling
+
+### Changed
+
+- **Repo root decluttered** — Moved CHANGELOG, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY into `docs/`. All cross-references updated across 15 files.
+- **Evolve cycles 5–116 landed** — Zero functions at complexity >= 8, coverage 95%+ across all internal packages, sentinel errors and benchmarks in all 15 packages, Go 1.23 idiom modernization (slices, cmp.Or, range-over-int, CutPrefix), exhaustive switches, errorlint/gocritic compliance.
+- **CI hardened** — Embedded sync path fix, security scan false positive exclusions (`_test.go`, `.claude/`), security toolchain gate made non-blocking, local CI gate secret scan and tool requirements fixed.
+- **Git author corrected** — Rewrote 157 commits from stale `Test User` to correct identity.
+
+### Fixed
+
+- **CI pipeline** — Embedded hooks sync path after `cd cli`, security scan `secretFile` false positive, toolchain gate missing optional tools
+- **Push-gate race** — `$ROOT` assignment moved before race gate check
+- **Race test mitigations** — Added `-count=1`, timeout, and duration monitoring
+- **Local CI gate** — Excluded test files from secret scan, dropped `--require-tools` for missing hadolint
+- **Golangci-lint debt** — Dead code, errcheck, gosimple, test factory cleanups
+- **4 failing goals** — Telemetry ref, doc link validator, GOALS check path, evolve measurement
+
 ## [2.14.0] - 2026-02-22
 
 ### Added
