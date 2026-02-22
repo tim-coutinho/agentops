@@ -2438,3 +2438,115 @@ func TestGetChain_CloseError(t *testing.T) {
 		t.Errorf("expected 3 events, got %d", len(events))
 	}
 }
+
+func TestAtomicMove_NonExistentSource(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcPath := filepath.Join(tmpDir, "nonexistent.json")
+	destPath := filepath.Join(tmpDir, "dest.json")
+
+	err := atomicMove(srcPath, destPath)
+	if err == nil {
+		t.Error("expected error for nonexistent source file")
+	}
+	if !strings.Contains(err.Error(), "read source") {
+		t.Errorf("expected 'read source' error, got: %v", err)
+	}
+}
+
+func TestAtomicMove_ReadOnlyDestDir(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create source file
+	srcPath := filepath.Join(tmpDir, "source.json")
+	if err := os.WriteFile(srcPath, []byte(`{"test":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create read-only destination directory
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	destPath := filepath.Join(readOnly, "dest.json")
+	err := atomicMove(srcPath, destPath)
+	if err == nil {
+		t.Error("expected error when dest dir is read-only")
+	}
+	if !strings.Contains(err.Error(), "create temp file") {
+		t.Errorf("expected 'create temp file' error, got: %v", err)
+	}
+}
+
+func TestAtomicMove_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create source file
+	srcPath := filepath.Join(tmpDir, "source.json")
+	content := []byte(`{"test":true}`)
+	if err := os.WriteFile(srcPath, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	destPath := filepath.Join(tmpDir, "dest.json")
+	if err := atomicMove(srcPath, destPath); err != nil {
+		t.Fatalf("atomicMove: %v", err)
+	}
+
+	// Verify destination has correct content
+	data, err := os.ReadFile(destPath)
+	if err != nil {
+		t.Fatalf("read dest: %v", err)
+	}
+	if string(data) != string(content) {
+		t.Errorf("dest content = %q, want %q", data, content)
+	}
+
+	// Verify source is removed
+	if _, err := os.Stat(srcPath); !os.IsNotExist(err) {
+		t.Errorf("source should be removed after move")
+	}
+}
+
+func TestAddAt_RecordEventFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := &Pool{PoolPath: tmpDir}
+
+	// Setup pending dir
+	pendingDir := filepath.Join(tmpDir, PendingDir)
+	if err := os.MkdirAll(pendingDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Block chain file to trigger recordEvent failure
+	blockChainFile(t, p)
+
+	candidate := types.Candidate{
+		ID:      "test-add-at",
+		Content: "Test content",
+	}
+	scoring := types.Scoring{
+		RawScore: 0.8,
+	}
+
+	// AddAt should succeed even when recordEvent fails (it's a warning)
+	err := p.AddAt(candidate, scoring, time.Now())
+	if err != nil {
+		t.Fatalf("AddAt: %v", err)
+	}
+}
+
+func TestGetChain_NonExistentFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := &Pool{PoolPath: tmpDir}
+
+	// No chain.jsonl exists -- should return empty
+	events, err := p.GetChain()
+	if err != nil {
+		t.Fatalf("GetChain: %v", err)
+	}
+	if len(events) != 0 {
+		t.Errorf("expected 0 events for nonexistent chain, got %d", len(events))
+	}
+}
