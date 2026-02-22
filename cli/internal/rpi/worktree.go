@@ -183,6 +183,26 @@ func resolveHeadCommit(repoRoot string, timeout time.Duration) (string, error) {
 }
 
 // tryCreateWorktree attempts to create a worktree up to 3 times, handling path collisions.
+// initWorktreeAgentsDir creates the .agents/rpi/ directory in a new worktree,
+// logging a warning on failure rather than failing the worktree creation.
+func initWorktreeAgentsDir(worktreePath string, verbosef func(string, ...any)) {
+	if mkErr := os.MkdirAll(filepath.Join(worktreePath, ".agents", "rpi"), 0755); mkErr != nil && verbosef != nil {
+		verbosef("Warning: could not create .agents/rpi/ in worktree: %v\n", mkErr)
+	}
+}
+
+// classifyWorktreeError inspects git worktree add output and returns a
+// retryable flag (true = path collision, retry) or a terminal error.
+func classifyWorktreeError(output []byte, ctxErr error, cmdErr error, timeout time.Duration) (retryable bool, err error) {
+	if strings.Contains(string(output), "already exists") {
+		return true, nil
+	}
+	if ctxErr == context.DeadlineExceeded {
+		return false, fmt.Errorf("git worktree add timed out after %s", timeout)
+	}
+	return false, fmt.Errorf("git worktree add failed: %w (output: %s)", cmdErr, string(output))
+}
+
 func tryCreateWorktree(repoRoot, currentCommit string, timeout time.Duration, verbosef func(string, ...any)) (string, string, error) {
 	for attempt := 0; attempt < 3; attempt++ {
 		runID := GenerateRunID()
@@ -196,25 +216,17 @@ func tryCreateWorktree(repoRoot, currentCommit string, timeout time.Duration, ve
 		cancel()
 
 		if cmdErr == nil {
-			if mkErr := os.MkdirAll(filepath.Join(worktreePath, ".agents", "rpi"), 0755); mkErr != nil {
-				if verbosef != nil {
-					verbosef("Warning: could not create .agents/rpi/ in worktree: %v\n", mkErr)
-				}
-			}
+			initWorktreeAgentsDir(worktreePath, verbosef)
 			return worktreePath, runID, nil
 		}
 
-		if strings.Contains(string(output), "already exists") {
-			if verbosef != nil {
-				verbosef("Worktree path collision on %s, retrying (%d/3)\n", worktreePath, attempt+1)
-			}
-			continue
+		retryable, err := classifyWorktreeError(output, ctx.Err(), cmdErr, timeout)
+		if !retryable {
+			return "", "", err
 		}
-
-		if ctx.Err() == context.DeadlineExceeded {
-			return "", "", fmt.Errorf("git worktree add timed out after %s", timeout)
+		if verbosef != nil {
+			verbosef("Worktree path collision on %s, retrying (%d/3)\n", worktreePath, attempt+1)
 		}
-		return "", "", fmt.Errorf("git worktree add failed: %w (output: %s)", cmdErr, string(output))
 	}
 	return "", "", ErrWorktreeCollision
 }
