@@ -388,12 +388,17 @@ func generateSlug(text string) string {
 	return s
 }
 
+// isSlugChar returns true for lowercase alphanumeric characters kept in slugs.
+func isSlugChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+}
+
 // slugify replaces non-alphanumeric runs with single hyphens and trims leading/trailing hyphens.
 func slugify(input string) string {
 	var result strings.Builder
 	lastHyphen := false
 	for _, r := range input {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+		if isSlugChar(r) {
 			result.WriteRune(r)
 			lastHyphen = false
 		} else if !lastHyphen {

@@ -123,15 +123,18 @@ func validateGoalID(g Goal, seen map[string]bool) []ValidationError {
 	return errs
 }
 
+// requireField appends a "required" validation error if value is empty.
+func requireField(errs *[]ValidationError, goalID, field, value string) {
+	if value == "" {
+		*errs = append(*errs, ValidationError{GoalID: goalID, Field: field, Message: "required"})
+	}
+}
+
 // validateGoalFields checks description, check, weight, and type fields.
 func validateGoalFields(g Goal) []ValidationError {
 	var errs []ValidationError
-	if g.Description == "" {
-		errs = append(errs, ValidationError{GoalID: g.ID, Field: "description", Message: "required"})
-	}
-	if g.Check == "" {
-		errs = append(errs, ValidationError{GoalID: g.ID, Field: "check", Message: "required"})
-	}
+	requireField(&errs, g.ID, "description", g.Description)
+	requireField(&errs, g.ID, "check", g.Check)
 	if g.Weight < 1 || g.Weight > 10 {
 		errs = append(errs, ValidationError{GoalID: g.ID, Field: "weight", Message: "must be 1-10"})
 	}

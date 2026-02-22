@@ -835,6 +835,20 @@ func RecordCitation(baseDir string, event types.CitationEvent) error {
 }
 
 // LoadCitations reads all citation events from the citations log.
+// parseCitationLine parses a single JSONL line into a CitationEvent.
+// Returns the event and true on success, or zero value and false for empty/malformed lines.
+func parseCitationLine(line []byte, baseDir string) (types.CitationEvent, bool) {
+	if len(line) == 0 {
+		return types.CitationEvent{}, false
+	}
+	var event types.CitationEvent
+	if err := json.Unmarshal(line, &event); err != nil {
+		return types.CitationEvent{}, false
+	}
+	event.ArtifactPath = CanonicalArtifactPath(baseDir, event.ArtifactPath)
+	return event, true
+}
+
 func LoadCitations(baseDir string) ([]types.CitationEvent, error) {
 	citationsPath := filepath.Join(baseDir, CitationsFilePath)
 
@@ -854,21 +868,10 @@ func LoadCitations(baseDir string) ([]types.CitationEvent, error) {
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
 
-	lineNum := 0
 	for scanner.Scan() {
-		lineNum++
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
+		if event, ok := parseCitationLine(scanner.Bytes(), baseDir); ok {
+			citations = append(citations, event)
 		}
-
-		var event types.CitationEvent
-		if err := json.Unmarshal(line, &event); err != nil {
-			// Skip malformed lines
-			continue
-		}
-		event.ArtifactPath = CanonicalArtifactPath(baseDir, event.ArtifactPath)
-		citations = append(citations, event)
 	}
 
 	if err := scanner.Err(); err != nil {
