@@ -143,4 +143,4 @@ These are NOT available at Go 1.23. Versions 1.24 and 1.25 are released; 1.26+ e
 | `strings.SplitSeq` / `FieldsSeq` | 1.24+ | `strings.Split` when iterating (avoids intermediate slice) |
 | `wg.Go(fn)` | 1.25+ | `wg.Add(1)` + `go func() { defer wg.Done(); ... }()` |
 | `new(val)` | 1.26+ | `x := val; &x` for pointer creation |
-| `errors.AsType[T](err)` | 1.26+ | `var target T; errors.As(err, &target)` |
+| `errors.AsType\[T\](err)` | 1.26+ | `var target T; errors.As(err, &target)` |
