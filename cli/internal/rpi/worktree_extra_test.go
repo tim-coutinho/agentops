@@ -1085,3 +1085,35 @@ func TestRemoveWorktree_EvalSymlinksAndAbsFail(t *testing.T) {
 	// Clean up the actual worktree
 	_ = RemoveWorktree(repo, worktreePath, runID, 30*time.Second)
 }
+
+func TestResolveRecoveryBranch(t *testing.T) {
+	tests := []struct {
+		name   string
+		prefix string
+		want   string
+	}{
+		{name: "empty prefix uses default", prefix: "", want: "codex/auto-rpi-recovery"},
+		{name: "whitespace prefix uses default", prefix: "  ", want: "codex/auto-rpi-recovery"},
+		{name: "custom prefix", prefix: "feature/test", want: "feature/test-recovery"},
+		{name: "trailing dash stripped", prefix: "feature/test-", want: "feature/test-recovery"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveRecoveryBranch(tt.prefix)
+			if got != tt.want {
+				t.Errorf("resolveRecoveryBranch(%q) = %q, want %q", tt.prefix, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveRemovePaths_InvalidWorktreePath(t *testing.T) {
+	// Test with a path that fails both EvalSymlinks and Abs.
+	// This is hard to trigger since Abs rarely fails, so we test the
+	// "invalid run id" path instead.
+	repo := initGitRepo(t)
+	_, _, _, err := resolveRemovePaths(repo, "/tmp/not-matching-pattern", "")
+	if err == nil {
+		t.Fatal("expected error for non-matching worktree path")
+	}
+}
