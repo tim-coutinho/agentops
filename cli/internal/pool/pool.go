@@ -683,46 +683,51 @@ func (p *Pool) writeEntry(path string, entry *PoolEntry) error {
 	return os.WriteFile(path, data, 0600)
 }
 
-// writeArtifact writes a promoted candidate as markdown.
-func (p *Pool) writeArtifact(path string, entry *PoolEntry) error {
-	var content strings.Builder
-
-	// Title
-	switch entry.Candidate.Type {
+// knowledgeTypeHeading returns the markdown heading prefix for a knowledge type.
+func knowledgeTypeHeading(kt types.KnowledgeType) string {
+	switch kt {
 	case types.KnowledgeTypeLearning:
-		content.WriteString("# Learning: ")
+		return "# Learning: "
 	case types.KnowledgeTypeDecision:
-		content.WriteString("# Decision: ")
+		return "# Decision: "
 	case types.KnowledgeTypeSolution:
-		content.WriteString("# Solution: ")
+		return "# Solution: "
 	default:
-		content.WriteString("# Knowledge: ")
+		return "# Knowledge: "
 	}
+}
 
-	// Use first line of content as title
-	firstLine := entry.Candidate.Content
+// firstLineTitle extracts and truncates the first line of content for use as a title.
+func firstLineTitle(content string) string {
+	firstLine := content
 	if idx := strings.Index(firstLine, "\n"); idx > 0 {
 		firstLine = firstLine[:idx]
 	}
 	if len(firstLine) > 80 {
 		firstLine = truncateAtWordBoundary(firstLine, 77) + "..."
 	}
-	content.WriteString(firstLine)
+	return firstLine
+}
+
+// writeArtifact writes a promoted candidate as markdown.
+func (p *Pool) writeArtifact(path string, entry *PoolEntry) error {
+	var content strings.Builder
+
+	content.WriteString(knowledgeTypeHeading(entry.Candidate.Type))
+	content.WriteString(firstLineTitle(entry.Candidate.Content))
 	content.WriteString("\n\n")
 
 	// Metadata
 	content.WriteString(fmt.Sprintf("**ID**: %s\n", entry.Candidate.ID))
 	content.WriteString(fmt.Sprintf("**Date**: %s\n", time.Now().Format("2006-01-02")))
 	content.WriteString(fmt.Sprintf("**Tier**: %s\n", entry.Candidate.Tier))
-	content.WriteString("**Schema Version**: 1\n")
-	content.WriteString("\n")
+	content.WriteString("**Schema Version**: 1\n\n")
 
 	// MemRL fields
 	content.WriteString("## MemRL Metrics\n\n")
 	content.WriteString(fmt.Sprintf("- **Utility**: %.2f\n", entry.Candidate.Utility))
 	content.WriteString(fmt.Sprintf("- **Confidence**: %.2f\n", entry.Candidate.Confidence))
-	content.WriteString(fmt.Sprintf("- **Maturity**: %s\n", entry.Candidate.Maturity))
-	content.WriteString("\n")
+	content.WriteString(fmt.Sprintf("- **Maturity**: %s\n\n", entry.Candidate.Maturity))
 
 	// Content
 	content.WriteString("## What We Learned\n\n")
@@ -740,8 +745,7 @@ func (p *Pool) writeArtifact(path string, entry *PoolEntry) error {
 	content.WriteString("## Source\n\n")
 	content.WriteString(fmt.Sprintf("- **Session**: %s\n", entry.Candidate.Source.SessionID))
 	content.WriteString(fmt.Sprintf("- **Transcript**: %s\n", entry.Candidate.Source.TranscriptPath))
-	content.WriteString(fmt.Sprintf("- **Message**: %d\n", entry.Candidate.Source.MessageIndex))
-	content.WriteString("\n")
+	content.WriteString(fmt.Sprintf("- **Message**: %d\n\n", entry.Candidate.Source.MessageIndex))
 
 	return os.WriteFile(path, []byte(content.String()), 0600)
 }
@@ -769,15 +773,19 @@ func (p *Pool) recordEvent(event ChainEvent) (err error) {
 	return err
 }
 
-// GetChain returns all chain events.
-func (p *Pool) GetChain() (events []ChainEvent, err error) {
-	chainPath := filepath.Join(p.PoolPath, ChainFile)
-
-	f, err := os.Open(chainPath)
+// openIfExists opens a file for reading, returning (nil, nil) if it does not exist.
+func openIfExists(path string) (*os.File, error) {
+	f, err := os.Open(path)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
-	if err != nil {
+	return f, err
+}
+
+// GetChain returns all chain events.
+func (p *Pool) GetChain() (events []ChainEvent, err error) {
+	f, err := openIfExists(filepath.Join(p.PoolPath, ChainFile))
+	if err != nil || f == nil {
 		return nil, err
 	}
 	defer func() {
