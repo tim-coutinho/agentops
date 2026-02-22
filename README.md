@@ -152,7 +152,9 @@ Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md)
 
 ## See It Work
 
-**Use one skill** — validate a PR:
+Start simple. Work your way up. Each level builds on the last.
+
+**1. Dip your toe** — one skill, one command:
 
 ```text
 > /council validate this PR
@@ -164,19 +166,7 @@ Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md)
 Consensus: WARN — add rate limiting to /login before shipping
 ```
 
-**Parallelize anything** with `/swarm`:
-
-```text
-> /swarm "research auth patterns, brainstorm rate limiting improvements"
-
-[swarm] 3 agents spawned — each gets fresh context
-[agent-1] /research auth — found JWT + session patterns, 2 prior learnings
-[agent-2] /research rate-limiting — found token bucket, middleware pattern
-[agent-3] /brainstorm improvements — 4 approaches ranked
-[swarm] Complete — artifacts in .agents/
-```
-
-**Full pipeline** — one command, walk away:
+**2. Full pipeline** — research through post-mortem, one command:
 
 ```text
 > /rpi "add retry backoff to rate limiter"
@@ -190,16 +180,58 @@ Consensus: WARN — add rate limiting to /login before shipping
 [flywheel]    Next: /rpi "add circuit breaker to external API calls"
 ```
 
+**3. The endgame** — `/evolve`: define goals, walk away, come back to a better codebase.
+
+This is what the whole system builds toward. Every skill — research, planning, parallel execution, council validation, knowledge extraction — composes into a single loop that measures what's wrong, fixes the worst thing, validates nothing regressed, extracts what it learned, and repeats. The [Ralph Wiggum Pattern](https://ghuntley.com/ralph/) gives each cycle fresh context. The knowledge flywheel means cycle 50 knows what cycle 1 learned. Goals give it intent. Regression gates give it safety. Memory gives it compounding.
+
+```text
+> /evolve
+
+[evolve] GOALS.yaml: 28 goals loaded, score 77.0% (20/26 passing)
+
+[cycle-1]     Worst: wiring-closure (weight 6) + 3 more
+              /rpi "Fix failing goals" → score 93.3% (25/28) ✓
+
+              ── the agent naturally organizes into phases ──
+
+[cycle-2-35]  Coverage blitz: 17 packages from ~85% → ~97% avg
+              Table-driven tests, edge cases, error paths
+[cycle-38-59] Benchmarks added to all 15 internal packages
+[cycle-60-95] Complexity annihilation: zero functions >= 8
+              (was dozens >= 20 — extracted helpers, tested independently)
+[cycle-96-116] Modernization: sentinel errors, exhaustive switches,
+              Go 1.23 idioms (slices, cmp.Or, range-over-int)
+
+[teardown]    203 files changed, 20K+ lines, 116 cycles
+              All tests pass. Go vet clean. Avg coverage 97%.
+              /post-mortem → 33 learnings extracted
+              Ready for next /evolve — the floor is now the ceiling.
+```
+
+That ran overnight — ~7 hours, unattended, on this repo. Every cycle committed with a traceable message. Regression gates auto-reverted anything that broke a previously-passing goal. The agent built its own safety net first (tests), then used that safety net to refactor aggressively (complexity), then polished (modernization). Nobody told it to do that — severity-based goal selection naturally produces the correct ordering.
+
 <p align="center">
 <img src="docs/assets/crank-3-parallel-epics.png" alt="Completed crank run with 3 parallel epics and 15 issues shipped in 5 waves" width="800">
 <br>
-<i>AgentOps building AgentOps: completed `/crank` across 3 parallel epics (15 issues, 5 waves, 0 regressions).</i>
+<i>AgentOps building AgentOps: `/crank` across 3 parallel epics (15 issues, 5 waves, 0 regressions).</i>
 </p>
 
 <details>
-<summary><b>More examples</b> — /evolve, session continuity</summary>
+<summary><b>More examples</b> — swarm, session continuity, different workflows</summary>
 
 <br>
+
+**Parallelize anything** with `/swarm`:
+
+```text
+> /swarm "research auth patterns, brainstorm rate limiting improvements"
+
+[swarm] 3 agents spawned — each gets fresh context
+[agent-1] /research auth — found JWT + session patterns, 2 prior learnings
+[agent-2] /research rate-limiting — found token bucket, middleware pattern
+[agent-3] /brainstorm improvements — 4 approaches ranked
+[swarm] Complete — artifacts in .agents/
+```
 
 **Session continuity across compaction or restart:**
 ```text
@@ -215,56 +247,14 @@ Consensus: WARN — add rate limiting to /login before shipping
           Next: /implement ag-0058.3
 ```
 
-**Goal-driven improvement loop** (actual overnight run — 116 cycles, ~7 hours unattended):
-```text
-> /evolve
+**Different developers, different setups:**
 
-[evolve] GOALS.yaml: 28 goals loaded, score 77.0% (20/26 passing)
-[cycle-1]  Worst: wiring-closure (weight 6) + 3 more
-           /rpi "Fix failing goals" → score 93.3% (25/28 passing) ✓
-[cycle-2-35]  Coverage blitz: 17 packages from ~85% → ~97% avg
-[cycle-38-59] Benchmarks added to all 15 internal packages
-[cycle-60-95] Complexity: zero functions >= 8 (was dozens >= 20)
-[cycle-96-116] Modernization: sentinel errors, exhaustive switches, Go 1.23 idioms
-[teardown] 203 files changed, 20K+ lines, all tests pass, go vet clean
-           /post-mortem → 33 learnings extracted
-```
-
-</details>
-
-<details>
-<summary><b>Different developers, different setups</b> — use what fits your workflow</summary>
-
-<br>
-
-**The PR reviewer** — uses one skill, nothing else:
-```text
-> /council validate this PR
-Consensus: WARN — missing error handling in 2 locations
-```
-That's it. No pipeline, no setup, no commitment. One command, actionable feedback.
-
-**The team lead** — composes skills manually:
-```text
-> /research "performance bottlenecks in the API layer"
-> /plan "optimize database queries identified in research"
-> /council validate the plan
-```
-Picks skills as needed, stays in control of sequencing.
-
-**The solo dev** — runs the full pipeline, walks away:
-```text
-> /rpi "add user authentication"
-[3 phases run autonomously, learnings extracted]
-```
-One command does research through post-mortem. Comes back to committed code.
-
-**The platform team** — parallel agents, hands-free improvement:
-```text
-> /swarm "run /rpi on each of these 3 epics"
-> /evolve --max-cycles=5
-```
-Swarms full pipelines in parallel. Evolve measures goals and fixes gaps in a loop.
+| Workflow | Commands | What happens |
+|----------|----------|-------------|
+| **PR reviewer** | `/council validate this PR` | One command, actionable feedback, no setup |
+| **Team lead** | `/research` → `/plan` → `/council validate` | Compose skills manually, stay in control |
+| **Solo dev** | `/rpi "add user auth"` | Research through post-mortem, walk away |
+| **Platform team** | `/swarm` + `/evolve` | Parallel pipelines + fitness-scored improvement loop |
 
 </details>
 
@@ -295,7 +285,7 @@ Every skill works alone. Compose them however you want.
 | `/crank` | Parallel agents in dependency-ordered waves, fresh context per worker |
 | `/swarm` | Parallelize any skill — run research, brainstorms, implementations in parallel |
 | `/rpi` | Full pipeline: discovery (research + plan + pre-mortem) → implementation (crank) → validation (vibe + post-mortem) |
-| `/evolve` | Measure fitness goals, fix the worst gap, roll back regressions, loop |
+| `/evolve` | The endgame: measure goals, fix the worst gap, regression-gate everything, learn, repeat overnight |
 
 **Knowledge** — the flywheel that makes sessions compound:
 
@@ -426,7 +416,7 @@ Learnings pass quality gates (specificity, actionability, novelty) and land in t
 </details>
 
 <details>
-<summary><b>Goal-driven mode</b> — /evolve with GOALS.yaml</summary>
+<summary><b>Setting up /evolve</b> — GOALS.yaml and the fitness loop</summary>
 
 Bootstrap with `/goals generate` — it scans your repo (PRODUCT.md, README, skills, tests) and proposes mechanically verifiable goals. Or write them by hand:
 
@@ -440,11 +430,9 @@ goals:
     weight: 10
 ```
 
-Then `/evolve` measures them, picks the worst gap, runs `/rpi` to fix it, re-measures ALL goals (regressed commits auto-revert), and loops. It commits locally — you control when to push. Kill switch: `echo "stop" > ~/.config/evolve/KILL`
+`/evolve` measures them, picks the worst gap by weight, runs `/rpi` to fix it, re-measures ALL goals (regressed commits auto-revert), and loops. It commits locally — you control when to push. Kill switch: `echo "stop" > ~/.config/evolve/KILL`
 
-**Built for overnight runs.** The evolve loop survives context compaction — cycle state is recovered from disk, not LLM memory. Every cycle writes to `cycle-history.jsonl` with verified writes, a regression gate that refuses to proceed without a valid fitness snapshot, and a watchdog heartbeat for external monitoring. If anything breaks the tracking invariant, the loop stops rather than continuing ungated.
-
-Battle-tested: 116 cycles ran overnight (~7 hours unattended), delivering 20K+ lines across 203 files — test coverage from ~85% to ~97% average, zero functions above complexity 8, sentinel errors and benchmarks across all packages. Every cycle committed with a traceable message. See `skills/SKILL-TIERS.md` for the two-tier execution model that keeps orchestrators visible.
+**Built for overnight runs.** Cycle state lives on disk, not in LLM memory — survives context compaction. Every cycle writes to `cycle-history.jsonl` with verified writes, a regression gate that refuses to proceed without a valid fitness snapshot, and a watchdog heartbeat for external monitoring. If anything breaks the tracking invariant, the loop stops rather than continuing ungated. See `skills/SKILL-TIERS.md` for the two-tier execution model that keeps the orchestrator visible while workers fork.
 
 Maintain over time: `/goals` shows pass/fail status, `/goals prune` finds stale or broken checks.
 
