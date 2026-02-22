@@ -58,24 +58,25 @@ func EnsureAttachedBranch(repoRoot string, timeout time.Duration, branchPrefix s
 		return "", false, err
 	}
 
+	preferred := resolveRecoveryBranch(branchPrefix)
+	return attemptBranchHeal(repoRoot, timeout, preferred)
+}
+
+// resolveRecoveryBranch computes the recovery branch name from a prefix.
+func resolveRecoveryBranch(branchPrefix string) string {
 	prefix := strings.TrimSpace(branchPrefix)
 	if prefix == "" {
 		prefix = "codex/auto-rpi"
 	}
 	prefix = strings.TrimSuffix(prefix, "-")
-	preferred := prefix + detachedBranchSuffix
+	return prefix + detachedBranchSuffix
+}
 
+// attemptBranchHeal tries to create and switch to the recovery branch.
+func attemptBranchHeal(repoRoot string, timeout time.Duration, preferred string) (string, bool, error) {
 	branchCreateOut, branchErr := runGitCreateBranch(repoRoot, timeout, "branch", "-f", preferred, "HEAD")
 	if branchErr == nil {
-		switchOut, switchErr := runGitCreateBranch(repoRoot, timeout, "switch", preferred)
-		if switchErr == nil {
-			return preferred, true, nil
-		}
-		switchOut = strings.TrimSpace(switchOut)
-		if isBranchBusyInWorktree(switchOut) {
-			return "", false, nil
-		}
-		return "", false, fmt.Errorf("%w: %s", ErrDetachedSelfHealFailed, switchOut)
+		return attemptBranchSwitch(repoRoot, timeout, preferred)
 	}
 
 	branchCreateOut = strings.TrimSpace(branchCreateOut)
@@ -86,7 +87,19 @@ func EnsureAttachedBranch(repoRoot string, timeout time.Duration, branchPrefix s
 		return "", false, fmt.Errorf("%w: %s", ErrDetachedSelfHealFailed, branchCreateOut)
 	}
 	return "", false, ErrDetachedSelfHealFailed
+}
 
+// attemptBranchSwitch tries to switch to a branch after creation.
+func attemptBranchSwitch(repoRoot string, timeout time.Duration, preferred string) (string, bool, error) {
+	switchOut, switchErr := runGitCreateBranch(repoRoot, timeout, "switch", preferred)
+	if switchErr == nil {
+		return preferred, true, nil
+	}
+	switchOut = strings.TrimSpace(switchOut)
+	if isBranchBusyInWorktree(switchOut) {
+		return "", false, nil
+	}
+	return "", false, fmt.Errorf("%w: %s", ErrDetachedSelfHealFailed, switchOut)
 }
 
 func isBranchBusyInWorktree(message string) bool {
@@ -328,27 +341,9 @@ func rpiRunIDFromWorktree(repoRoot, worktreePath string) string {
 
 // RemoveWorktree removes a worktree directory and optionally a legacy branch reference.
 func RemoveWorktree(repoRoot, worktreePath, runID string, timeout time.Duration) error {
-	absPath, err := filepath.EvalSymlinks(worktreePath)
+	absPath, resolvedRoot, runID, err := resolveRemovePaths(repoRoot, worktreePath, runID)
 	if err != nil {
-		absPath, err = filepath.Abs(worktreePath)
-		if err != nil {
-			return fmt.Errorf("invalid worktree path: %w", err)
-		}
-	}
-	resolvedRoot, err := filepath.EvalSymlinks(repoRoot)
-	if err != nil {
-		resolvedRoot = repoRoot
-	}
-	if strings.TrimSpace(runID) == "" {
-		runID = rpiRunIDFromWorktree(resolvedRoot, absPath)
-		if strings.TrimSpace(runID) == "" {
-			return fmt.Errorf("invalid run id for removeWorktree path %s", absPath)
-		}
-	}
-	expectedBasename := filepath.Base(resolvedRoot) + "-rpi-" + runID
-	expectedPath := filepath.Join(filepath.Dir(resolvedRoot), expectedBasename)
-	if absPath != expectedPath {
-		return fmt.Errorf("refusing to remove %s: expected %s (path validation failed)", absPath, expectedPath)
+		return err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -364,9 +359,38 @@ func RemoveWorktree(repoRoot, worktreePath, runID string, timeout time.Duration)
 	if strings.TrimSpace(runID) != "" {
 		branchName := "rpi/" + runID
 		branchCmd := exec.CommandContext(ctx, "git", "branch", "-D", branchName)
-		branchCmd.Dir = repoRoot
+		branchCmd.Dir = resolvedRoot
 		_ = branchCmd.Run() //nolint:errcheck
 	}
 
 	return nil
+}
+
+// resolveRemovePaths validates and resolves the absolute worktree path, repo root,
+// and run ID for a safe worktree removal.
+func resolveRemovePaths(repoRoot, worktreePath, runID string) (absPath, resolvedRoot, resolvedRunID string, err error) {
+	absPath, err = filepath.EvalSymlinks(worktreePath)
+	if err != nil {
+		absPath, err = filepath.Abs(worktreePath)
+		if err != nil {
+			return "", "", "", fmt.Errorf("invalid worktree path: %w", err)
+		}
+	}
+	resolvedRoot, err = filepath.EvalSymlinks(repoRoot)
+	if err != nil {
+		resolvedRoot = repoRoot
+	}
+	resolvedRunID = runID
+	if strings.TrimSpace(resolvedRunID) == "" {
+		resolvedRunID = rpiRunIDFromWorktree(resolvedRoot, absPath)
+		if strings.TrimSpace(resolvedRunID) == "" {
+			return "", "", "", fmt.Errorf("invalid run id for removeWorktree path %s", absPath)
+		}
+	}
+	expectedBasename := filepath.Base(resolvedRoot) + "-rpi-" + resolvedRunID
+	expectedPath := filepath.Join(filepath.Dir(resolvedRoot), expectedBasename)
+	if absPath != expectedPath {
+		return "", "", "", fmt.Errorf("refusing to remove %s: expected %s (path validation failed)", absPath, expectedPath)
+	}
+	return absPath, resolvedRoot, resolvedRunID, nil
 }

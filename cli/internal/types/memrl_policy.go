@@ -505,23 +505,33 @@ func validatePolicyRule(rule MemRLPolicyRule) error {
 
 // validateRollbackTrigger validates a single rollback trigger.
 func validateRollbackTrigger(trigger MemRLRollbackTrigger) error {
-	switch {
-	case trigger.TriggerID == "":
+	if trigger.TriggerID == "" {
 		return ErrTriggerIDEmpty
-	case trigger.Metric == "":
-		return fmt.Errorf("rollback trigger %s missing metric", trigger.TriggerID)
-	case trigger.MetricSourceCommand == "":
-		return fmt.Errorf("rollback trigger %s missing metric_source_command", trigger.TriggerID)
-	case trigger.LookbackWindow == "":
-		return fmt.Errorf("rollback trigger %s missing lookback_window", trigger.TriggerID)
-	case trigger.MinSampleSize <= 0:
+	}
+	return validateTriggerFields(trigger)
+}
+
+// validateTriggerFields checks that all required string fields and constraints
+// on a rollback trigger are satisfied (assumes TriggerID is already validated).
+func validateTriggerFields(trigger MemRLRollbackTrigger) error {
+	requiredFields := []struct {
+		value string
+		field string
+	}{
+		{trigger.Metric, "metric"},
+		{trigger.MetricSourceCommand, "metric_source_command"},
+		{trigger.LookbackWindow, "lookback_window"},
+		{trigger.Threshold, "threshold"},
+		{trigger.OperatorAction, "operator_action"},
+		{trigger.VerificationCommand, "verification_command"},
+	}
+	for _, rf := range requiredFields {
+		if rf.value == "" {
+			return fmt.Errorf("rollback trigger %s missing %s", trigger.TriggerID, rf.field)
+		}
+	}
+	if trigger.MinSampleSize <= 0 {
 		return fmt.Errorf("rollback trigger %s min_sample_size must be > 0", trigger.TriggerID)
-	case trigger.Threshold == "":
-		return fmt.Errorf("rollback trigger %s missing threshold", trigger.TriggerID)
-	case trigger.OperatorAction == "":
-		return fmt.Errorf("rollback trigger %s missing operator_action", trigger.TriggerID)
-	case trigger.VerificationCommand == "":
-		return fmt.Errorf("rollback trigger %s missing verification_command", trigger.TriggerID)
 	}
 	return nil
 }
