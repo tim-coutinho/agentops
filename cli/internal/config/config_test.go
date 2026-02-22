@@ -988,6 +988,243 @@ func TestProjectConfigPath_UsesAgentOpsConfigEnv(t *testing.T) {
 	}
 }
 
+func TestProjectConfigPath_DefaultFromCwd(t *testing.T) {
+	// When AGENTOPS_CONFIG is not set, should use cwd
+	t.Setenv("AGENTOPS_CONFIG", "")
+	got := projectConfigPath()
+	cwd, _ := os.Getwd()
+	expected := filepath.Join(cwd, ".agentops", "config.yaml")
+	if got != expected {
+		t.Errorf("projectConfigPath() = %q, want %q", got, expected)
+	}
+}
+
+func TestProjectConfigPath_WhitespaceOnlyConfig(t *testing.T) {
+	// Whitespace-only AGENTOPS_CONFIG should be treated as not set
+	t.Setenv("AGENTOPS_CONFIG", "  \t  ")
+	got := projectConfigPath()
+	cwd, _ := os.Getwd()
+	expected := filepath.Join(cwd, ".agentops", "config.yaml")
+	if got != expected {
+		t.Errorf("projectConfigPath() with whitespace = %q, want %q", got, expected)
+	}
+}
+
+func TestResolve_WithProjectConfig(t *testing.T) {
+	// Create a project config file and point AGENTOPS_CONFIG at it
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	content := `
+output: yaml
+base_dir: /project/base
+verbose: true
+rpi:
+  worktree_mode: never
+  runtime_mode: direct
+  runtime_command: custom-claude
+  ao_command: custom-ao
+  bd_command: custom-bd
+  tmux_command: custom-tmux
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set project config path
+	t.Setenv("AGENTOPS_CONFIG", configPath)
+	// Clear all env overrides so project config values shine through
+	for _, key := range []string{
+		"AGENTOPS_OUTPUT", "AGENTOPS_BASE_DIR", "AGENTOPS_VERBOSE",
+		"AGENTOPS_NO_SC",
+		"AGENTOPS_RPI_WORKTREE_MODE", "AGENTOPS_RPI_RUNTIME",
+		"AGENTOPS_RPI_RUNTIME_MODE", "AGENTOPS_RPI_RUNTIME_COMMAND",
+		"AGENTOPS_RPI_AO_COMMAND", "AGENTOPS_RPI_BD_COMMAND",
+		"AGENTOPS_RPI_TMUX_COMMAND",
+		"AGENTOPS_FLYWHEEL_AUTO_PROMOTE_THRESHOLD",
+	} {
+		t.Setenv(key, "")
+	}
+
+	rc := Resolve("", "", false)
+
+	if rc.Output.Value != "yaml" || rc.Output.Source != SourceProject {
+		t.Errorf("Output = (%v, %v), want (yaml, %v)", rc.Output.Value, rc.Output.Source, SourceProject)
+	}
+	if rc.BaseDir.Value != "/project/base" || rc.BaseDir.Source != SourceProject {
+		t.Errorf("BaseDir = (%v, %v), want (/project/base, %v)", rc.BaseDir.Value, rc.BaseDir.Source, SourceProject)
+	}
+	if rc.Verbose.Value != true || rc.Verbose.Source != SourceProject {
+		t.Errorf("Verbose = (%v, %v), want (true, %v)", rc.Verbose.Value, rc.Verbose.Source, SourceProject)
+	}
+	if rc.RPIWorktreeMode.Value != "never" || rc.RPIWorktreeMode.Source != SourceProject {
+		t.Errorf("RPIWorktreeMode = (%v, %v), want (never, %v)", rc.RPIWorktreeMode.Value, rc.RPIWorktreeMode.Source, SourceProject)
+	}
+	if rc.RPIRuntimeMode.Value != "direct" || rc.RPIRuntimeMode.Source != SourceProject {
+		t.Errorf("RPIRuntimeMode = (%v, %v), want (direct, %v)", rc.RPIRuntimeMode.Value, rc.RPIRuntimeMode.Source, SourceProject)
+	}
+	if rc.RPIRuntimeCommand.Value != "custom-claude" || rc.RPIRuntimeCommand.Source != SourceProject {
+		t.Errorf("RPIRuntimeCommand = (%v, %v), want (custom-claude, %v)", rc.RPIRuntimeCommand.Value, rc.RPIRuntimeCommand.Source, SourceProject)
+	}
+	if rc.RPIAOCommand.Value != "custom-ao" || rc.RPIAOCommand.Source != SourceProject {
+		t.Errorf("RPIAOCommand = (%v, %v), want (custom-ao, %v)", rc.RPIAOCommand.Value, rc.RPIAOCommand.Source, SourceProject)
+	}
+	if rc.RPIBDCommand.Value != "custom-bd" || rc.RPIBDCommand.Source != SourceProject {
+		t.Errorf("RPIBDCommand = (%v, %v), want (custom-bd, %v)", rc.RPIBDCommand.Value, rc.RPIBDCommand.Source, SourceProject)
+	}
+	if rc.RPITmuxCommand.Value != "custom-tmux" || rc.RPITmuxCommand.Source != SourceProject {
+		t.Errorf("RPITmuxCommand = (%v, %v), want (custom-tmux, %v)", rc.RPITmuxCommand.Value, rc.RPITmuxCommand.Source, SourceProject)
+	}
+}
+
+func TestResolve_FlagOverridesProjectConfig(t *testing.T) {
+	// Create a project config
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	content := `
+output: yaml
+base_dir: /project/base
+verbose: true
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("AGENTOPS_CONFIG", configPath)
+	for _, key := range []string{
+		"AGENTOPS_OUTPUT", "AGENTOPS_BASE_DIR", "AGENTOPS_VERBOSE",
+		"AGENTOPS_NO_SC",
+		"AGENTOPS_RPI_WORKTREE_MODE", "AGENTOPS_RPI_RUNTIME",
+		"AGENTOPS_RPI_RUNTIME_MODE", "AGENTOPS_RPI_RUNTIME_COMMAND",
+		"AGENTOPS_RPI_AO_COMMAND", "AGENTOPS_RPI_BD_COMMAND",
+		"AGENTOPS_RPI_TMUX_COMMAND",
+		"AGENTOPS_FLYWHEEL_AUTO_PROMOTE_THRESHOLD",
+	} {
+		t.Setenv(key, "")
+	}
+
+	// Flags should override project config
+	rc := Resolve("json", "/flag/dir", true)
+
+	if rc.Output.Value != "json" || rc.Output.Source != SourceFlag {
+		t.Errorf("Flag should override project: Output = (%v, %v)", rc.Output.Value, rc.Output.Source)
+	}
+	if rc.BaseDir.Value != "/flag/dir" || rc.BaseDir.Source != SourceFlag {
+		t.Errorf("Flag should override project: BaseDir = (%v, %v)", rc.BaseDir.Value, rc.BaseDir.Source)
+	}
+	if rc.Verbose.Value != true || rc.Verbose.Source != SourceFlag {
+		t.Errorf("Flag should override project: Verbose = (%v, %v)", rc.Verbose.Value, rc.Verbose.Source)
+	}
+}
+
+func TestResolve_EnvOverridesProjectConfig(t *testing.T) {
+	// Create a project config
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	content := `
+output: yaml
+base_dir: /project/base
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("AGENTOPS_CONFIG", configPath)
+	t.Setenv("AGENTOPS_OUTPUT", "csv")
+	t.Setenv("AGENTOPS_BASE_DIR", "/env/dir")
+	t.Setenv("AGENTOPS_VERBOSE", "true")
+	// Clear other env vars
+	for _, key := range []string{
+		"AGENTOPS_NO_SC",
+		"AGENTOPS_RPI_WORKTREE_MODE", "AGENTOPS_RPI_RUNTIME",
+		"AGENTOPS_RPI_RUNTIME_MODE", "AGENTOPS_RPI_RUNTIME_COMMAND",
+		"AGENTOPS_RPI_AO_COMMAND", "AGENTOPS_RPI_BD_COMMAND",
+		"AGENTOPS_RPI_TMUX_COMMAND",
+		"AGENTOPS_FLYWHEEL_AUTO_PROMOTE_THRESHOLD",
+	} {
+		t.Setenv(key, "")
+	}
+
+	rc := Resolve("", "", false)
+
+	if rc.Output.Value != "csv" || rc.Output.Source != SourceEnv {
+		t.Errorf("Env should override project: Output = (%v, %v)", rc.Output.Value, rc.Output.Source)
+	}
+	if rc.BaseDir.Value != "/env/dir" || rc.BaseDir.Source != SourceEnv {
+		t.Errorf("Env should override project: BaseDir = (%v, %v)", rc.BaseDir.Value, rc.BaseDir.Source)
+	}
+	if rc.Verbose.Value != true || rc.Verbose.Source != SourceEnv {
+		t.Errorf("Env should override project: Verbose = (%v, %v)", rc.Verbose.Value, rc.Verbose.Source)
+	}
+}
+
+func TestLoad_WithProjectConfig(t *testing.T) {
+	// Create project config file
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yaml")
+	content := `
+output: yaml
+base_dir: /project/ao
+rpi:
+  worktree_mode: always
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("AGENTOPS_CONFIG", configPath)
+	for _, key := range []string{
+		"AGENTOPS_OUTPUT", "AGENTOPS_BASE_DIR", "AGENTOPS_VERBOSE",
+		"AGENTOPS_NO_SC",
+		"AGENTOPS_RPI_WORKTREE_MODE", "AGENTOPS_RPI_RUNTIME",
+		"AGENTOPS_RPI_RUNTIME_MODE", "AGENTOPS_RPI_RUNTIME_COMMAND",
+		"AGENTOPS_RPI_AO_COMMAND", "AGENTOPS_RPI_BD_COMMAND",
+		"AGENTOPS_RPI_TMUX_COMMAND",
+		"AGENTOPS_FLYWHEEL_AUTO_PROMOTE_THRESHOLD",
+	} {
+		t.Setenv(key, "")
+	}
+
+	cfg, err := Load(nil)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Output != "yaml" {
+		t.Errorf("Load with project config Output = %q, want %q", cfg.Output, "yaml")
+	}
+	if cfg.BaseDir != "/project/ao" {
+		t.Errorf("Load with project config BaseDir = %q, want %q", cfg.BaseDir, "/project/ao")
+	}
+	if cfg.RPI.WorktreeMode != "always" {
+		t.Errorf("Load with project config RPI.WorktreeMode = %q, want %q", cfg.RPI.WorktreeMode, "always")
+	}
+}
+
+func TestResolve_RPIRuntimeModeOverridesRuntime(t *testing.T) {
+	// When both AGENTOPS_RPI_RUNTIME and AGENTOPS_RPI_RUNTIME_MODE are set,
+	// RUNTIME_MODE should take precedence
+	t.Setenv("AGENTOPS_CONFIG", "")
+	t.Setenv("AGENTOPS_OUTPUT", "")
+	t.Setenv("AGENTOPS_BASE_DIR", "")
+	t.Setenv("AGENTOPS_VERBOSE", "")
+	t.Setenv("AGENTOPS_NO_SC", "")
+	t.Setenv("AGENTOPS_RPI_WORKTREE_MODE", "")
+	t.Setenv("AGENTOPS_RPI_RUNTIME", "direct")
+	t.Setenv("AGENTOPS_RPI_RUNTIME_MODE", "stream")
+	t.Setenv("AGENTOPS_RPI_RUNTIME_COMMAND", "")
+	t.Setenv("AGENTOPS_RPI_AO_COMMAND", "")
+	t.Setenv("AGENTOPS_RPI_BD_COMMAND", "")
+	t.Setenv("AGENTOPS_RPI_TMUX_COMMAND", "")
+	t.Setenv("AGENTOPS_FLYWHEEL_AUTO_PROMOTE_THRESHOLD", "")
+
+	rc := Resolve("", "", false)
+
+	// RUNTIME_MODE should override RUNTIME
+	if rc.RPIRuntimeMode.Value != "stream" {
+		t.Errorf("RPIRuntimeMode = %v, want stream (RUNTIME_MODE should override RUNTIME)", rc.RPIRuntimeMode.Value)
+	}
+}
+
 func TestLoadFromPath_WithFlywheel(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
