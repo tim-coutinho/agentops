@@ -215,21 +215,19 @@ Consensus: WARN — add rate limiting to /login before shipping
           Next: /implement ag-0058.3
 ```
 
-**Goal-driven improvement loop:**
+**Goal-driven improvement loop** (actual overnight run — 116 cycles, ~7 hours unattended):
 ```text
-> /evolve --max-cycles=5
+> /evolve
 
-[evolve] GOALS.yaml: 4 goals loaded
-[cycle-1] Measuring fitness... 2/4 passing
-         Worst gap: test-pass-rate (weight: 10)
-         /rpi "Improve test-pass-rate" → 3 issues, 2 waves
-         Re-measure: 3/4 passing ✓
-[cycle-2] Worst gap: doc-coverage (weight: 7)
-         /rpi "Improve doc-coverage" → 2 issues, 1 wave
-         Re-measure: 4/4 passing ✓
-[cycle-3] All goals met. Checking harvested work...
-         Picked: "add smoke test for /evolve" (from post-mortem)
-[teardown] /post-mortem → 5 learnings extracted
+[evolve] GOALS.yaml: 28 goals loaded, score 77.0% (20/26 passing)
+[cycle-1]  Worst: wiring-closure (weight 6) + 3 more
+           /rpi "Fix failing goals" → score 93.3% (25/28 passing) ✓
+[cycle-2-35]  Coverage blitz: 17 packages from ~85% → ~97% avg
+[cycle-38-59] Benchmarks added to all 15 internal packages
+[cycle-60-95] Complexity: zero functions >= 8 (was dozens >= 20)
+[cycle-96-116] Modernization: sentinel errors, exhaustive switches, Go 1.23 idioms
+[teardown] 203 files changed, 20K+ lines, all tests pass, go vet clean
+           /post-mortem → 33 learnings extracted
 ```
 
 </details>
@@ -444,6 +442,10 @@ goals:
 
 Then `/evolve` measures them, picks the worst gap, runs `/rpi` to fix it, re-measures ALL goals (regressed commits auto-revert), and loops. It commits locally — you control when to push. Kill switch: `echo "stop" > ~/.config/evolve/KILL`
 
+**Built for overnight runs.** The evolve loop survives context compaction — cycle state is recovered from disk, not LLM memory. Every cycle writes to `cycle-history.jsonl` with verified writes, a regression gate that refuses to proceed without a valid fitness snapshot, and a watchdog heartbeat for external monitoring. If anything breaks the tracking invariant, the loop stops rather than continuing ungated.
+
+Battle-tested: 116 cycles ran overnight (~7 hours unattended), delivering 20K+ lines across 203 files — test coverage from ~85% to ~97% average, zero functions above complexity 8, sentinel errors and benchmarks across all packages. Every cycle committed with a traceable message. See `skills/SKILL-TIERS.md` for the two-tier execution model that keeps orchestrators visible.
+
 Maintain over time: `/goals` shows pass/fail status, `/goals prune` finds stale or broken checks.
 
 </details>
@@ -497,6 +499,8 @@ Five pillars, one recursive shape. The same pattern — lead decomposes work, wo
 ```
 
 Each level treats the one below as a black box: spec in, validated result out. Workers get fresh context per wave ([Ralph Wiggum Pattern](https://ghuntley.com/ralph/)), never commit (lead-only), and communicate through the filesystem — not accumulated chat context. Parallel execution works because each unit of work is **atomic**: no shared mutable state with concurrent workers.
+
+**Two-tier execution model.** Skills follow a strict rule: *the orchestrator never forks; the workers it spawns always fork.* Orchestrators (`/evolve`, `/rpi`, `/crank`, `/vibe`, `/post-mortem`) stay in the main session so you can see progress and intervene. Worker spawners (`/council`, `/codex-team`) fork into subagents where results merge back via the filesystem. This was learned the hard way — orchestrators that forked became invisible, losing cycle-by-cycle visibility during long runs. See [`SKILL-TIERS.md`](skills/SKILL-TIERS.md) for the full classification.
 
 Validation is mechanical, not advisory. [Multi-model councils](docs/ARCHITECTURE.md#pillar-2-brownian-ratchet) judge before and after implementation. [Hooks](docs/how-it-works.md) enforce gates — push blocked until `/vibe` passes, `/crank` blocked until `/pre-mortem` passes. The [knowledge flywheel](docs/ARCHITECTURE.md#pillar-4-knowledge-flywheel) extracts learnings, scores them, and re-injects them at session start so each cycle compounds.
 

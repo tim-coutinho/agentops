@@ -141,6 +141,19 @@ Loop continuity comes from filesystem state, not accumulated chat context:
 
 This is why the system survives context compaction: everything important is on disk.
 
+For long-running loops like `/evolve`, disk-backed state is enforced with hard gates: cycle-history.jsonl writes are verified (read back and compared), fitness snapshots must exist before regression gates run, and a continuity check confirms cycle N was logged before starting N+1. Any verification failure stops the loop rather than continuing ungated.
+
+### Two-Tier Execution Model
+
+Skills follow a strict rule: **the orchestrator never forks; the workers it spawns always fork.**
+
+- **NO-FORK (Tier 1):** Orchestrators (`/evolve`, `/rpi`, `/crank`, `/vibe`, `/post-mortem`) stay in the main session. The operator sees cycle progress, phase transitions, and can intervene.
+- **FORK (Tier 2):** Worker spawners (`/council`, `/codex-team`) fork into subagents via `context: fork`. Results merge back through the filesystem.
+
+This was a production lesson: orchestrators that forked became invisible — no cycle-by-cycle visibility during overnight evolve runs, no phase gates visible in rpi. The fix removed `context: fork` from all orchestrators and kept it only on worker spawners.
+
+Full classification: [`SKILL-TIERS.md`](../skills/SKILL-TIERS.md)
+
 ### Context Boundaries
 
 The system enforces context isolation at three levels:

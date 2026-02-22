@@ -38,6 +38,21 @@ Supports both Codex sub-agents (`spawn_agent`) and Claude agent teams (`TeamCrea
 
 Operational contract reference: `skills/shared/references/ralph-loop-contract.md` (reverse-engineered from `ghuntley/how-to-ralph-wiggum` and mapped to AgentOps primitives).
 
+## Two-Tier Execution Model
+
+Skills follow a strict rule: **the orchestrator never forks; the workers it spawns always fork.**
+
+| Tier | Skills | Behavior |
+|------|--------|----------|
+| **NO-FORK** (orchestrators) | evolve, rpi, crank, vibe, post-mortem, pre-mortem | Stay in main session — operator sees progress and can intervene |
+| **FORK** (worker spawners) | council, codex-team | Fork into subagents — results merge back via filesystem |
+
+This was learned through production experience: orchestrators that forked (`context: fork` in SKILL.md) became invisible — the operator couldn't see cycle-by-cycle evolve progress, phase transitions in rpi, or wave reports from crank. The fix: remove `context: fork` from orchestrators, keep it only on worker spawners.
+
+`/swarm` is a special case — it's an orchestrator (no fork) that spawns runtime workers via `TeamCreate`/`spawn_agent`. The workers are runtime sub-agents, not SKILL.md skills.
+
+Full classification: [`SKILL-TIERS.md`](../skills/SKILL-TIERS.md)
+
 ## Agent Backends — Runtime-Native Orchestration
 
 Skills auto-select the best available backend:
@@ -84,6 +99,22 @@ Skills auto-select the best available backend:
 | Pending cleaner | Session start | Cleans stale pending state |
 
 All hooks use `lib/hook-helpers.sh` for structured error recovery — failures include suggested next actions and auto-handoff context.
+
+## Compaction Resilience — Long Runs That Don't Lose State
+
+LLM context compaction can destroy loop state mid-run. Any skill that runs for hours (especially `/evolve`) must store state on disk, not in LLM memory.
+
+The pattern:
+1. **Write state to disk after every step** — `cycle-history.jsonl`, fitness snapshots, heartbeat
+2. **Recover from disk on every resume** — read last cycle number from JSONL, not from conversation context
+3. **Verify writes succeeded** — read back the entry, compare, stop if mismatch
+
+Hard gates in `/evolve`:
+- Pre-cycle: fitness snapshot must exist and be valid JSON before the regression gate runs
+- Post-cycle: cycle-history.jsonl write is verified; failure = stop
+- Loop entry: continuity check confirms cycle N was logged before starting N+1
+
+This was validated in production: 116 evolve cycles ran ~7 hours overnight. The first run revealed that without disk-based recovery, context compaction silently broke tracking after cycle 1 — the agent continued producing valuable work but without formal regression gating. The hardening above prevents this class of failure.
 
 ## Context Windowing — Bounded Execution for Large Codebases
 
