@@ -521,3 +521,42 @@ func TestEvaluateMemRLPolicy_NoMatchingRule(t *testing.T) {
 		t.Errorf("expected rule_id 'default.no_matching_rule', got %q", decision.RuleID)
 	}
 }
+
+func TestEvaluateMemRLPolicy_PriorityTiebreaker(t *testing.T) {
+	// Two rules with same specificity (both wildcards) but different priorities.
+	// Higher priority should win.
+	contract := DefaultMemRLPolicyContract()
+	contract.Rules = []MemRLPolicyRule{
+		{
+			RuleID:        "low-priority",
+			Mode:          MemRLModeObserve,
+			FailureClass:  MemRLFailureClassAny,
+			AttemptBucket: MemRLAttemptBucketAny,
+			Action:        MemRLActionRetry,
+			Priority:      10,
+		},
+		{
+			RuleID:        "high-priority",
+			Mode:          MemRLModeObserve,
+			FailureClass:  MemRLFailureClassAny,
+			AttemptBucket: MemRLAttemptBucketAny,
+			Action:        MemRLActionEscalate,
+			Priority:      50,
+		},
+	}
+
+	input := MemRLPolicyInput{
+		Mode:            MemRLModeObserve,
+		FailureClass:    MemRLFailureClassVibeFail,
+		AttemptBucket:   MemRLAttemptBucketInitial,
+		MetadataPresent: true,
+	}
+
+	decision := EvaluateMemRLPolicy(contract, input)
+	if decision.RuleID != "high-priority" {
+		t.Errorf("expected high-priority rule to win, got %q", decision.RuleID)
+	}
+	if decision.Action != MemRLActionEscalate {
+		t.Errorf("expected skip action, got %q", decision.Action)
+	}
+}
