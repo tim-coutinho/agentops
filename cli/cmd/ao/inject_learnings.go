@@ -19,12 +19,41 @@ import (
 // Implements MemRL Two-Phase retrieval: Phase A (similarity/freshness) + Phase B (utility-weighted)
 // With CASS integration: applies confidence decay when --apply-decay is set
 func collectLearnings(cwd, query string, limit int) ([]learning, error) {
+	files, err := findLearningFiles(cwd)
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, nil
+	}
+
+	now := time.Now()
+	queryLower := strings.ToLower(query)
+	learnings := make([]learning, 0, len(files))
+
+	for _, file := range files {
+		l, ok := processLearningFile(file, queryLower, now)
+		if !ok {
+			continue
+		}
+		learnings = append(learnings, l)
+	}
+
+	rankLearnings(learnings)
+
+	if len(learnings) > limit {
+		learnings = learnings[:limit]
+	}
+	return learnings, nil
+}
+
+// findLearningFiles discovers .md and .jsonl files in the learnings directory.
+func findLearningFiles(cwd string) ([]string, error) {
 	learningsDir := filepath.Join(cwd, ".agents", "learnings")
 	if _, err := os.Stat(learningsDir); os.IsNotExist(err) {
-		// Try rig root
 		learningsDir = findAgentsSubdir(cwd, "learnings")
 		if learningsDir == "" {
-			return nil, nil // No learnings directory
+			return nil, nil
 		}
 	}
 
@@ -32,157 +61,148 @@ func collectLearnings(cwd, query string, limit int) ([]learning, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// Also check .jsonl files
 	jsonlFiles, _ := filepath.Glob(filepath.Join(learningsDir, "*.jsonl"))
-	files = append(files, jsonlFiles...)
+	return append(files, jsonlFiles...), nil
+}
 
-	learnings := make([]learning, 0, len(files))
-	queryLower := strings.ToLower(query)
-	now := time.Now()
-
-	for _, file := range files {
-		l, err := parseLearningFile(file)
-		if err != nil {
-			continue
-		}
-
-		// F3: Skip superseded learnings (superseded_by field set)
-		if l.Superseded {
-			VerbosePrintf("Skipping superseded learning: %s\n", l.ID)
-			continue
-		}
-
-		// Filter by query if provided
-		if query != "" {
-			content := strings.ToLower(l.Title + " " + l.Summary)
-			if !strings.Contains(content, queryLower) {
-				continue
-			}
-		}
-
-		// Calculate freshness score: exp(-ageWeeks * decayRate)
-		// decayRate = 0.17/week (literature default)
-		info, _ := os.Stat(file)
-		if info != nil {
-			ageHours := now.Sub(info.ModTime()).Hours()
-			ageWeeks := ageHours / (24 * 7)
-			l.AgeWeeks = ageWeeks
-			l.FreshnessScore = freshnessScore(ageWeeks)
-		} else {
-			l.FreshnessScore = 0.5 // Default for missing stat
-		}
-
-		// Set default utility if not set (for markdown files)
-		if l.Utility == 0 {
-			l.Utility = types.InitialUtility
-		}
-
-		// Apply confidence decay if requested (CASS feature)
-		if injectApplyDecay {
-			l = applyConfidenceDecay(l, file, now)
-		}
-
-		learnings = append(learnings, l)
+// processLearningFile parses, filters, and scores a single learning file.
+// Returns the learning and true if it should be included, false otherwise.
+func processLearningFile(file, queryLower string, now time.Time) (learning, bool) {
+	l, err := parseLearningFile(file)
+	if err != nil {
+		return l, false
+	}
+	if l.Superseded {
+		VerbosePrintf("Skipping superseded learning: %s\n", l.ID)
+		return l, false
+	}
+	if queryLower != "" && !strings.Contains(strings.ToLower(l.Title+" "+l.Summary), queryLower) {
+		return l, false
 	}
 
-	// Phase B: Calculate composite scores with z-normalization
-	// Score = z_norm(freshness) + λ × z_norm(utility)
+	applyFreshnessScore(&l, file, now)
+
+	if l.Utility == 0 {
+		l.Utility = types.InitialUtility
+	}
+	if injectApplyDecay {
+		l = applyConfidenceDecay(l, file, now)
+	}
+	return l, true
+}
+
+// applyFreshnessScore sets the freshness score on a learning based on file modification time.
+func applyFreshnessScore(l *learning, file string, now time.Time) {
+	info, _ := os.Stat(file)
+	if info == nil {
+		l.FreshnessScore = 0.5
+		return
+	}
+	ageWeeks := now.Sub(info.ModTime()).Hours() / (24 * 7)
+	l.AgeWeeks = ageWeeks
+	l.FreshnessScore = freshnessScore(ageWeeks)
+}
+
+// rankLearnings applies composite scoring and sorts by score descending.
+func rankLearnings(learnings []learning) {
 	items := make([]scorable, len(learnings))
 	for i := range learnings {
 		items[i] = &learnings[i]
 	}
 	applyCompositeScoringTo(items, types.DefaultLambda)
 
-	// Sort by composite score (highest first) - Two-Phase retrieval
 	slices.SortFunc(learnings, func(a, b learning) int {
 		return cmp.Compare(b.CompositeScore, a.CompositeScore)
 	})
-
-	// Limit results
-	if len(learnings) > limit {
-		learnings = learnings[:limit]
-	}
-
-	return learnings, nil
 }
 
 // applyConfidenceDecay applies time-based confidence decay to a learning.
 // Confidence decays at 10%/week for learnings that haven't received recent feedback.
 // Formula: confidence *= exp(-weeks_since_last_feedback * ConfidenceDecayRate)
 func applyConfidenceDecay(l learning, filePath string, now time.Time) learning {
-	// Read the file to get last_decay_at and confidence
+	if !strings.HasSuffix(filePath, ".jsonl") {
+		return l
+	}
+
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return l
 	}
 
-	// Parse to extract CASS fields
-	if strings.HasSuffix(filePath, ".jsonl") {
-		lines := strings.Split(string(content), "\n")
-		if len(lines) == 0 {
-			return l
-		}
+	lines := strings.Split(string(content), "\n")
+	if len(lines) == 0 {
+		return l
+	}
 
-		var data map[string]any
-		if err := json.Unmarshal([]byte(lines[0]), &data); err != nil {
-			return l
-		}
+	var data map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &data); err != nil {
+		return l
+	}
 
-		// Get confidence (default to 0.5)
-		confidence := 0.5
-		if c, ok := data["confidence"].(float64); ok && c > 0 {
-			confidence = c
-		}
+	confidence := jsonFloat(data, "confidence", 0.5)
+	lastInteraction := jsonTimeField(data, "last_decay_at", "last_reward_at")
+	if lastInteraction.IsZero() {
+		return l
+	}
 
-		// Get last_decay_at or last_reward_at
-		var lastInteraction time.Time
-		if lda, ok := data["last_decay_at"].(string); ok && lda != "" {
-			lastInteraction, _ = time.Parse(time.RFC3339, lda)
-		} else if lra, ok := data["last_reward_at"].(string); ok && lra != "" {
-			lastInteraction, _ = time.Parse(time.RFC3339, lra)
-		}
+	weeksSinceInteraction := now.Sub(lastInteraction).Hours() / (24 * 7)
+	if weeksSinceInteraction <= 0 {
+		return l
+	}
 
-		// Calculate decay
-		if !lastInteraction.IsZero() {
-			weeksSinceInteraction := now.Sub(lastInteraction).Hours() / (24 * 7)
-			if weeksSinceInteraction > 0 {
-				// Apply decay: confidence *= exp(-weeks * decayRate)
-				decayFactor := math.Exp(-weeksSinceInteraction * types.ConfidenceDecayRate)
-				newConfidence := confidence * decayFactor
+	newConfidence := computeDecayedConfidence(confidence, weeksSinceInteraction)
+	VerbosePrintf("Applied confidence decay to %s: %.3f -> %.3f (%.1f weeks)\n",
+		l.ID, confidence, newConfidence, weeksSinceInteraction)
 
-				// Clamp to minimum of 0.1
-				if newConfidence < 0.1 {
-					newConfidence = 0.1
-				}
+	writeDecayFields(data, newConfidence, now)
+	if newJSON, marshalErr := json.Marshal(data); marshalErr == nil {
+		lines[0] = string(newJSON)
+		_ = os.WriteFile(filePath, []byte(strings.Join(lines, "\n")), 0644)
+	}
 
-				VerbosePrintf("Applied confidence decay to %s: %.3f -> %.3f (%.1f weeks)\n",
-					l.ID, confidence, newConfidence, weeksSinceInteraction)
+	l.Utility *= newConfidence / confidence
+	return l
+}
 
-				// Write back decayed confidence to file
-				data["confidence"] = newConfidence
-				data["last_decay_at"] = now.Format(time.RFC3339)
+// jsonFloat extracts a float64 from a map, returning defaultVal if missing or non-positive.
+func jsonFloat(data map[string]any, key string, defaultVal float64) float64 {
+	if c, ok := data[key].(float64); ok && c > 0 {
+		return c
+	}
+	return defaultVal
+}
 
-				// Increment decay_count (default 0)
-				decayCount := 0.0
-				if dc, ok := data["decay_count"].(float64); ok {
-					decayCount = dc
-				}
-				data["decay_count"] = decayCount + 1
-
-				newJSON, marshalErr := json.Marshal(data)
-				if marshalErr == nil {
-					lines[0] = string(newJSON)
-					_ = os.WriteFile(filePath, []byte(strings.Join(lines, "\n")), 0644)
-				}
-
-				// Update the learning's composite score weight
-				l.Utility *= newConfidence / confidence
+// jsonTimeField tries to parse a time.Time from the first non-empty string field found among keys.
+func jsonTimeField(data map[string]any, keys ...string) time.Time {
+	for _, k := range keys {
+		if v, ok := data[k].(string); ok && v != "" {
+			if t, err := time.Parse(time.RFC3339, v); err == nil {
+				return t
 			}
 		}
 	}
+	return time.Time{}
+}
 
-	return l
+// computeDecayedConfidence applies exponential decay and clamps to a minimum of 0.1.
+func computeDecayedConfidence(confidence, weeks float64) float64 {
+	decayFactor := math.Exp(-weeks * types.ConfidenceDecayRate)
+	result := confidence * decayFactor
+	if result < 0.1 {
+		return 0.1
+	}
+	return result
+}
+
+// writeDecayFields updates the data map with new confidence, timestamp, and incremented decay count.
+func writeDecayFields(data map[string]any, newConfidence float64, now time.Time) {
+	data["confidence"] = newConfidence
+	data["last_decay_at"] = now.Format(time.RFC3339)
+	decayCount := 0.0
+	if dc, ok := data["decay_count"].(float64); ok {
+		decayCount = dc
+	}
+	data["decay_count"] = decayCount + 1
 }
 
 // frontMatter holds parsed YAML front matter fields
@@ -195,7 +215,6 @@ type frontMatter struct {
 // parseFrontMatter extracts YAML front matter from markdown content
 func parseFrontMatter(lines []string) (frontMatter, int) {
 	var fm frontMatter
-	endLine := 0
 
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
 		return fm, 0
@@ -204,21 +223,25 @@ func parseFrontMatter(lines []string) (frontMatter, int) {
 	for i := 1; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
 		if line == "---" {
-			endLine = i + 1
-			break
+			return fm, i + 1
 		}
-		if strings.HasPrefix(line, "superseded_by:") || strings.HasPrefix(line, "superseded-by:") {
-			fm.SupersededBy = strings.TrimSpace(strings.SplitN(line, ":", 2)[1])
-		}
-		if strings.HasPrefix(line, "utility:") {
-			utilityStr := strings.TrimSpace(strings.TrimPrefix(line, "utility:"))
-			if utility, err := strconv.ParseFloat(utilityStr, 64); err == nil && utility > 0 {
-				fm.Utility = utility
-				fm.HasUtility = true
-			}
+		parseFrontMatterLine(line, &fm)
+	}
+	return fm, 0
+}
+
+// parseFrontMatterLine parses a single YAML front matter line into fm fields.
+func parseFrontMatterLine(line string, fm *frontMatter) {
+	switch {
+	case strings.HasPrefix(line, "superseded_by:"), strings.HasPrefix(line, "superseded-by:"):
+		fm.SupersededBy = strings.TrimSpace(strings.SplitN(line, ":", 2)[1])
+	case strings.HasPrefix(line, "utility:"):
+		utilityStr := strings.TrimSpace(strings.TrimPrefix(line, "utility:"))
+		if utility, err := strconv.ParseFloat(utilityStr, 64); err == nil && utility > 0 {
+			fm.Utility = utility
+			fm.HasUtility = true
 		}
 	}
-	return fm, endLine
 }
 
 // extractSummary finds the first paragraph after headings
@@ -242,16 +265,34 @@ func extractSummary(lines []string, startIdx int) string {
 	return ""
 }
 
+// isSuperseded returns true if the front matter indicates a superseded learning.
+func isSuperseded(fm frontMatter) bool {
+	return fm.SupersededBy != "" && fm.SupersededBy != "null" && fm.SupersededBy != "~"
+}
+
+// parseLearningBody extracts title and ID from markdown body lines into l.
+func parseLearningBody(lines []string, start int, l *learning) {
+	defaultID := filepath.Base(l.Source)
+	for i := start; i < len(lines); i++ {
+		line := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(line, "# ") && l.Title == "" {
+			l.Title = strings.TrimPrefix(line, "# ")
+		} else if (strings.HasPrefix(line, "ID:") || strings.HasPrefix(line, "id:")) && l.ID == defaultID {
+			l.ID = strings.TrimSpace(strings.SplitN(line, ":", 2)[1])
+		}
+	}
+}
+
 // parseLearningFile extracts learning info from a file
 // Sets Superseded=true if superseded_by field is found
 func parseLearningFile(path string) (learning, error) {
+	if strings.HasSuffix(path, ".jsonl") {
+		return parseLearningJSONL(path)
+	}
+
 	l := learning{
 		ID:     filepath.Base(path),
 		Source: path,
-	}
-
-	if strings.HasSuffix(path, ".jsonl") {
-		return parseLearningJSONL(path)
 	}
 
 	content, err := os.ReadFile(path)
@@ -260,10 +301,9 @@ func parseLearningFile(path string) (learning, error) {
 	}
 
 	lines := strings.Split(string(content), "\n")
-
-	// Parse front matter
 	fm, contentStart := parseFrontMatter(lines)
-	if fm.SupersededBy != "" && fm.SupersededBy != "null" && fm.SupersededBy != "~" {
+
+	if isSuperseded(fm) {
 		l.Superseded = true
 		return l, nil
 	}
@@ -271,17 +311,7 @@ func parseLearningFile(path string) (learning, error) {
 		l.Utility = fm.Utility
 	}
 
-	// Parse body content
-	for i := contentStart; i < len(lines); i++ {
-		line := strings.TrimSpace(lines[i])
-
-		if strings.HasPrefix(line, "# ") && l.Title == "" {
-			l.Title = strings.TrimPrefix(line, "# ")
-		} else if (strings.HasPrefix(line, "ID:") || strings.HasPrefix(line, "id:")) && l.ID == filepath.Base(path) {
-			l.ID = strings.TrimSpace(strings.SplitN(line, ":", 2)[1])
-		}
-	}
-
+	parseLearningBody(lines, contentStart, &l)
 	l.Summary = extractSummary(lines, contentStart)
 
 	if l.Title == "" {
@@ -289,6 +319,25 @@ func parseLearningFile(path string) (learning, error) {
 	}
 
 	return l, nil
+}
+
+// populateLearningFromJSON fills learning fields from a parsed JSON map.
+func populateLearningFromJSON(data map[string]any, l *learning) {
+	if id, ok := data["id"].(string); ok {
+		l.ID = id
+	}
+	if title, ok := data["title"].(string); ok {
+		l.Title = title
+	}
+	if summary, ok := data["summary"].(string); ok {
+		l.Summary = truncateText(summary, 200)
+	}
+	if content, ok := data["content"].(string); ok && l.Summary == "" {
+		l.Summary = truncateText(content, 200)
+	}
+	if utility, ok := data["utility"].(float64); ok && utility > 0 {
+		l.Utility = utility
+	}
 }
 
 // parseLearningJSONL extracts learning from JSONL file
@@ -309,33 +358,21 @@ func parseLearningJSONL(path string) (learning, error) {
 	}()
 
 	scanner := bufio.NewScanner(f)
-	if scanner.Scan() {
-		var data map[string]any
-		if err := json.Unmarshal(scanner.Bytes(), &data); err == nil {
-			// F3: Filter superseded learnings - skip if superseded_by is set
-			if supersededBy, ok := data["superseded_by"]; ok && supersededBy != nil && supersededBy != "" {
-				l.Superseded = true
-				return l, nil // Return early, will be filtered out
-			}
-
-			if id, ok := data["id"].(string); ok {
-				l.ID = id
-			}
-			if title, ok := data["title"].(string); ok {
-				l.Title = title
-			}
-			if summary, ok := data["summary"].(string); ok {
-				l.Summary = truncateText(summary, 200)
-			}
-			if content, ok := data["content"].(string); ok && l.Summary == "" {
-				l.Summary = truncateText(content, 200)
-			}
-			// Parse MemRL utility value
-			if utility, ok := data["utility"].(float64); ok && utility > 0 {
-				l.Utility = utility
-			}
-		}
+	if !scanner.Scan() {
+		return l, nil
 	}
 
+	var data map[string]any
+	if err := json.Unmarshal(scanner.Bytes(), &data); err != nil {
+		return l, nil
+	}
+
+	// F3: Filter superseded learnings - skip if superseded_by is set
+	if supersededBy, ok := data["superseded_by"]; ok && supersededBy != nil && supersededBy != "" {
+		l.Superseded = true
+		return l, nil
+	}
+
+	populateLearningFromJSON(data, &l)
 	return l, nil
 }
