@@ -6,23 +6,26 @@ set -euo pipefail
 
 usage() {
   cat <<USAGE
-Usage: $0 [--dir <path>] [--threshold <n>]
+Usage: $0 [--dir <path>] [--threshold <n>] [--per-file]
 
 Checks that no non-test Go function exceeds the given cyclomatic complexity threshold.
 
 Options:
   --dir        Directory to scan (default: cli/)
   --threshold  Max allowed complexity (default: 10)
+  --per-file   Output per-file violation counts instead of raw violations
 USAGE
 }
 
 DIR="cli/"
 THRESHOLD=10
+PER_FILE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dir)       DIR="$2"; shift 2 ;;
     --threshold) THRESHOLD="$2"; shift 2 ;;
+    --per-file)  PER_FILE=true; shift ;;
     -h|--help)   usage; exit 0 ;;
     *)           echo "Unknown argument: $1" >&2; usage; exit 2 ;;
   esac
@@ -52,6 +55,27 @@ VIOLATIONS=$(gocyclo -over "$THRESHOLD" "${GO_FILES[@]}" 2>/dev/null || true)
 if [[ -z "$VIOLATIONS" ]]; then
   echo "All functions in $DIR are below complexity $THRESHOLD."
   exit 0
+fi
+
+if [[ "$PER_FILE" == "true" ]]; then
+  # gocyclo output: <complexity> <package> <function> <file:line:col>
+  # Count violations per file and report
+  echo "Per-file violations (complexity > $THRESHOLD in $DIR):"
+  echo "$VIOLATIONS" | awk '{
+    path = $4
+    sub(/:[0-9]+:[0-9]+$/, "", path)
+    count[path]++
+  }
+  END {
+    for (f in count) {
+      # Strip leading directory to show just filename
+      n = split(f, parts, "/")
+      printf "%s: %d violation(s)\n", parts[n], count[f]
+    }
+  }' | sort -t: -k2 -rn
+  TOTAL=$(echo "$VIOLATIONS" | wc -l | tr -d ' ')
+  echo "Total: $TOTAL violation(s)"
+  exit 1
 fi
 
 echo "ERROR: Functions exceeding complexity $THRESHOLD in $DIR:"
