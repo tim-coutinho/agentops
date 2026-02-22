@@ -315,6 +315,54 @@ func EvaluateDefaultMemRLPolicy(input MemRLPolicyInput) MemRLPolicyDecision {
 
 // EvaluateMemRLPolicy deterministically resolves one policy decision.
 func EvaluateMemRLPolicy(contract MemRLPolicyContract, input MemRLPolicyInput) MemRLPolicyDecision {
+	resolved := resolveInputDefaults(contract, input)
+
+	baseDecision := MemRLPolicyDecision{
+		Mode:            resolved.mode,
+		FailureClass:    input.FailureClass,
+		AttemptBucket:   resolved.bucket,
+		MetadataPresent: resolved.metadataPresent,
+	}
+
+	if !resolved.metadataPresent || input.FailureClass == "" || resolved.bucket == "" {
+		baseDecision.Action = contract.MissingMetadataAction
+		baseDecision.RuleID = "default.missing_metadata"
+		baseDecision.Reason = "missing_metadata"
+		return baseDecision
+	}
+
+	if !IsKnownMemRLFailureClass(input.FailureClass) {
+		baseDecision.Action = contract.UnknownFailureClassAction
+		baseDecision.RuleID = "default.unknown_failure_class"
+		baseDecision.Reason = "unknown_failure_class"
+		return baseDecision
+	}
+
+	candidates := matchRules(contract.Rules, resolved.mode, input.FailureClass, resolved.bucket)
+
+	if len(candidates) == 0 {
+		baseDecision.Action = contract.UnknownFailureClassAction
+		baseDecision.RuleID = "default.no_matching_rule"
+		baseDecision.Reason = "no_matching_rule"
+		return baseDecision
+	}
+
+	chosen := selectBestRule(candidates)
+	baseDecision.Action = chosen.Action
+	baseDecision.RuleID = chosen.RuleID
+	baseDecision.Reason = "rule_match_specificity_priority_rule_id"
+	return baseDecision
+}
+
+// resolvedInput holds normalized input fields after default resolution.
+type resolvedInput struct {
+	mode            MemRLMode
+	bucket          MemRLAttemptBucket
+	metadataPresent bool
+}
+
+// resolveInputDefaults normalizes input fields, applying contract defaults.
+func resolveInputDefaults(contract MemRLPolicyContract, input MemRLPolicyInput) resolvedInput {
 	mode := input.Mode
 	if !isValidMemRLMode(mode) {
 		mode = contract.DefaultMode
@@ -330,33 +378,17 @@ func EvaluateMemRLPolicy(contract MemRLPolicyContract, input MemRLPolicyInput) M
 		metadataPresent = true
 	}
 
-	baseDecision := MemRLPolicyDecision{
-		Mode:            mode,
-		FailureClass:    input.FailureClass,
-		AttemptBucket:   bucket,
-		MetadataPresent: metadataPresent,
-	}
+	return resolvedInput{mode: mode, bucket: bucket, metadataPresent: metadataPresent}
+}
 
-	if !metadataPresent || input.FailureClass == "" || bucket == "" {
-		baseDecision.Action = contract.MissingMetadataAction
-		baseDecision.RuleID = "default.missing_metadata"
-		baseDecision.Reason = "missing_metadata"
-		return baseDecision
-	}
-
-	if !IsKnownMemRLFailureClass(input.FailureClass) {
-		baseDecision.Action = contract.UnknownFailureClassAction
-		baseDecision.RuleID = "default.unknown_failure_class"
-		baseDecision.Reason = "unknown_failure_class"
-		return baseDecision
-	}
-
+// matchRules returns rules that match the given mode, failure class, and bucket.
+func matchRules(rules []MemRLPolicyRule, mode MemRLMode, failureClass MemRLFailureClass, bucket MemRLAttemptBucket) []MemRLPolicyRule {
 	var candidates []MemRLPolicyRule
-	for _, rule := range contract.Rules {
+	for _, rule := range rules {
 		if rule.Mode != mode {
 			continue
 		}
-		if rule.FailureClass != MemRLFailureClassAny && rule.FailureClass != input.FailureClass {
+		if rule.FailureClass != MemRLFailureClassAny && rule.FailureClass != failureClass {
 			continue
 		}
 		if rule.AttemptBucket != MemRLAttemptBucketAny && rule.AttemptBucket != bucket {
@@ -364,14 +396,11 @@ func EvaluateMemRLPolicy(contract MemRLPolicyContract, input MemRLPolicyInput) M
 		}
 		candidates = append(candidates, rule)
 	}
+	return candidates
+}
 
-	if len(candidates) == 0 {
-		baseDecision.Action = contract.UnknownFailureClassAction
-		baseDecision.RuleID = "default.no_matching_rule"
-		baseDecision.Reason = "no_matching_rule"
-		return baseDecision
-	}
-
+// selectBestRule sorts candidates by specificity > priority > rule ID and returns the best.
+func selectBestRule(candidates []MemRLPolicyRule) MemRLPolicyRule {
 	sort.SliceStable(candidates, func(i, j int) bool {
 		si := ruleSpecificity(candidates[i])
 		sj := ruleSpecificity(candidates[j])
@@ -383,12 +412,7 @@ func EvaluateMemRLPolicy(contract MemRLPolicyContract, input MemRLPolicyInput) M
 		}
 		return candidates[i].RuleID < candidates[j].RuleID
 	})
-
-	chosen := candidates[0]
-	baseDecision.Action = chosen.Action
-	baseDecision.RuleID = chosen.RuleID
-	baseDecision.Reason = "rule_match_specificity_priority_rule_id"
-	return baseDecision
+	return candidates[0]
 }
 
 func ruleSpecificity(rule MemRLPolicyRule) int {
