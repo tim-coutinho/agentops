@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -747,5 +748,66 @@ func TestAppendMultipleEntries(t *testing.T) {
 	}
 	if len(loaded.Entries) != 4 {
 		t.Errorf("expected 4 entries on disk, got %d", len(loaded.Entries))
+	}
+}
+
+func TestChainSaveNoPath(t *testing.T) {
+	chain := &Chain{
+		ID:      "no-path",
+		Started: time.Now(),
+	}
+	// path is empty
+	err := chain.Save()
+	if err == nil {
+		t.Error("expected error when saving chain with no path")
+	}
+	if !strings.Contains(err.Error(), "no path set") {
+		t.Errorf("expected 'no path set' error, got: %v", err)
+	}
+}
+
+func TestChainAppendNoPath(t *testing.T) {
+	chain := &Chain{
+		ID:      "no-path",
+		Started: time.Now(),
+	}
+	err := chain.Append(ChainEntry{Step: StepResearch})
+	if err == nil {
+		t.Error("expected error when appending to chain with no path")
+	}
+	if !strings.Contains(err.Error(), "no path set") {
+		t.Errorf("expected 'no path set' error, got: %v", err)
+	}
+}
+
+func TestChainSaveReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	chain := &Chain{
+		ID:      "readonly-test",
+		Started: time.Now(),
+	}
+	chain.SetPath(filepath.Join(readOnly, "sub", "chain.jsonl"))
+	err := chain.Save()
+	if err == nil {
+		t.Error("expected error when saving to read-only directory")
+	}
+}
+
+func TestLoadChainNonexistent(t *testing.T) {
+	chain, err := LoadChain("/nonexistent/path")
+	if err != nil {
+		t.Fatalf("LoadChain should not error for nonexistent dir: %v", err)
+	}
+	if chain == nil {
+		t.Fatal("expected non-nil chain for nonexistent path")
+	}
+	if len(chain.Entries) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(chain.Entries))
 	}
 }

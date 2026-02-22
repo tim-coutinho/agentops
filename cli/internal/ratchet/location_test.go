@@ -248,3 +248,120 @@ func TestLocationTypeValues(t *testing.T) {
 		t.Errorf("LocationPlugins = %s, want plugins", LocationPlugins)
 	}
 }
+
+func TestGetAgentsDir(t *testing.T) {
+	loc, err := NewLocator(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Valid location should return a path
+	crewDir, err := loc.GetAgentsDir(LocationCrew)
+	if err != nil {
+		t.Fatalf("GetAgentsDir(crew) error: %v", err)
+	}
+	if crewDir == "" {
+		t.Error("expected non-empty crew agents dir")
+	}
+
+	// Invalid location should return error
+	_, err = loc.GetAgentsDir(LocationType("invalid"))
+	if err == nil {
+		t.Error("expected error for invalid location type")
+	}
+}
+
+func TestLocationForPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	loc := &Locator{
+		startDir: tmpDir,
+		home:     filepath.Dir(tmpDir),
+		townDir:  filepath.Join(filepath.Dir(tmpDir), "gt"),
+	}
+
+	tests := []struct {
+		name string
+		path string
+		want LocationType
+	}{
+		{"crew path under town with /crew/", filepath.Join(loc.townDir, "crew", "test", "file.md"), LocationCrew},
+		{"town .agents path", filepath.Join(loc.townDir, ".agents", "learnings", "test.md"), LocationTown},
+		{"rig path under town", filepath.Join(loc.townDir, "myrig", "file.md"), LocationRig},
+		{"plugins path", "/some/plugins/myplugin/file.md", LocationPlugins},
+		{"default to crew", "/random/path/file.md", LocationCrew},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := loc.locationForPath(tt.path)
+			if got != tt.want {
+				t.Errorf("locationForPath(%q) = %s, want %s", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGlobAbsolutePath(t *testing.T) {
+	tmpDir := t.TempDir()
+	loc := &Locator{startDir: tmpDir}
+
+	// Create a file
+	testFile := filepath.Join(tmpDir, "test.md")
+	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Absolute path that exists
+	results, err := loc.glob(tmpDir, testFile)
+	if err != nil {
+		t.Fatalf("glob absolute path: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 result for existing absolute path, got %d", len(results))
+	}
+
+	// Absolute path that doesn't exist
+	results, err = loc.glob(tmpDir, "/nonexistent/file.md")
+	if err != nil {
+		t.Fatalf("glob nonexistent: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for nonexistent absolute path, got %d", len(results))
+	}
+}
+
+func TestResolveArtifactPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	loc, err := NewLocator(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a test artifact
+	agentsDir := filepath.Join(tmpDir, ".agents", "learnings")
+	if err := os.MkdirAll(agentsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	testFile := filepath.Join(agentsDir, "test-learning.md")
+	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Resolve by pattern
+	resolved, locType, err := loc.ResolveArtifactPath("learnings/test-learning.md")
+	if err != nil {
+		t.Fatalf("ResolveArtifactPath: %v", err)
+	}
+	if resolved == "" {
+		t.Error("expected resolved path")
+	}
+	if locType == "" {
+		t.Error("expected location type")
+	}
+
+	// Resolve nonexistent
+	_, _, err = loc.ResolveArtifactPath("nonexistent/file.md")
+	if err == nil {
+		t.Error("expected error for nonexistent artifact")
+	}
+}

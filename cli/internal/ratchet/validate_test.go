@@ -1420,6 +1420,257 @@ func TestValidate_TierAssigned(t *testing.T) {
 	}
 }
 
+func TestCanonicalArtifactPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		baseDir  string
+		artifact string
+		wantAbs  bool
+	}{
+		{"empty artifact returns empty", "/base", "", false},
+		{"absolute path stays absolute", "/base", "/some/absolute/file.md", true},
+		{"relative path joined with base", "/base", "learnings/test.md", true},
+		{"empty base uses dot", "", "learnings/test.md", true},
+		{"whitespace-only base uses dot", "  ", "learnings/test.md", true},
+		{"whitespace artifact trimmed", "/base", "  test.md  ", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CanonicalArtifactPath(tt.baseDir, tt.artifact)
+			if tt.artifact == "" || strings.TrimSpace(tt.artifact) == "" {
+				if got != "" && tt.artifact == "" {
+					t.Errorf("expected empty for empty artifact, got %q", got)
+				}
+				return
+			}
+			if tt.wantAbs && !filepath.IsAbs(got) {
+				t.Errorf("expected absolute path, got %q", got)
+			}
+		})
+	}
+}
+
+func TestValidatePreMortem_NotFound(t *testing.T) {
+	v, _ := helperNewValidator(t)
+	result, err := v.Validate(StepPreMortem, "/nonexistent/file.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Valid {
+		t.Error("expected invalid result for nonexistent file")
+	}
+	foundNotFound := false
+	for _, issue := range result.Issues {
+		if strings.Contains(issue, "Artifact not found") {
+			foundNotFound = true
+			break
+		}
+	}
+	if !foundNotFound {
+		t.Error("expected 'Artifact not found' issue")
+	}
+}
+
+func TestValidatePreMortem_Warnings(t *testing.T) {
+	v, tmpDir := helperNewValidator(t)
+	// Minimal content that won't trigger any warnings (baseline)
+	artifact := filepath.Join(tmpDir, "premortem-v2.md")
+	content := "---\nschema_version: 1\n---\n## Finding\n| ID | Something |\nMitigation steps\n" + longText(100)
+	if err := os.WriteFile(artifact, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := v.Validate(StepPreMortem, artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should pass validation (it has all required elements)
+	if !result.Valid {
+		t.Errorf("expected valid result, got issues: %v", result.Issues)
+	}
+}
+
+func TestValidatePreMortem_MissingFindings(t *testing.T) {
+	v, tmpDir := helperNewValidator(t)
+	// Use a filename WITHOUT version suffix to trigger that warning too
+	artifact := filepath.Join(tmpDir, "premortem.md")
+	// Missing both findings and mitigations
+	content := "---\nschema_version: 1\n---\n## Just some text\nNo findings here.\n" + longText(100)
+	if err := os.WriteFile(artifact, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := v.Validate(StepPreMortem, artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check for expected warnings
+	wantWarnings := []string{"findings table", "mitigations", "version suffix"}
+	for _, want := range wantWarnings {
+		found := false
+		for _, w := range result.Warnings {
+			if strings.Contains(strings.ToLower(w), strings.ToLower(want)) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected warning containing %q, got warnings: %v", want, result.Warnings)
+		}
+	}
+}
+
+func TestValidatePlan_ReadError(t *testing.T) {
+	v, _ := helperNewValidator(t)
+	result, err := v.Validate(StepPlan, "/nonexistent/plan.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Valid {
+		t.Error("expected invalid result for unreadable plan file")
+	}
+}
+
+func TestValidatePlan_MissingSections(t *testing.T) {
+	v, tmpDir := helperNewValidator(t)
+	artifact := filepath.Join(tmpDir, "plan.md")
+	// Missing objective, tasks, and success criteria
+	content := "---\nschema_version: 1\n---\nJust some content without proper sections.\n" + longText(100)
+	if err := os.WriteFile(artifact, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := v.Validate(StepPlan, artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantWarnings := []string{"objective", "tasks", "success criteria"}
+	for _, want := range wantWarnings {
+		found := false
+		for _, w := range result.Warnings {
+			if strings.Contains(strings.ToLower(w), want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected warning containing %q, got: %v", want, result.Warnings)
+		}
+	}
+}
+
+func TestValidatePostMortem_ReadError(t *testing.T) {
+	v, _ := helperNewValidator(t)
+	result, err := v.Validate(StepPostMortem, "/nonexistent/retro.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Valid {
+		t.Error("expected invalid result for unreadable post-mortem file")
+	}
+}
+
+func TestValidatePostMortem_MissingSections(t *testing.T) {
+	v, tmpDir := helperNewValidator(t)
+	artifact := filepath.Join(tmpDir, "retro.md")
+	// Missing learnings and patterns sections
+	content := "---\nschema_version: 1\n---\nJust a retro without proper sections.\n" + longText(100)
+	if err := os.WriteFile(artifact, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := v.Validate(StepPostMortem, artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantWarnings := []string{"learnings", "patterns"}
+	for _, want := range wantWarnings {
+		found := false
+		for _, w := range result.Warnings {
+			if strings.Contains(strings.ToLower(w), want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected warning containing %q, got: %v", want, result.Warnings)
+		}
+	}
+}
+
+func TestRecordCitation_ZeroTimestamp(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Citation with zero timestamp should get current time
+	event := types.CitationEvent{
+		ArtifactPath: "test.md",
+		SessionID:    "sess-1",
+	}
+
+	if err := RecordCitation(tmpDir, event); err != nil {
+		t.Fatalf("RecordCitation: %v", err)
+	}
+
+	citations, err := LoadCitations(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadCitations: %v", err)
+	}
+	if len(citations) != 1 {
+		t.Fatalf("expected 1 citation, got %d", len(citations))
+	}
+	if citations[0].CitedAt.IsZero() {
+		t.Error("expected non-zero timestamp")
+	}
+}
+
+func TestRecordCitation_ReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	event := types.CitationEvent{
+		ArtifactPath: "test.md",
+		SessionID:    "sess-1",
+	}
+	err := RecordCitation(readOnly, event)
+	if err == nil {
+		t.Error("expected error when writing to read-only directory")
+	}
+}
+
+func TestValidateCloseReason_WithAbsolutePaths(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a valid artifact
+	agentsDir := filepath.Join(tmpDir, ".agents", "council")
+	if err := os.MkdirAll(agentsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	artifactPath := filepath.Join(agentsDir, "vibe-result.md")
+	if err := os.WriteFile(artifactPath, []byte("# Vibe Result\nContent here."), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	issues := ValidateCloseReason("completed: " + artifactPath)
+	if len(issues) != 0 {
+		t.Errorf("expected no issues for valid close reason, got: %v", issues)
+	}
+}
+
+func TestValidateCloseReason_WithRelativePaths(t *testing.T) {
+	issues := ValidateCloseReason("completed: ./relative/path.md")
+	if len(issues) == 0 {
+		t.Error("expected issues for relative path in close reason")
+	}
+}
+
 // longText generates filler text with the given number of words.
 func longText(wordCount int) string {
 	words := make([]string, wordCount)
