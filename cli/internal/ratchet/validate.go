@@ -376,26 +376,38 @@ func (v *Validator) ValidateForPromotion(artifactPath string, targetTier Tier) (
 func (v *Validator) checkTierRequirements(artifactPath string, targetTier Tier, result *ValidationResult) {
 	switch targetTier {
 	case TierLearning:
-		if v.countCitations(artifactPath) < 2 {
-			result.Valid = false
-			result.Issues = append(result.Issues,
-				"Promotion to learning tier requires 2+ citations (found: %d)")
-		}
+		v.requireMinCitations(artifactPath, 2, result)
 	case TierPattern:
-		if v.countSessionRefs(artifactPath) < 3 {
-			result.Valid = false
-			result.Issues = append(result.Issues,
-				"Promotion to pattern tier requires references in 3+ sessions")
-		}
+		v.requireMinSessionRefs(artifactPath, 3, result)
 	case TierSkill:
-		if !v.hasSkillFormat(artifactPath) {
-			result.Valid = false
-			result.Issues = append(result.Issues,
-				"Promotion to skill tier requires SKILL.md format")
-		}
+		v.requireSkillFormat(artifactPath, result)
 	case TierCore:
 		result.Warnings = append(result.Warnings,
 			"Core tier promotion requires manual review (10+ documented uses)")
+	}
+}
+
+func (v *Validator) requireMinCitations(artifactPath string, minCount int, result *ValidationResult) {
+	if v.countCitations(artifactPath) < minCount {
+		result.Valid = false
+		result.Issues = append(result.Issues,
+			fmt.Sprintf("Promotion to learning tier requires %d+ citations", minCount))
+	}
+}
+
+func (v *Validator) requireMinSessionRefs(artifactPath string, minCount int, result *ValidationResult) {
+	if v.countSessionRefs(artifactPath) < minCount {
+		result.Valid = false
+		result.Issues = append(result.Issues,
+			fmt.Sprintf("Promotion to pattern tier requires references in %d+ sessions", minCount))
+	}
+}
+
+func (v *Validator) requireSkillFormat(artifactPath string, result *ValidationResult) {
+	if !v.hasSkillFormat(artifactPath) {
+		result.Valid = false
+		result.Issues = append(result.Issues,
+			"Promotion to skill tier requires SKILL.md format")
 	}
 }
 
@@ -473,24 +485,22 @@ func (v *Validator) gatherSessionDirs() []string {
 }
 
 // countRefsInDir walks a sessions directory counting files that reference baseName.
+// isSearchableFile returns true if the file at the given path is a JSONL or
+// markdown file that should be searched for references.
+func isSearchableFile(path string, info os.FileInfo) bool {
+	if info.IsDir() {
+		return false
+	}
+	ext := filepath.Ext(path)
+	return ext == ".jsonl" || ext == ".md"
+}
+
 func (v *Validator) countRefsInDir(sessionsDir, baseName string, seen map[string]bool) int {
 	count := 0
 	if err := filepath.Walk(sessionsDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+		if err != nil || !isSearchableFile(path, info) || seen[path] {
 			return nil
 		}
-
-		// Only search JSONL and markdown files
-		ext := filepath.Ext(path)
-		if ext != ".jsonl" && ext != ".md" {
-			return nil
-		}
-
-		// Skip if already counted this file
-		if seen[path] {
-			return nil
-		}
-
 		if v.fileContains(path, baseName) {
 			seen[path] = true
 			count++
