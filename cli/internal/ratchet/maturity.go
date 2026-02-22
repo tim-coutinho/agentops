@@ -225,39 +225,50 @@ func ApplyMaturityTransition(learningPath string) (*MaturityTransitionResult, er
 		return result, nil
 	}
 
-	// Read and update the file
-	content, err := os.ReadFile(learningPath)
+	updates := map[string]any{
+		"maturity":            string(result.NewMaturity),
+		"maturity_changed_at": time.Now().Format(time.RFC3339),
+		"maturity_reason":     result.Reason,
+	}
+	if err := updateJSONLFirstLine(learningPath, updates); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// updateJSONLFirstLine reads a JSONL file, merges fields into the first
+// JSON line, and writes the file back.
+func updateJSONLFirstLine(path string, updates map[string]any) error {
+	content, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read learning for update: %w", err)
+		return fmt.Errorf("read learning for update: %w", err)
 	}
 
 	lines := strings.Split(string(content), "\n")
 	if len(lines) == 0 {
-		return nil, ErrEmptyFile
+		return ErrEmptyFile
 	}
 
 	var data map[string]any
 	if err := json.Unmarshal([]byte(lines[0]), &data); err != nil {
-		return nil, fmt.Errorf("parse learning for update: %w", err)
+		return fmt.Errorf("parse learning for update: %w", err)
 	}
 
-	// Update maturity and timestamp
-	data["maturity"] = string(result.NewMaturity)
-	data["maturity_changed_at"] = time.Now().Format(time.RFC3339)
-	data["maturity_reason"] = result.Reason
+	for k, v := range updates {
+		data[k] = v
+	}
 
-	// Write back
 	newJSON, err := json.Marshal(data)
 	if err != nil {
-		return nil, fmt.Errorf("marshal updated learning: %w", err)
+		return fmt.Errorf("marshal updated learning: %w", err)
 	}
 
 	lines[0] = string(newJSON)
-	if err := os.WriteFile(learningPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
-		return nil, fmt.Errorf("write updated learning: %w", err)
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+		return fmt.Errorf("write updated learning: %w", err)
 	}
-
-	return result, nil
+	return nil
 }
 
 // ScanForMaturityTransitions scans a learnings directory and returns all pending transitions.
@@ -284,70 +295,54 @@ func ScanForMaturityTransitions(learningsDir string) ([]*MaturityTransitionResul
 	return results, nil
 }
 
-// GetAntiPatterns returns all learnings marked as anti-patterns.
-func GetAntiPatterns(learningsDir string) ([]string, error) {
+// filterLearningsByMaturity returns JSONL file paths whose first line has
+// the specified maturity value.
+func filterLearningsByMaturity(learningsDir string, target types.Maturity) ([]string, error) {
 	files, err := filepath.Glob(filepath.Join(learningsDir, "*.jsonl"))
 	if err != nil {
 		return nil, fmt.Errorf("glob learnings: %w", err)
 	}
 
-	var antiPatterns []string
-
+	var result []string
 	for _, file := range files {
-		f, err := os.Open(file)
-		if err != nil {
-			continue
+		if readFirstLineMaturity(file) == string(target) {
+			result = append(result, file)
 		}
-
-		scanner := bufio.NewScanner(f)
-		if scanner.Scan() {
-			var data map[string]any
-			if err := json.Unmarshal(scanner.Bytes(), &data); err != nil {
-				_ = f.Close() //nolint:errcheck // read-only, moving to next file
-				continue
-			}
-
-			if maturity, ok := data["maturity"].(string); ok && maturity == string(types.MaturityAntiPattern) {
-				antiPatterns = append(antiPatterns, file)
-			}
-		}
-		_ = f.Close() //nolint:errcheck // read-only, moving to next file
 	}
+	return result, nil
+}
 
-	return antiPatterns, nil
+// readFirstLineMaturity reads the first JSON line of a JSONL file and returns
+// its "maturity" field value, or "" on any error.
+func readFirstLineMaturity(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer func() {
+		_ = f.Close() //nolint:errcheck // read-only
+	}()
+
+	scanner := bufio.NewScanner(f)
+	if !scanner.Scan() {
+		return ""
+	}
+	var data map[string]any
+	if err := json.Unmarshal(scanner.Bytes(), &data); err != nil {
+		return ""
+	}
+	maturity, _ := data["maturity"].(string)
+	return maturity
+}
+
+// GetAntiPatterns returns all learnings marked as anti-patterns.
+func GetAntiPatterns(learningsDir string) ([]string, error) {
+	return filterLearningsByMaturity(learningsDir, types.MaturityAntiPattern)
 }
 
 // GetEstablishedLearnings returns all learnings with established maturity.
 func GetEstablishedLearnings(learningsDir string) ([]string, error) {
-	files, err := filepath.Glob(filepath.Join(learningsDir, "*.jsonl"))
-	if err != nil {
-		return nil, fmt.Errorf("glob learnings: %w", err)
-	}
-
-	var established []string
-
-	for _, file := range files {
-		f, err := os.Open(file)
-		if err != nil {
-			continue
-		}
-
-		scanner := bufio.NewScanner(f)
-		if scanner.Scan() {
-			var data map[string]any
-			if err := json.Unmarshal(scanner.Bytes(), &data); err != nil {
-				_ = f.Close() //nolint:errcheck // read-only, moving to next file
-				continue
-			}
-
-			if maturity, ok := data["maturity"].(string); ok && maturity == string(types.MaturityEstablished) {
-				established = append(established, file)
-			}
-		}
-		_ = f.Close() //nolint:errcheck // read-only, moving to next file
-	}
-
-	return established, nil
+	return filterLearningsByMaturity(learningsDir, types.MaturityEstablished)
 }
 
 // MaturityDistribution represents the count of learnings at each maturity level.
