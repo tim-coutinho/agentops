@@ -22,16 +22,34 @@ import (
 // validIDPattern matches safe candidate IDs (alphanumeric, hyphens, underscores).
 var validIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
+// Sentinel errors for common pool operations.
+var (
+	// ErrEmptyID is returned when a candidate ID is empty.
+	ErrEmptyID = fmt.Errorf("candidate ID cannot be empty")
+	// ErrIDTooLong is returned when a candidate ID exceeds 128 characters.
+	ErrIDTooLong = fmt.Errorf("candidate ID too long (max 128 characters)")
+	// ErrIDInvalidChars is returned when a candidate ID contains disallowed characters.
+	ErrIDInvalidChars = fmt.Errorf("candidate ID contains invalid characters (only alphanumeric, hyphen, underscore allowed)")
+	// ErrCandidateNotFound is returned when a candidate cannot be located in the pool.
+	ErrCandidateNotFound = fmt.Errorf("candidate not found")
+	// ErrStageRejected is returned when attempting to stage a rejected candidate.
+	ErrStageRejected = fmt.Errorf("cannot stage rejected candidate")
+	// ErrPromoteRejected is returned when attempting to promote a rejected candidate.
+	ErrPromoteRejected = fmt.Errorf("cannot promote rejected candidate")
+	// ErrNotStaged is returned when attempting to promote a candidate that is not staged.
+	ErrNotStaged = fmt.Errorf("candidate must be staged before promotion")
+)
+
 // validateCandidateID checks if an ID is safe for use in file paths.
 func validateCandidateID(id string) error {
 	if id == "" {
-		return fmt.Errorf("candidate ID cannot be empty")
+		return ErrEmptyID
 	}
 	if len(id) > 128 {
-		return fmt.Errorf("candidate ID too long (max 128 characters)")
+		return ErrIDTooLong
 	}
 	if !validIDPattern.MatchString(id) {
-		return fmt.Errorf("candidate ID contains invalid characters (only alphanumeric, hyphen, underscore allowed)")
+		return ErrIDInvalidChars
 	}
 	return nil
 }
@@ -329,7 +347,7 @@ func (p *Pool) Get(candidateID string) (*PoolEntry, error) {
 		return entry, nil
 	}
 
-	return nil, fmt.Errorf("candidate not found: %s", candidateID)
+	return nil, fmt.Errorf("%w: %s", ErrCandidateNotFound, candidateID)
 }
 
 // Stage moves a candidate from pending to staged.
@@ -341,7 +359,7 @@ func (p *Pool) Stage(candidateID string, minTier types.Tier) error {
 
 	// Prevent staging rejected candidates
 	if entry.Status == types.PoolStatusRejected {
-		return fmt.Errorf("cannot stage rejected candidate")
+		return ErrStageRejected
 	}
 
 	// Validate tier threshold
@@ -421,10 +439,10 @@ func (p *Pool) Promote(candidateID string) (string, error) {
 // validatePromotable checks that a pool entry is eligible for promotion.
 func validatePromotable(entry *PoolEntry) error {
 	if entry.Status == types.PoolStatusRejected {
-		return fmt.Errorf("cannot promote rejected candidate")
+		return ErrPromoteRejected
 	}
 	if entry.Status != types.PoolStatusStaged {
-		return fmt.Errorf("candidate must be staged before promotion (current: %s)", entry.Status)
+		return fmt.Errorf("%w (current: %s)", ErrNotStaged, entry.Status)
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package pool
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -791,8 +792,8 @@ func TestPoolGetNotFound(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for nonexistent candidate")
 	}
-	if !strings.Contains(err.Error(), "candidate not found") {
-		t.Errorf("expected 'candidate not found' error, got %q", err.Error())
+	if !errors.Is(err, ErrCandidateNotFound) {
+		t.Errorf("expected ErrCandidateNotFound, got %q", err.Error())
 	}
 }
 
