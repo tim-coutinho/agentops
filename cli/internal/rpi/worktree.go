@@ -143,25 +143,39 @@ func CreateWorktree(cwd string, timeout time.Duration, verbosef func(string, ...
 		}
 	}
 
+	currentCommit, err := resolveHeadCommit(repoRoot, timeout)
+	if err != nil {
+		return "", "", err
+	}
+
+	return tryCreateWorktree(repoRoot, currentCommit, timeout, verbosef)
+}
+
+// resolveHeadCommit returns the current HEAD commit SHA.
+func resolveHeadCommit(repoRoot string, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	cmdHead := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
 	cmdHead.Dir = repoRoot
 	headOut, headErr := cmdHead.CombinedOutput()
 	cancel()
 	if headErr != nil {
-		return "", "", fmt.Errorf("git rev-parse HEAD: %w (output: %s)", headErr, strings.TrimSpace(string(headOut)))
+		return "", fmt.Errorf("git rev-parse HEAD: %w (output: %s)", headErr, strings.TrimSpace(string(headOut)))
 	}
 	currentCommit := strings.TrimSpace(string(headOut))
 	if currentCommit == "" {
-		return "", "", fmt.Errorf("unable to resolve HEAD commit for detached worktree creation")
+		return "", fmt.Errorf("unable to resolve HEAD commit for detached worktree creation")
 	}
+	return currentCommit, nil
+}
 
+// tryCreateWorktree attempts to create a worktree up to 3 times, handling path collisions.
+func tryCreateWorktree(repoRoot, currentCommit string, timeout time.Duration, verbosef func(string, ...interface{})) (string, string, error) {
 	for attempt := 0; attempt < 3; attempt++ {
-		runID = GenerateRunID()
+		runID := GenerateRunID()
 		repoBasename := filepath.Base(repoRoot)
-		worktreePath = filepath.Join(filepath.Dir(repoRoot), repoBasename+"-rpi-"+runID)
+		worktreePath := filepath.Join(filepath.Dir(repoRoot), repoBasename+"-rpi-"+runID)
 
-		ctx, cancel = context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		cmd := exec.CommandContext(ctx, "git", "worktree", "add", worktreePath, currentCommit)
 		cmd.Dir = repoRoot
 		output, cmdErr := cmd.CombinedOutput()
@@ -193,6 +207,25 @@ func CreateWorktree(cwd string, timeout time.Duration, verbosef func(string, ...
 
 // MergeWorktree merges the RPI worktree commit back into the original branch.
 func MergeWorktree(repoRoot, worktreePath, runID string, timeout time.Duration, verbosef func(string, ...interface{})) error {
+	if err := waitForCleanRepo(repoRoot, timeout, verbosef); err != nil {
+		return err
+	}
+
+	worktreePath = resolveWorktreePath(worktreePath, repoRoot, runID)
+	if worktreePath == "" {
+		return fmt.Errorf("merge source unavailable: missing worktree path and run ID")
+	}
+
+	mergeSource, err := resolveMergeSource(worktreePath, timeout)
+	if err != nil {
+		return err
+	}
+
+	return performMerge(repoRoot, runID, mergeSource, timeout)
+}
+
+// waitForCleanRepo polls the repo until it has no uncommitted changes, retrying up to 5 times.
+func waitForCleanRepo(repoRoot string, timeout time.Duration, verbosef func(string, ...interface{})) error {
 	var dirtyErr error
 	for attempt := 0; attempt < 5; attempt++ {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -202,44 +235,54 @@ func MergeWorktree(repoRoot, worktreePath, runID string, timeout time.Duration, 
 		cancel()
 
 		if dirtyErr == nil {
-			break
-		}
-		if attempt < 4 && verbosef != nil {
-			verbosef("Repo dirty (another merge in progress?), retrying in 2s (%d/5)\n", attempt+1)
+			return nil
 		}
 		if attempt < 4 {
+			if verbosef != nil {
+				verbosef("Repo dirty (another merge in progress?), retrying in 2s (%d/5)\n", attempt+1)
+			}
 			time.Sleep(2 * time.Second)
 		}
 	}
-	if dirtyErr != nil {
-		return fmt.Errorf("original repo has uncommitted changes after 5 retries: commit or stash before merge")
-	}
+	return fmt.Errorf("original repo has uncommitted changes after 5 retries: commit or stash before merge")
+}
 
-	if strings.TrimSpace(worktreePath) == "" {
-		if strings.TrimSpace(runID) == "" {
-			return fmt.Errorf("merge source unavailable: missing worktree path and run ID")
-		}
-		worktreePath = filepath.Join(filepath.Dir(repoRoot), filepath.Base(repoRoot)+"-rpi-"+runID)
+// resolveWorktreePath returns the worktree path, inferring from runID if needed. Returns empty string if neither is available.
+func resolveWorktreePath(worktreePath, repoRoot, runID string) string {
+	if strings.TrimSpace(worktreePath) != "" {
+		return worktreePath
 	}
+	if strings.TrimSpace(runID) == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(repoRoot), filepath.Base(repoRoot)+"-rpi-"+runID)
+}
 
+// resolveMergeSource resolves the HEAD commit of the worktree.
+func resolveMergeSource(worktreePath string, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	revCmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
 	revCmd.Dir = worktreePath
 	revOut, revErr := revCmd.CombinedOutput()
 	cancel()
 	if revErr != nil {
-		return fmt.Errorf("resolve worktree merge source: %w (output: %s)", revErr, strings.TrimSpace(string(revOut)))
+		return "", fmt.Errorf("resolve worktree merge source: %w (output: %s)", revErr, strings.TrimSpace(string(revOut)))
 	}
 	mergeSource := strings.TrimSpace(string(revOut))
 	if mergeSource == "" {
-		return fmt.Errorf("worktree merge source commit is empty")
+		return "", fmt.Errorf("worktree merge source commit is empty")
 	}
+	return mergeSource, nil
+}
+
+// performMerge executes the git merge and handles conflict reporting.
+func performMerge(repoRoot, runID, mergeSource string, timeout time.Duration) error {
 	shortMergeSource := mergeSource
 	if len(shortMergeSource) > 12 {
 		shortMergeSource = shortMergeSource[:12]
 	}
 
-	ctx, cancel = context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	mergeMsg := "Merge ao rpi worktree (detached checkout)"
@@ -249,23 +292,28 @@ func MergeWorktree(repoRoot, worktreePath, runID string, timeout time.Duration, 
 	mergeCmd := exec.CommandContext(ctx, "git", "merge", "--no-ff", "-m", mergeMsg, mergeSource)
 	mergeCmd.Dir = repoRoot
 	if err := mergeCmd.Run(); err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("git merge timed out after %s", timeout)
-		}
-		conflictCmd := exec.Command("git", "diff", "--name-only", "--diff-filter=U")
-		conflictCmd.Dir = repoRoot
-		conflictOut, _ := conflictCmd.Output()
-		abortCmd := exec.Command("git", "merge", "--abort")
-		abortCmd.Dir = repoRoot
-		_ = abortCmd.Run() //nolint:errcheck
-		files := strings.TrimSpace(string(conflictOut))
-		if files != "" {
-			return fmt.Errorf("merge conflict in %s.\nConflicting files:\n%s\nResolve manually: cd %s && git merge %s",
-				shortMergeSource, files, repoRoot, mergeSource)
-		}
-		return fmt.Errorf("git merge failed: %w", err)
+		return handleMergeFailure(repoRoot, mergeSource, shortMergeSource, ctx, err, timeout)
 	}
 	return nil
+}
+
+// handleMergeFailure processes a git merge failure: reports conflicts and aborts the merge.
+func handleMergeFailure(repoRoot, mergeSource, shortMergeSource string, ctx context.Context, mergeErr error, timeout time.Duration) error {
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("git merge timed out after %s", timeout)
+	}
+	conflictCmd := exec.Command("git", "diff", "--name-only", "--diff-filter=U")
+	conflictCmd.Dir = repoRoot
+	conflictOut, _ := conflictCmd.Output()
+	abortCmd := exec.Command("git", "merge", "--abort")
+	abortCmd.Dir = repoRoot
+	_ = abortCmd.Run() //nolint:errcheck
+	files := strings.TrimSpace(string(conflictOut))
+	if files != "" {
+		return fmt.Errorf("merge conflict in %s.\nConflicting files:\n%s\nResolve manually: cd %s && git merge %s",
+			shortMergeSource, files, repoRoot, mergeSource)
+	}
+	return fmt.Errorf("git merge failed: %w", mergeErr)
 }
 
 func rpiRunIDFromWorktree(repoRoot, worktreePath string) string {
