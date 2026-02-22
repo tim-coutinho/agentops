@@ -974,3 +974,77 @@ func TestParser_NilMessage(t *testing.T) {
 		t.Errorf("Content = %q, want empty", result.Messages[0].Content)
 	}
 }
+
+func TestExtractBest_HigherScoreLaterInSlice(t *testing.T) {
+	// Use a custom extractor with two patterns that have very different MinScores.
+	// The first pattern (low score) will match, and the second (high score) will match.
+	// We run ExtractBest many times; if it ever enters the r.Score > best.Score branch,
+	// coverage is achieved. With two items in random map order, one iteration will hit it.
+	e := &Extractor{
+		Patterns: []ExtractionPattern{
+			{
+				Type:     types.KnowledgeTypeReference,
+				Keywords: []string{"see also"},
+				MinScore: 0.1, // Very low score (0.1 + 0.1 = 0.2)
+			},
+			{
+				Type:     types.KnowledgeTypeSolution,
+				Keywords: []string{"fixed by"},
+				MinScore: 0.9, // Very high score (0.9 + 0.1 = 1.0)
+			},
+		},
+	}
+
+	msg := createTestMessage("see also the docs. fixed by restarting.")
+
+	// Run many times to exercise both map iteration orders
+	sawHighScore := false
+	for i := 0; i < 100; i++ {
+		best := e.ExtractBest(msg)
+		if best == nil {
+			t.Fatal("Expected a result, got nil")
+		}
+		if best.Type == types.KnowledgeTypeSolution {
+			sawHighScore = true
+		}
+	}
+	if !sawHighScore {
+		t.Error("ExtractBest never returned the higher-scored Solution result")
+	}
+}
+
+func TestParse_ScannerError(t *testing.T) {
+	// Feed a line longer than the 1MB buffer to trigger scanner error
+	hugeLine := strings.Repeat("x", 2*1024*1024) // 2MB line
+	p := NewParser()
+	result, err := p.Parse(strings.NewReader(hugeLine))
+	if err == nil {
+		t.Fatal("expected scanner error for line exceeding buffer")
+	}
+	if !strings.Contains(err.Error(), "scanner error") {
+		t.Errorf("expected 'scanner error', got: %v", err)
+	}
+	// Result should still be returned (partial)
+	if result == nil {
+		t.Error("expected non-nil result even on scanner error")
+	}
+}
+
+func TestParseChannel_ScannerError(t *testing.T) {
+	// Feed a line longer than the 1MB buffer to trigger scanner error in ParseChannel
+	hugeLine := strings.Repeat("x", 2*1024*1024) // 2MB line
+	p := NewParser()
+	msgCh, errCh := p.ParseChannel(strings.NewReader(hugeLine))
+
+	// Drain messages
+	for range msgCh {
+	}
+
+	err := <-errCh
+	if err == nil {
+		t.Fatal("expected scanner error for line exceeding buffer")
+	}
+	if !strings.Contains(err.Error(), "scanner error") {
+		t.Errorf("expected 'scanner error', got: %v", err)
+	}
+}
