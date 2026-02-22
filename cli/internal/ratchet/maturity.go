@@ -399,7 +399,13 @@ func classifyLearningFile(file string, dist *MaturityDistribution) {
 		maturity = string(types.MaturityProvisional)
 	}
 
-	switch types.Maturity(maturity) {
+	incrementMaturity(dist, types.Maturity(maturity))
+	dist.Total++
+}
+
+// incrementMaturity increments the appropriate maturity counter in the distribution.
+func incrementMaturity(dist *MaturityDistribution, m types.Maturity) {
+	switch m {
 	case types.MaturityProvisional:
 		dist.Provisional++
 	case types.MaturityCandidate:
@@ -411,5 +417,4 @@ func classifyLearningFile(file string, dist *MaturityDistribution) {
 	default:
 		dist.Unknown++
 	}
-	dist.Total++
 }

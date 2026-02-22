@@ -65,23 +65,33 @@ func MeasureOne(goal Goal, timeout time.Duration) Measurement {
 
 // Measure runs all goals and returns a Snapshot. Meta-goals run first, then all others.
 func Measure(gf *GoalFile, timeout time.Duration) *Snapshot {
-	var measurements []Measurement
+	measurements := runGoals(gf.Goals, timeout)
+	return &Snapshot{
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		GitSHA:    gitSHA(),
+		Goals:     measurements,
+		Summary:   computeSummary(measurements),
+	}
+}
 
-	// Run meta-goals first.
-	for _, g := range gf.Goals {
+// runGoals executes meta-goals first, then non-meta goals.
+func runGoals(goals []Goal, timeout time.Duration) []Measurement {
+	var measurements []Measurement
+	for _, g := range goals {
 		if g.Type == GoalTypeMeta {
 			measurements = append(measurements, MeasureOne(g, timeout))
 		}
 	}
-
-	// Run non-meta goals.
-	for _, g := range gf.Goals {
+	for _, g := range goals {
 		if g.Type != GoalTypeMeta {
 			measurements = append(measurements, MeasureOne(g, timeout))
 		}
 	}
+	return measurements
+}
 
-	// Compute summary.
+// computeSummary aggregates pass/fail/skip counts and weighted score.
+func computeSummary(measurements []Measurement) SnapshotSummary {
 	var summary SnapshotSummary
 	summary.Total = len(measurements)
 	var weightedPass, weightedTotal int
@@ -96,22 +106,12 @@ func Measure(gf *GoalFile, timeout time.Duration) *Snapshot {
 			weightedTotal += m.Weight
 		case "skip":
 			summary.Skipped++
-			// Skipped goals excluded from weighted score.
 		}
 	}
-
 	if weightedTotal > 0 {
 		summary.Score = float64(weightedPass) / float64(weightedTotal) * 100
 	}
-
-	sha := gitSHA()
-
-	return &Snapshot{
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		GitSHA:    sha,
-		Goals:     measurements,
-		Summary:   summary,
-	}
+	return summary
 }
 
 // gitSHA returns the short git SHA of HEAD, or "" on error.

@@ -104,39 +104,44 @@ func (g *Graph) Trace(artifactPath string) (*TraceResult, error) {
 		Sources:  make([]string, 0),
 	}
 
-	// Normalize path for matching
 	absPath, err := filepath.Abs(artifactPath)
 	if err != nil {
 		absPath = artifactPath
 	}
 
-	// Find records matching this artifact
-	for _, record := range g.Records {
-		recordAbs, _ := filepath.Abs(record.ArtifactPath)
-		if recordAbs == absPath || record.ArtifactPath == artifactPath {
-			result.Chain = append(result.Chain, record)
-
-			// Track sources
-			if record.SourceType == "transcript" {
-				result.Sources = append(result.Sources, record.SourcePath)
-			}
-		}
-	}
-
+	g.matchByAbsPath(absPath, artifactPath, result)
 	if len(result.Chain) == 0 {
-		// Try matching by filename only
-		baseName := filepath.Base(artifactPath)
-		for _, record := range g.Records {
-			if filepath.Base(record.ArtifactPath) == baseName {
-				result.Chain = append(result.Chain, record)
-				if record.SourceType == "transcript" {
-					result.Sources = append(result.Sources, record.SourcePath)
-				}
-			}
-		}
+		g.matchByBasename(filepath.Base(artifactPath), result)
 	}
 
 	return result, nil
+}
+
+// matchByAbsPath finds records matching the full or absolute artifact path.
+func (g *Graph) matchByAbsPath(absPath, artifactPath string, result *TraceResult) {
+	for _, record := range g.Records {
+		recordAbs, _ := filepath.Abs(record.ArtifactPath)
+		if recordAbs == absPath || record.ArtifactPath == artifactPath {
+			appendTraceRecord(result, record)
+		}
+	}
+}
+
+// matchByBasename finds records matching only the filename component.
+func (g *Graph) matchByBasename(baseName string, result *TraceResult) {
+	for _, record := range g.Records {
+		if filepath.Base(record.ArtifactPath) == baseName {
+			appendTraceRecord(result, record)
+		}
+	}
+}
+
+// appendTraceRecord adds a record to the trace result and tracks transcript sources.
+func appendTraceRecord(result *TraceResult, record Record) {
+	result.Chain = append(result.Chain, record)
+	if record.SourceType == "transcript" {
+		result.Sources = append(result.Sources, record.SourcePath)
+	}
 }
 
 // FindBySession finds all provenance records for a session ID.

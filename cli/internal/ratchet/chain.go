@@ -82,6 +82,19 @@ func loadJSONLChain(path string) (chain *Chain, err error) {
 	}
 
 	scanner := bufio.NewScanner(f)
+	if err := parseChainLines(scanner, chain); err != nil {
+		return nil, err
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read chain: %w", err)
+	}
+
+	return chain, nil
+}
+
+// parseChainLines reads all JSONL lines: first line is metadata, subsequent lines are entries.
+func parseChainLines(scanner *bufio.Scanner, chain *Chain) error {
 	lineNum := 0
 	for scanner.Scan() {
 		lineNum++
@@ -90,28 +103,21 @@ func loadJSONLChain(path string) (chain *Chain, err error) {
 			continue
 		}
 
-		// First line is chain metadata
 		if lineNum == 1 {
 			if err := json.Unmarshal(line, chain); err != nil {
-				return nil, fmt.Errorf("parse chain metadata: %w", err)
+				return fmt.Errorf("parse chain metadata: %w", err)
 			}
-			chain.Entries = []ChainEntry{} // Clear entries, they follow
+			chain.Entries = []ChainEntry{}
 			continue
 		}
 
-		// Subsequent lines are entries
 		var entry ChainEntry
 		if err := json.Unmarshal(line, &entry); err != nil {
 			continue // Skip malformed lines
 		}
 		chain.Entries = append(chain.Entries, entry)
 	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read chain: %w", err)
-	}
-
-	return chain, nil
+	return nil
 }
 
 // legacyChain is the old YAML format structure.
