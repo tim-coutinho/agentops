@@ -2651,3 +2651,94 @@ func TestAtomicMove_RenameError(t *testing.T) {
 		t.Errorf("expected 'rename to destination' error, got: %v", err)
 	}
 }
+
+// --- Benchmarks ---
+
+func benchCandidate(id string) (types.Candidate, types.Scoring) {
+	return types.Candidate{
+			ID:         id,
+			Type:       types.KnowledgeTypeLearning,
+			Tier:       types.TierSilver,
+			Content:    "Benchmark learning content for performance testing",
+			Utility:    0.75,
+			Confidence: 0.8,
+			Maturity:   types.MaturityCandidate,
+			Source: types.Source{
+				SessionID:      "bench-session",
+				TranscriptPath: "/path/to/transcript.jsonl",
+			},
+		}, types.Scoring{
+			RawScore: 0.72,
+			Rubric: types.RubricScores{
+				Specificity:   0.8,
+				Actionability: 0.7,
+				Novelty:       0.6,
+				Context:       0.75,
+				Confidence:    0.8,
+			},
+		}
+}
+
+func BenchmarkPoolAdd(b *testing.B) {
+	tmpDir := b.TempDir()
+	p := NewPool(tmpDir)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		id := fmt.Sprintf("bench-%d", i)
+		c, s := benchCandidate(id)
+		_ = p.Add(c, s)
+	}
+}
+
+func BenchmarkPoolGet(b *testing.B) {
+	tmpDir := b.TempDir()
+	p := NewPool(tmpDir)
+
+	c, s := benchCandidate("bench-get")
+	if err := p.Add(c, s); err != nil {
+		b.Fatalf("setup Add: %v", err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = p.Get("bench-get")
+	}
+}
+
+func BenchmarkPoolList(b *testing.B) {
+	tmpDir := b.TempDir()
+	p := NewPool(tmpDir)
+
+	// Seed pool with entries
+	for i := 0; i < 50; i++ {
+		c, s := benchCandidate(fmt.Sprintf("bench-list-%d", i))
+		if err := p.Add(c, s); err != nil {
+			b.Fatalf("setup Add: %v", err)
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = p.List(ListOptions{})
+	}
+}
+
+func BenchmarkPoolListPaginated(b *testing.B) {
+	tmpDir := b.TempDir()
+	p := NewPool(tmpDir)
+
+	// Seed pool with entries
+	for i := 0; i < 50; i++ {
+		c, s := benchCandidate(fmt.Sprintf("bench-page-%d", i))
+		if err := p.Add(c, s); err != nil {
+			b.Fatalf("setup Add: %v", err)
+		}
+	}
+
+	opts := ListOptions{Limit: 10, Offset: 5}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = p.ListPaginated(opts)
+	}
+}
