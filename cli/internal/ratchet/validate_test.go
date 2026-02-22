@@ -2003,6 +2003,104 @@ func TestCountCitationsForArtifact_PermissionError(t *testing.T) {
 	}
 }
 
+func TestRecordCitation_ReadOnlyBaseDir(t *testing.T) {
+	tmp := t.TempDir()
+	readOnly := filepath.Join(tmp, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	event := types.CitationEvent{
+		ArtifactPath: "/some/artifact.md",
+		SessionID:    "test-session",
+		CitationType: "reference",
+	}
+
+	err := RecordCitation(readOnly, event)
+	if err == nil {
+		t.Error("expected error when recording citation to read-only directory")
+	}
+}
+
+func TestRecordCitation_BlockedCitationsFile(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Create the citations file path as a directory to block file creation
+	citationsPath := filepath.Join(tmp, CitationsFilePath)
+	if err := os.MkdirAll(citationsPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	event := types.CitationEvent{
+		ArtifactPath: "/some/artifact.md",
+		SessionID:    "test-session",
+		CitationType: "reference",
+	}
+
+	err := RecordCitation(tmp, event)
+	if err == nil {
+		t.Error("expected error when citations file path is a directory")
+	}
+	if !strings.Contains(err.Error(), "open citations file") {
+		t.Errorf("expected 'open citations file' error, got: %v", err)
+	}
+}
+
+func TestValidateCloseReason_WithSeeRelativePath(t *testing.T) {
+	// Exercise the "See /path" pattern extraction with a relative path
+	// that triggers ValidateArtifactPath error and issues append
+	issues := ValidateCloseReason("See ./local/file.md and also Artifact: relative/path.md")
+	if len(issues) == 0 {
+		t.Error("expected issues for close_reason with relative paths")
+	}
+}
+
+func TestGetCitationsForSession_ReadOnlyFile(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Record a citation first
+	event := types.CitationEvent{
+		ArtifactPath: "/test/artifact.md",
+		SessionID:    "target-session",
+		CitationType: "reference",
+		CitedAt:      time.Now(),
+	}
+	if err := RecordCitation(tmp, event); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now query for citations matching that session
+	citations, err := GetCitationsForSession(tmp, "target-session")
+	if err != nil {
+		t.Fatalf("GetCitationsForSession: %v", err)
+	}
+	if len(citations) != 1 {
+		t.Errorf("expected 1 citation, got %d", len(citations))
+	}
+}
+
+func TestGetCitationsSince_EmptyFile(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Create an empty citations file
+	citationsPath := filepath.Join(tmp, CitationsFilePath)
+	if err := os.MkdirAll(filepath.Dir(citationsPath), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(citationsPath, []byte(""), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	citations, err := GetCitationsSince(tmp, time.Now().Add(-1*time.Hour))
+	if err != nil {
+		t.Fatalf("GetCitationsSince: %v", err)
+	}
+	if len(citations) != 0 {
+		t.Errorf("expected 0 citations from empty file, got %d", len(citations))
+	}
+}
+
 // longText generates filler text with the given number of words.
 func longText(wordCount int) string {
 	words := make([]string, wordCount)

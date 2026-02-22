@@ -872,3 +872,75 @@ func TestMigrateChainBadLegacyYAML(t *testing.T) {
 		t.Errorf("expected 'load legacy chain' error, got: %v", err)
 	}
 }
+
+func TestChain_Save_ReadOnlyDir(t *testing.T) {
+	// Exercise the open file error path in Save.
+	tmp := t.TempDir()
+	readOnlyDir := filepath.Join(tmp, "readonly")
+	if err := os.MkdirAll(readOnlyDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnlyDir, 0700) })
+
+	chain := &Chain{
+		ID:      "test-chain",
+		path:    filepath.Join(readOnlyDir, "chain.jsonl"),
+		Started: time.Now(),
+	}
+
+	err := chain.Save()
+	if err == nil {
+		t.Fatal("expected error when saving to read-only directory")
+	}
+	if !strings.Contains(err.Error(), "open chain file") {
+		t.Errorf("expected 'open chain file' error, got: %v", err)
+	}
+}
+
+func TestChain_Append_ReadOnlyDir(t *testing.T) {
+	// Exercise the open file error path in Append.
+	tmp := t.TempDir()
+	readOnlyDir := filepath.Join(tmp, "readonly")
+	if err := os.MkdirAll(readOnlyDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnlyDir, 0700) })
+
+	chain := &Chain{
+		ID:      "test-chain",
+		path:    filepath.Join(readOnlyDir, "chain.jsonl"),
+		Started: time.Now(),
+	}
+
+	err := chain.Append(ChainEntry{
+		Step: StepResearch,
+	})
+	if err == nil {
+		t.Fatal("expected error when appending to chain in read-only directory")
+	}
+	if !strings.Contains(err.Error(), "open chain file") {
+		t.Errorf("expected 'open chain file' error, got: %v", err)
+	}
+}
+
+func TestChain_Save_NoPath(t *testing.T) {
+	chain := &Chain{ID: "test-chain", Started: time.Now()}
+	err := chain.Save()
+	if err == nil {
+		t.Fatal("expected error when saving chain with no path")
+	}
+	if !strings.Contains(err.Error(), "no path set") {
+		t.Errorf("expected 'no path set' error, got: %v", err)
+	}
+}
+
+func TestChain_Append_NoPath(t *testing.T) {
+	chain := &Chain{ID: "test-chain", Started: time.Now()}
+	err := chain.Append(ChainEntry{Step: StepResearch})
+	if err == nil {
+		t.Fatal("expected error when appending to chain with no path")
+	}
+	if !strings.Contains(err.Error(), "no path set") {
+		t.Errorf("expected 'no path set' error, got: %v", err)
+	}
+}
