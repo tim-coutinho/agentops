@@ -385,6 +385,7 @@ Append to `.agents/evolve/cycle-history.jsonl` with mandatory fields: `cycle`, `
 **Compaction-proofing: commit after every cycle.** Uncommitted state does not survive context compaction.
 
 ```bash
+bash scripts/log-telemetry.sh evolve cycle-complete cycle=${CYCLE} goal=${selected.id} outcome=${outcome} 2>/dev/null || true
 git add .agents/evolve/cycle-history.jsonl .agents/evolve/fitness-*.json
 git commit -m "evolve: cycle ${CYCLE} — ${selected.id} ${outcome}" --allow-empty
 ```

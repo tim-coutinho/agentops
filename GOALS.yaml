@@ -7,7 +7,7 @@ pillars:
   - validated-acceleration
   - goal-driven-automation
   - zero-friction-workflow
-# Total: 26 goals
+# Total: 28 goals
 # Pruned 2026-02-21 per council consensus: feature saturation reached.
 # Removed 58 grep-for-string-in-file-we-control goals, file-exists checks,
 # keyword-in-README/SKILL.md goals, and duplicates (go-race-clean = go-cli-tests).
@@ -22,7 +22,7 @@ pillars:
 #   Knowledge Flywheel (σ×ρ > δ) → escape velocity → knowledge-compounding
 goals:
   # ============================================================================
-  # SELF-HEALING (3 goals, weight 7)
+  # SELF-HEALING (4 goals, weight 7)
   # Highest-weight goals. Prevent the failure modes that required manual pruning.
   # ============================================================================
 
@@ -43,6 +43,13 @@ goals:
     check: "bash scripts/check-product-freshness.sh"
     weight: 7
     added: "2026-02-19"
+
+  - id: pillar-coverage
+    description: "GOALS.yaml has goals for all 4 product pillars"
+    check: "bash scripts/check-pillar-coverage.sh"
+    weight: 7
+    type: meta
+    added: "2026-02-21"
 
   # ============================================================================
   # BUILD INTEGRITY (4 goals, weight 3-5)
@@ -103,7 +110,7 @@ goals:
     added: "2026-02-19"
 
   # ============================================================================
-  # QUALITY GATES (3 goals, weight 2-5)
+  # QUALITY GATES (4 goals, weight 2-5)
   # Complexity, coverage, and lint checks that catch regressions.
   # ============================================================================
 
@@ -125,6 +132,13 @@ goals:
     check: "./tests/smoke-test.sh"
     weight: 3
     added: "2026-02-19"
+
+  - id: opencode-live
+    description: "OpenCode Tier 1 headless tests pass (gracefully skips if opencode not installed)"
+    check: "bash scripts/check-opencode-live.sh"
+    weight: 2
+    pillar: validated-acceleration
+    added: "2026-02-21"
 
   # ============================================================================
   # SYSTEM HEALTH (4 goals, weight 3-6)

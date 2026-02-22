@@ -82,7 +82,6 @@ scripts/rpi/generate-context-shards.py \
 scripts/rpi/init-shard-progress.py \
   --manifest .agents/rpi/context-shards/latest.json \
   --progress .agents/rpi/context-shards/progress.json \
-  --check \
   --quiet
 
 scripts/rpi/run-shard.py \
