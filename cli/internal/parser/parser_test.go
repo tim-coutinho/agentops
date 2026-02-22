@@ -1048,3 +1048,57 @@ func TestParseChannel_ScannerError(t *testing.T) {
 		t.Errorf("expected 'scanner error', got: %v", err)
 	}
 }
+
+// --- Benchmarks ---
+
+func BenchmarkParse_100Lines(b *testing.B) {
+	var lines []string
+	for i := 0; i < 100; i++ {
+		lines = append(lines, fmt.Sprintf(
+			`{"type":"assistant","sessionId":"bench","timestamp":"2026-01-24T10:00:00.000Z","uuid":"%d","message":{"role":"assistant","content":"Response number %d with some content."}}`,
+			i, i))
+	}
+	input := strings.Join(lines, "\n") + "\n"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p := NewParser()
+		_, _ = p.Parse(strings.NewReader(input))
+	}
+}
+
+func BenchmarkParse_1000Lines(b *testing.B) {
+	var lines []string
+	for i := 0; i < 1000; i++ {
+		lines = append(lines, fmt.Sprintf(
+			`{"type":"user","sessionId":"bench","timestamp":"2026-01-24T10:00:00.000Z","uuid":"%d","message":{"role":"user","content":"Message %d"}}`,
+			i, i))
+	}
+	input := strings.Join(lines, "\n") + "\n"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p := NewParser()
+		_, _ = p.Parse(strings.NewReader(input))
+	}
+}
+
+func BenchmarkExtract(b *testing.B) {
+	e := NewExtractor()
+	msg := createTestMessage("**Decision:** We decided to use context.WithCancel for graceful shutdown because it works best.")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e.Extract(msg)
+	}
+}
+
+func BenchmarkExtractBest(b *testing.B) {
+	e := NewExtractor()
+	msg := createTestMessage("**Decision:** Use X. **Learning:** This teaches us Y. See https://example.com for details.")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e.ExtractBest(msg)
+	}
+}
