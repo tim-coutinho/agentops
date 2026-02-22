@@ -108,14 +108,7 @@ func runTaskSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	// Find transcript
-	transcriptPath := taskSyncTranscript
-	if transcriptPath == "" {
-		homeDir, _ := os.UserHomeDir()
-		transcriptsDir := filepath.Join(homeDir, ".claude", "projects")
-		transcriptPath = findMostRecentTranscript(transcriptsDir)
-	}
-
+	transcriptPath := resolveTranscriptPath(taskSyncTranscript)
 	if transcriptPath == "" {
 		return fmt.Errorf("no transcript found; use --transcript to specify")
 	}
@@ -125,7 +118,6 @@ func runTaskSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Extract task events from transcript
 	tasks, err := extractTaskEvents(transcriptPath, taskSyncSessionID)
 	if err != nil {
 		return fmt.Errorf("extract tasks: %w", err)
@@ -136,34 +128,60 @@ func runTaskSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Assign maturity based on status
+	assignMaturityAndUtility(tasks)
+
+	if err := writeTaskEvents(cwd, tasks); err != nil {
+		return fmt.Errorf("write tasks: %w", err)
+	}
+
+	promoted := promoteCompletedTasks(cwd, tasks, taskSyncPromote)
+
+	return printTaskSyncSummary(transcriptPath, tasks, promoted)
+}
+
+// resolveTranscriptPath returns the explicit path if provided, otherwise
+// discovers the most recent transcript under ~/.claude/projects.
+func resolveTranscriptPath(explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	homeDir, _ := os.UserHomeDir()
+	transcriptsDir := filepath.Join(homeDir, ".claude", "projects")
+	return findMostRecentTranscript(transcriptsDir)
+}
+
+// assignMaturityAndUtility populates Maturity and default Utility on each task.
+func assignMaturityAndUtility(tasks []TaskEvent) {
 	for i := range tasks {
 		tasks[i].Maturity = statusToMaturity(tasks[i].Status)
 		if tasks[i].Utility == 0 {
 			tasks[i].Utility = types.InitialUtility
 		}
 	}
+}
 
-	// Write task events
-	if err := writeTaskEvents(cwd, tasks); err != nil {
-		return fmt.Errorf("write tasks: %w", err)
+// promoteCompletedTasks promotes completed tasks without learnings and returns
+// the number of successful promotions. When promote is false it is a no-op.
+func promoteCompletedTasks(cwd string, tasks []TaskEvent, promote bool) int {
+	if !promote {
+		return 0
 	}
-
-	// Optionally promote completed tasks to learnings
 	promoted := 0
-	if taskSyncPromote {
-		for _, t := range tasks {
-			if t.Status == "completed" && t.LearningID == "" {
-				if err := promoteTaskToLearning(cwd, &t); err != nil {
-					VerbosePrintf("Warning: failed to promote task %s: %v\n", t.TaskID, err)
-					continue
-				}
-				promoted++
-			}
+	for _, t := range tasks {
+		if t.Status != "completed" || t.LearningID != "" {
+			continue
 		}
+		if err := promoteTaskToLearning(cwd, &t); err != nil {
+			VerbosePrintf("Warning: failed to promote task %s: %v\n", t.TaskID, err)
+			continue
+		}
+		promoted++
 	}
+	return promoted
+}
 
-	// Output summary
+// printTaskSyncSummary renders the sync result as JSON or human-readable text.
+func printTaskSyncSummary(transcriptPath string, tasks []TaskEvent, promoted int) error {
 	if GetOutput() == "json" {
 		result := map[string]any{
 			"transcript": transcriptPath,
@@ -180,7 +198,6 @@ func runTaskSync(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Transcript:  %s\n", transcriptPath)
 	fmt.Printf("Tasks found: %d\n", len(tasks))
 
-	// Show status breakdown
 	statusCounts := make(map[string]int)
 	for _, t := range tasks {
 		statusCounts[t.Status]++
@@ -208,84 +225,92 @@ func extractTaskEvents(transcriptPath, filterSession string) ([]TaskEvent, error
 		_ = f.Close() //nolint:errcheck // read-only transcript extraction, close error non-fatal
 	}()
 
-	var tasks []TaskEvent
 	taskMap := make(map[string]*TaskEvent) // Track by task ID for updates
 	var currentSessionID string
 
 	scanner := bufio.NewScanner(f)
-	// Use larger buffer for long lines
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
 
 	for scanner.Scan() {
-		line := scanner.Text()
-
-		var data map[string]any
-		if err := json.Unmarshal([]byte(line), &data); err != nil {
-			continue
-		}
-
-		// Extract session ID if present
-		if sid, ok := data["sessionId"].(string); ok && sid != "" {
-			currentSessionID = sid
-		}
-
-		// Filter by session if requested
-		if filterSession != "" && currentSessionID != filterSession {
-			continue
-		}
-
-		// Look for tool calls
-		message, ok := data["message"].(map[string]any)
-		if !ok {
-			continue
-		}
-
-		content, ok := message["content"].([]any)
-		if !ok {
-			continue
-		}
-
-		for _, item := range content {
-			block, ok := item.(map[string]any)
-			if !ok {
-				continue
-			}
-
-			blockType, _ := block["type"].(string)
-			if blockType != "tool_use" {
-				continue
-			}
-
-			toolName, _ := block["name"].(string)
-			input, _ := block["input"].(map[string]any)
-
-			switch toolName {
-			case "TaskCreate":
-				task := parseTaskCreate(input, currentSessionID)
-				if task != nil {
-					taskMap[task.TaskID] = task
-				}
-
-			case "TaskUpdate":
-				taskID, _ := input["taskId"].(string)
-				if existing, ok := taskMap[taskID]; ok {
-					updateTask(existing, input)
-				}
-
-			case "TaskList":
-				// TaskList returns current state; we could use this to validate
-				// but for now we rely on Create/Update events
-			}
-		}
+		currentSessionID = processTranscriptLine(scanner.Text(), filterSession, currentSessionID, taskMap)
 	}
 
 	// Convert map to slice
+	var tasks []TaskEvent
 	for _, t := range taskMap {
 		tasks = append(tasks, *t)
 	}
-
 	return tasks, nil
+}
+
+// processTranscriptLine parses one JSONL line from a transcript and applies
+// any task tool calls found in it to taskMap. It returns the (possibly updated)
+// session ID so the caller can thread it through successive lines.
+func processTranscriptLine(line, filterSession, currentSessionID string, taskMap map[string]*TaskEvent) string {
+	var data map[string]any
+	if err := json.Unmarshal([]byte(line), &data); err != nil {
+		return currentSessionID
+	}
+
+	if sid, ok := data["sessionId"].(string); ok && sid != "" {
+		currentSessionID = sid
+	}
+
+	if filterSession != "" && currentSessionID != filterSession {
+		return currentSessionID
+	}
+
+	blocks := extractContentBlocks(data)
+	for _, block := range blocks {
+		applyToolBlock(block, currentSessionID, taskMap)
+	}
+	return currentSessionID
+}
+
+// extractContentBlocks navigates data["message"]["content"] and returns only
+// tool_use blocks as typed maps.
+func extractContentBlocks(data map[string]any) []map[string]any {
+	message, ok := data["message"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	content, ok := message["content"].([]any)
+	if !ok {
+		return nil
+	}
+	var blocks []map[string]any
+	for _, item := range content {
+		block, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		blockType, _ := block["type"].(string)
+		if blockType == "tool_use" {
+			blocks = append(blocks, block)
+		}
+	}
+	return blocks
+}
+
+// applyToolBlock dispatches a single tool_use content block to the appropriate
+// task handler (TaskCreate or TaskUpdate).
+func applyToolBlock(block map[string]any, sessionID string, taskMap map[string]*TaskEvent) {
+	toolName, _ := block["name"].(string)
+	input, _ := block["input"].(map[string]any)
+
+	switch toolName {
+	case "TaskCreate":
+		task := parseTaskCreate(input, sessionID)
+		if task != nil {
+			taskMap[task.TaskID] = task
+		}
+	case "TaskUpdate":
+		taskID, _ := input["taskId"].(string)
+		if existing, ok := taskMap[taskID]; ok {
+			updateTask(existing, input)
+		}
+	}
 }
 
 // parseTaskCreate extracts a TaskEvent from TaskCreate input.
@@ -513,7 +538,6 @@ func runTaskFeedback(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	// Load tasks
 	tasks, err := loadTaskEvents(cwd)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -523,17 +547,7 @@ func runTaskFeedback(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load tasks: %w", err)
 	}
 
-	// Filter tasks
-	var processable []TaskEvent
-	for _, t := range tasks {
-		if taskFeedbackSessionID != "" && t.SessionID != taskFeedbackSessionID {
-			continue
-		}
-		if t.Status == "completed" && t.LearningID != "" {
-			processable = append(processable, t)
-		}
-	}
-
+	processable := filterProcessableTasks(tasks, taskFeedbackSessionID)
 	if len(processable) == 0 {
 		fmt.Println("No completed tasks with learnings found.")
 		return nil
@@ -544,39 +558,59 @@ func runTaskFeedback(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Process feedback for each task
 	processed := 0
 	for _, task := range processable {
-		// Compute reward: completed tasks get positive reward
-		reward := 0.8 // Completed task = positive signal
-
-		// Find and update the learning
-		learningPath, err := findLearningFile(cwd, task.LearningID)
-		if err != nil {
-			VerbosePrintf("Warning: learning not found for task %s: %v\n", task.TaskID, err)
-			continue
+		if processSingleTaskFeedback(cwd, task) {
+			processed++
 		}
-
-		oldUtility, newUtility, err := updateLearningUtility(learningPath, reward, types.DefaultAlpha)
-		if err != nil {
-			VerbosePrintf("Warning: failed to update %s: %v\n", learningPath, err)
-			continue
-		}
-
-		// Check for maturity transition
-		result, err := ratchet.CheckMaturityTransition(learningPath)
-		if err == nil && result.Transitioned {
-			_, _ = ratchet.ApplyMaturityTransition(learningPath)
-			VerbosePrintf("Maturity transition: %s → %s\n", result.OldMaturity, result.NewMaturity)
-		}
-
-		fmt.Printf("  ✓ %s: %.3f → %.3f (task: %s)\n",
-			task.LearningID, oldUtility, newUtility, task.Subject)
-		processed++
 	}
 
 	fmt.Printf("\nProcessed feedback for %d tasks\n", processed)
 	return nil
+}
+
+// filterProcessableTasks returns completed tasks with learnings, optionally
+// narrowed to a single session.
+func filterProcessableTasks(tasks []TaskEvent, sessionFilter string) []TaskEvent {
+	var out []TaskEvent
+	for _, t := range tasks {
+		if sessionFilter != "" && t.SessionID != sessionFilter {
+			continue
+		}
+		if t.Status == "completed" && t.LearningID != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// processSingleTaskFeedback applies the feedback reward for one completed task,
+// updating its learning utility and checking for maturity transition.
+// Returns true when feedback was successfully applied.
+func processSingleTaskFeedback(cwd string, task TaskEvent) bool {
+	const completionReward = 0.8
+
+	learningPath, err := findLearningFile(cwd, task.LearningID)
+	if err != nil {
+		VerbosePrintf("Warning: learning not found for task %s: %v\n", task.TaskID, err)
+		return false
+	}
+
+	oldUtility, newUtility, err := updateLearningUtility(learningPath, completionReward, types.DefaultAlpha)
+	if err != nil {
+		VerbosePrintf("Warning: failed to update %s: %v\n", learningPath, err)
+		return false
+	}
+
+	result, err := ratchet.CheckMaturityTransition(learningPath)
+	if err == nil && result.Transitioned {
+		_, _ = ratchet.ApplyMaturityTransition(learningPath)
+		VerbosePrintf("Maturity transition: %s → %s\n", result.OldMaturity, result.NewMaturity)
+	}
+
+	fmt.Printf("  ✓ %s: %.3f → %.3f (task: %s)\n",
+		task.LearningID, oldUtility, newUtility, task.Subject)
+	return true
 }
 
 // taskStatusCmd shows the status of tasks and their CASS maturity.

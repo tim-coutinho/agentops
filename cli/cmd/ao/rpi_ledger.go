@@ -92,14 +92,8 @@ func RPILedgerPath(rootDir string) string {
 
 // AppendRPILedgerRecord appends one event with lock + fsync durability.
 func AppendRPILedgerRecord(rootDir string, input RPILedgerAppendInput) (RPILedgerRecord, error) {
-	if strings.TrimSpace(input.RunID) == "" {
-		return RPILedgerRecord{}, fmt.Errorf("run_id is required")
-	}
-	if strings.TrimSpace(input.Phase) == "" {
-		return RPILedgerRecord{}, fmt.Errorf("phase is required")
-	}
-	if strings.TrimSpace(input.Action) == "" {
-		return RPILedgerRecord{}, fmt.Errorf("action is required")
+	if err := validateAppendInput(input); err != nil {
+		return RPILedgerRecord{}, err
 	}
 
 	ledgerPath := RPILedgerPath(rootDir)
@@ -108,18 +102,11 @@ func AppendRPILedgerRecord(rootDir string, input RPILedgerAppendInput) (RPILedge
 		return RPILedgerRecord{}, fmt.Errorf("create ledger dir: %w", err)
 	}
 
-	lockFile, err := os.OpenFile(ledgerPath+".lock", os.O_CREATE|os.O_RDWR, 0644)
+	lockFile, err := acquireLedgerLock(ledgerPath)
 	if err != nil {
-		return RPILedgerRecord{}, fmt.Errorf("open ledger lock: %w", err)
+		return RPILedgerRecord{}, err
 	}
-	defer lockFile.Close()
-
-	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
-		return RPILedgerRecord{}, fmt.Errorf("lock ledger: %w", err)
-	}
-	defer func() {
-		_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
-	}()
+	defer releaseLedgerLock(lockFile)
 
 	ledgerFile, err := os.OpenFile(ledgerPath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
@@ -127,6 +114,57 @@ func AppendRPILedgerRecord(rootDir string, input RPILedgerAppendInput) (RPILedge
 	}
 	defer ledgerFile.Close()
 
+	record, err := buildLedgerRecord(ledgerFile, input)
+	if err != nil {
+		return RPILedgerRecord{}, err
+	}
+
+	if err := writeLedgerRecord(ledgerFile, record, ledgerDir); err != nil {
+		return RPILedgerRecord{}, err
+	}
+
+	return record, nil
+}
+
+// validateAppendInput validates required fields on the append input.
+func validateAppendInput(input RPILedgerAppendInput) error {
+	requiredFields := []struct {
+		value string
+		name  string
+	}{
+		{input.RunID, "run_id"},
+		{input.Phase, "phase"},
+		{input.Action, "action"},
+	}
+	for _, f := range requiredFields {
+		if strings.TrimSpace(f.value) == "" {
+			return fmt.Errorf("%s is required", f.name)
+		}
+	}
+	return nil
+}
+
+// acquireLedgerLock opens and exclusively locks the ledger lock file.
+func acquireLedgerLock(ledgerPath string) (*os.File, error) {
+	lockFile, err := os.OpenFile(ledgerPath+".lock", os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("open ledger lock: %w", err)
+	}
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+		lockFile.Close()
+		return nil, fmt.Errorf("lock ledger: %w", err)
+	}
+	return lockFile, nil
+}
+
+// releaseLedgerLock releases and closes the ledger lock file.
+func releaseLedgerLock(lockFile *os.File) {
+	_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+	lockFile.Close()
+}
+
+// buildLedgerRecord reads the previous hash, normalizes details, and constructs a complete record.
+func buildLedgerRecord(ledgerFile *os.File, input RPILedgerAppendInput) (RPILedgerRecord, error) {
 	prevHash, err := readLastLedgerHash(ledgerFile)
 	if err != nil {
 		return RPILedgerRecord{}, err
@@ -155,25 +193,26 @@ func AppendRPILedgerRecord(rootDir string, input RPILedgerAppendInput) (RPILedge
 	record.PayloadHash = payloadHash
 	record.Hash = hashValue
 
+	return record, nil
+}
+
+// writeLedgerRecord marshals and appends the record to the ledger file with fsync durability.
+func writeLedgerRecord(ledgerFile *os.File, record RPILedgerRecord, ledgerDir string) error {
 	line, err := json.Marshal(record)
 	if err != nil {
-		return RPILedgerRecord{}, fmt.Errorf("marshal ledger record: %w", err)
+		return fmt.Errorf("marshal ledger record: %w", err)
 	}
 
 	if _, err := ledgerFile.Seek(0, io.SeekEnd); err != nil {
-		return RPILedgerRecord{}, fmt.Errorf("seek ledger end: %w", err)
+		return fmt.Errorf("seek ledger end: %w", err)
 	}
 	if _, err := ledgerFile.Write(append(line, '\n')); err != nil {
-		return RPILedgerRecord{}, fmt.Errorf("append ledger record: %w", err)
+		return fmt.Errorf("append ledger record: %w", err)
 	}
 	if err := ledgerFile.Sync(); err != nil {
-		return RPILedgerRecord{}, fmt.Errorf("fsync ledger: %w", err)
+		return fmt.Errorf("fsync ledger: %w", err)
 	}
-	if err := syncDirectory(ledgerDir); err != nil {
-		return RPILedgerRecord{}, err
-	}
-
-	return record, nil
+	return syncDirectory(ledgerDir)
 }
 
 // LoadRPILedgerRecords loads all ledger events in append order.

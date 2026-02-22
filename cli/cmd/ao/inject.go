@@ -125,18 +125,10 @@ func init() {
 }
 
 func runInject(cmd *cobra.Command, args []string) error {
-	// Get context query
-	query := injectContext
-	if len(args) > 0 {
-		query = args[0]
-	}
+	query := resolveInjectQuery(args)
 
 	if GetDryRun() {
-		fmt.Printf("[dry-run] Would inject knowledge")
-		if query != "" {
-			fmt.Printf(" filtered by: %s", query)
-		}
-		fmt.Printf(" (max %d tokens)\n", injectMaxTokens)
+		printInjectDryRun(query)
 		return nil
 	}
 
@@ -145,24 +137,61 @@ func runInject(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	// Calculate character budget from tokens
-	charBudget := injectMaxTokens * InjectCharsPerToken
-
-	// Get or generate session ID for citation tracking
 	sessionID := canonicalSessionID(injectSessionID)
+	knowledge := gatherKnowledge(cwd, query, sessionID)
 
-	// Collect knowledge
+	output, err := renderKnowledge(knowledge, injectFormat)
+	if err != nil {
+		return err
+	}
+
+	charBudget := injectMaxTokens * InjectCharsPerToken
+	if len(output) > charBudget {
+		output = trimToCharBudget(output, charBudget)
+	}
+
+	fmt.Println(output)
+	return nil
+}
+
+// resolveInjectQuery returns the query from positional args or the --context flag.
+func resolveInjectQuery(args []string) string {
+	if len(args) > 0 {
+		return args[0]
+	}
+	return injectContext
+}
+
+// printInjectDryRun prints the dry-run message for inject.
+func printInjectDryRun(query string) {
+	fmt.Printf("[dry-run] Would inject knowledge")
+	if query != "" {
+		fmt.Printf(" filtered by: %s", query)
+	}
+	fmt.Printf(" (max %d tokens)\n", injectMaxTokens)
+}
+
+// gatherKnowledge collects all knowledge sources and records citations.
+func gatherKnowledge(cwd, query, sessionID string) *injectedKnowledge {
 	knowledge := &injectedKnowledge{
 		Timestamp: time.Now(),
 		Query:     query,
 	}
 
-	// Search learnings
+	knowledge.Learnings = gatherLearnings(cwd, query, sessionID)
+	knowledge.Patterns = gatherPatterns(cwd, query, sessionID)
+	knowledge.Sessions = gatherSessions(cwd, query)
+	knowledge.OLConstraints = gatherOLConstraints(cwd, query)
+
+	return knowledge
+}
+
+// gatherLearnings collects learnings and records their citations.
+func gatherLearnings(cwd, query, sessionID string) []learning {
 	learnings, err := collectLearnings(cwd, query, MaxLearningsToInject)
 	if err != nil {
 		VerbosePrintf("Warning: failed to collect learnings: %v\n", err)
 	}
-	knowledge.Learnings = learnings
 
 	// Record citations for retrieved learnings (Phase 0: Critical for MemRL feedback loop)
 	if !injectNoCite && len(learnings) > 0 {
@@ -173,12 +202,15 @@ func runInject(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Search patterns
+	return learnings
+}
+
+// gatherPatterns collects patterns and records their citations.
+func gatherPatterns(cwd, query, sessionID string) []pattern {
 	patterns, err := collectPatterns(cwd, query, MaxPatternsToInject)
 	if err != nil {
 		VerbosePrintf("Warning: failed to collect patterns: %v\n", err)
 	}
-	knowledge.Patterns = patterns
 
 	// Record citations for retrieved patterns (closes σ gap: patterns were retrieved but never cited)
 	if !injectNoCite && len(patterns) > 0 {
@@ -189,39 +221,37 @@ func runInject(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Search recent sessions
+	return patterns
+}
+
+// gatherSessions collects recent session summaries.
+func gatherSessions(cwd, query string) []session {
 	sessions, err := collectRecentSessions(cwd, query, MaxSessionsToInject)
 	if err != nil {
 		VerbosePrintf("Warning: failed to collect sessions: %v\n", err)
 	}
-	knowledge.Sessions = sessions
+	return sessions
+}
 
-	// Discover OL constraints (no-op if .ol/ doesn't exist)
+// gatherOLConstraints collects Olympus constraints (no-op if .ol/ doesn't exist).
+func gatherOLConstraints(cwd, query string) []olConstraint {
 	olConstraints, err := collectOLConstraints(cwd, query)
 	if err != nil {
 		VerbosePrintf("Warning: failed to collect OL constraints: %v\n", err)
 	}
-	knowledge.OLConstraints = olConstraints
+	return olConstraints
+}
 
-	// Format output
-	var output string
-	if injectFormat == "json" {
+// renderKnowledge formats the knowledge struct into the requested output format.
+func renderKnowledge(knowledge *injectedKnowledge, format string) (string, error) {
+	if format == "json" {
 		data, err := json.MarshalIndent(knowledge, "", "  ")
 		if err != nil {
-			return fmt.Errorf("marshal json: %w", err)
+			return "", fmt.Errorf("marshal json: %w", err)
 		}
-		output = string(data)
-	} else {
-		output = formatKnowledgeMarkdown(knowledge)
+		return string(data), nil
 	}
-
-	// Trim to budget if needed
-	if len(output) > charBudget {
-		output = trimToCharBudget(output, charBudget)
-	}
-
-	fmt.Println(output)
-	return nil
+	return formatKnowledgeMarkdown(knowledge), nil
 }
 
 // findAgentsSubdir looks for .agents/{subdir}/ walking up to rig root

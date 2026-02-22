@@ -178,78 +178,155 @@ func appendManifestEntry(manifestPath string, entry types.PlanManifestEntry) err
 	return err
 }
 
-func runPlansRegister(cmd *cobra.Command, args []string) error {
-	absPath, err := filepath.Abs(args[0])
-	if err != nil {
-		return fmt.Errorf("resolve path: %w", err)
+// resolveProjectPath returns the explicit project path or detects it from the plan file.
+func resolveProjectPath(explicit, planPath string) string {
+	if explicit != "" {
+		return explicit
 	}
+	return detectProjectPath(planPath)
+}
 
-	info, err := os.Stat(absPath)
-	if err != nil {
-		return fmt.Errorf("plan not found: %w", err)
+// resolvePlanName returns the explicit name or derives one from the file path.
+func resolvePlanName(explicit, planPath string) string {
+	if explicit != "" {
+		return explicit
 	}
+	return strings.TrimSuffix(filepath.Base(planPath), filepath.Ext(planPath))
+}
 
-	if GetDryRun() {
-		fmt.Printf("[dry-run] Would register plan: %s\n", absPath)
-		return nil
-	}
-
-	checksum, err := computePlanChecksum(absPath)
-	if err != nil {
-		return fmt.Errorf("checksum: %w", err)
-	}
-
-	projectPath := planProjectPath
-	if projectPath == "" {
-		projectPath = detectProjectPath(absPath)
-	}
-
-	name := planName
-	if name == "" {
-		name = strings.TrimSuffix(filepath.Base(absPath), filepath.Ext(absPath))
-	}
-
-	entry := createPlanEntry(absPath, info.ModTime(), projectPath, name, planBeadsID, checksum)
-
-	manifestPath, err := getManifestPath()
-	if err != nil {
-		return fmt.Errorf("get manifest path: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(manifestPath), 0755); err != nil {
-		return fmt.Errorf("create manifest dir: %w", err)
-	}
-
-	existing, err := loadManifest(manifestPath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("load manifest: %w", err)
-	}
-
-	// Check for existing entry to update
+// upsertManifestEntry updates an existing entry or appends a new one.
+// Returns true if an existing entry was updated.
+func upsertManifestEntry(manifestPath string, existing []types.PlanManifestEntry, entry types.PlanManifestEntry) (bool, error) {
 	for i, e := range existing {
-		if e.Path == absPath {
+		if e.Path == entry.Path {
 			existing[i] = entry
-			if err := saveManifest(manifestPath, existing); err != nil {
-				return fmt.Errorf("save manifest: %w", err)
-			}
-			fmt.Printf("✓ Updated plan in manifest: %s\n", absPath)
-			return nil
+			return true, saveManifest(manifestPath, existing)
 		}
 	}
+	return false, appendManifestEntry(manifestPath, entry)
+}
 
-	if err := appendManifestEntry(manifestPath, entry); err != nil {
-		return fmt.Errorf("append entry: %w", err)
-	}
-
-	fmt.Printf("✓ Registered plan: %s\n", name)
+// printRegistrationSummary prints details after a new plan registration.
+func printRegistrationSummary(entry types.PlanManifestEntry) {
+	fmt.Printf("✓ Registered plan: %s\n", entry.PlanName)
 	if entry.BeadsID != "" {
 		fmt.Printf("  Beads ID: %s\n", entry.BeadsID)
 	}
 	if entry.ProjectPath != "" {
 		fmt.Printf("  Project: %s\n", entry.ProjectPath)
 	}
+}
 
+// loadOrCreateManifest returns the manifest path and its current entries,
+// creating the directory if needed.
+func loadOrCreateManifest() (string, []types.PlanManifestEntry, error) {
+	manifestPath, err := getManifestPath()
+	if err != nil {
+		return "", nil, fmt.Errorf("get manifest path: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0755); err != nil {
+		return "", nil, fmt.Errorf("create manifest dir: %w", err)
+	}
+	existing, err := loadManifest(manifestPath)
+	if err != nil && !os.IsNotExist(err) {
+		return "", nil, fmt.Errorf("load manifest: %w", err)
+	}
+	return manifestPath, existing, nil
+}
+
+// buildRegisterEntry validates the plan path, computes checksum, and builds the entry.
+func buildRegisterEntry(planPath, projectFlag, nameFlag, beadsID string) (types.PlanManifestEntry, error) {
+	info, err := os.Stat(planPath)
+	if err != nil {
+		return types.PlanManifestEntry{}, fmt.Errorf("plan not found: %w", err)
+	}
+	checksum, err := computePlanChecksum(planPath)
+	if err != nil {
+		return types.PlanManifestEntry{}, fmt.Errorf("checksum: %w", err)
+	}
+	return createPlanEntry(
+		planPath, info.ModTime(),
+		resolveProjectPath(projectFlag, planPath),
+		resolvePlanName(nameFlag, planPath),
+		beadsID, checksum,
+	), nil
+}
+
+func runPlansRegister(cmd *cobra.Command, args []string) error {
+	absPath, err := filepath.Abs(args[0])
+	if err != nil {
+		return fmt.Errorf("resolve path: %w", err)
+	}
+
+	if GetDryRun() {
+		if _, statErr := os.Stat(absPath); statErr != nil {
+			return fmt.Errorf("plan not found: %w", statErr)
+		}
+		fmt.Printf("[dry-run] Would register plan: %s\n", absPath)
+		return nil
+	}
+
+	entry, err := buildRegisterEntry(absPath, planProjectPath, planName, planBeadsID)
+	if err != nil {
+		return err
+	}
+
+	manifestPath, existing, err := loadOrCreateManifest()
+	if err != nil {
+		return err
+	}
+
+	updated, err := upsertManifestEntry(manifestPath, existing, entry)
+	if err != nil {
+		return fmt.Errorf("write manifest: %w", err)
+	}
+	if updated {
+		fmt.Printf("✓ Updated plan in manifest: %s\n", absPath)
+		return nil
+	}
+
+	printRegistrationSummary(entry)
 	return nil
+}
+
+// planStatusSymbols maps plan status to a display symbol; unknown statuses fall through to string form.
+var planStatusSymbols = map[types.PlanStatus]string{
+	types.PlanStatusActive:    "○",
+	types.PlanStatusCompleted: "✓",
+}
+
+// filterPlans returns entries matching the project and status filters.
+func filterPlans(entries []types.PlanManifestEntry, project, status string) []types.PlanManifestEntry {
+	var out []types.PlanManifestEntry
+	for _, e := range entries {
+		if project != "" && !strings.Contains(e.ProjectPath, project) {
+			continue
+		}
+		if status != "" && string(e.Status) != status {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// printPlanEntry prints a single plan entry with optional verbose detail.
+func printPlanEntry(e types.PlanManifestEntry, verbose bool) {
+	sym, ok := planStatusSymbols[e.Status]
+	if !ok {
+		sym = string(e.Status)
+	}
+	fmt.Printf("%s %s", sym, e.PlanName)
+	if e.BeadsID != "" {
+		fmt.Printf(" [%s]", e.BeadsID)
+	}
+	fmt.Println()
+
+	if verbose {
+		fmt.Printf("    Path: %s\n", e.Path)
+		fmt.Printf("    Project: %s\n", e.ProjectPath)
+		fmt.Printf("    Created: %s\n", e.CreatedAt.Format("2006-01-02"))
+	}
 }
 
 func runPlansList(cmd *cobra.Command, args []string) error {
@@ -267,43 +344,15 @@ func runPlansList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load manifest: %w", err)
 	}
 
-	// Filter entries
-	var filtered []types.PlanManifestEntry
-	for _, e := range entries {
-		if planProjectPath != "" && !strings.Contains(e.ProjectPath, planProjectPath) {
-			continue
-		}
-		if planStatus != "" && string(e.Status) != planStatus {
-			continue
-		}
-		filtered = append(filtered, e)
-	}
-
+	filtered := filterPlans(entries, planProjectPath, planStatus)
 	if len(filtered) == 0 {
 		fmt.Println("No plans match the filter criteria.")
 		return nil
 	}
 
-	// Output
+	verbose := GetVerbose()
 	for _, e := range filtered {
-		status := string(e.Status)
-		if e.Status == types.PlanStatusActive {
-			status = "○"
-		} else if e.Status == types.PlanStatusCompleted {
-			status = "✓"
-		}
-
-		fmt.Printf("%s %s", status, e.PlanName)
-		if e.BeadsID != "" {
-			fmt.Printf(" [%s]", e.BeadsID)
-		}
-		fmt.Println()
-
-		if GetVerbose() {
-			fmt.Printf("    Path: %s\n", e.Path)
-			fmt.Printf("    Project: %s\n", e.ProjectPath)
-			fmt.Printf("    Created: %s\n", e.CreatedAt.Format("2006-01-02"))
-		}
+		printPlanEntry(e, verbose)
 	}
 
 	return nil

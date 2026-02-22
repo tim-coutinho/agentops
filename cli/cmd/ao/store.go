@@ -271,53 +271,65 @@ func runStoreRebuild(cmd *cobra.Command, args []string) error {
 		VerbosePrintf("Warning: remove old index: %v\n", err)
 	}
 
-	// Scan all artifact directories
-	dirs := []string{
-		filepath.Join(cwd, ".agents", "learnings"),
-		filepath.Join(cwd, ".agents", "patterns"),
-		filepath.Join(cwd, ".agents", "research"),
-		filepath.Join(cwd, ".agents", "retros"),
-		filepath.Join(cwd, ".agents", "candidates"),
-	}
+	files := collectArtifactFiles(cwd)
+	indexed := indexFiles(cwd, files, storeCategorize)
 
+	fmt.Printf("Rebuilt index: %d artifacts\n", indexed)
+	return nil
+}
+
+// artifactSubdirs lists the subdirectories under .agents/ that contain indexable artifacts.
+var artifactSubdirs = []string{"learnings", "patterns", "research", "retros", "candidates"}
+
+// collectArtifactFiles walks all artifact subdirectories and returns indexable file paths.
+func collectArtifactFiles(cwd string) []string {
 	var files []string
-	for _, dir := range dirs {
+	for _, sub := range artifactSubdirs {
+		dir := filepath.Join(cwd, ".agents", sub)
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
 			continue
 		}
-
-		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
-				return nil
-			}
-			if strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".jsonl") {
-				files = append(files, path)
-			}
-			return nil
-		})
+		found, err := walkIndexableFiles(dir)
 		if err != nil {
 			VerbosePrintf("Warning: scan %s: %v\n", dir, err)
 		}
+		files = append(files, found...)
 	}
+	return files
+}
 
+// walkIndexableFiles returns all .md and .jsonl files under dir.
+func walkIndexableFiles(dir string) ([]string, error) {
+	var files []string
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".jsonl") {
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files, err
+}
+
+// indexFiles creates index entries for each path and appends them to the index.
+// Returns the count of successfully indexed files.
+func indexFiles(cwd string, files []string, categorize bool) int {
 	indexed := 0
 	for _, path := range files {
-		entry, err := createIndexEntry(path, storeCategorize)
+		entry, err := createIndexEntry(path, categorize)
 		if err != nil {
 			VerbosePrintf("Warning: skip %s: %v\n", filepath.Base(path), err)
 			continue
 		}
-
 		if err := appendToIndex(cwd, entry); err != nil {
 			VerbosePrintf("Warning: index %s: %v\n", filepath.Base(path), err)
 			continue
 		}
-
 		indexed++
 	}
-
-	fmt.Printf("Rebuilt index: %d artifacts\n", indexed)
-	return nil
+	return indexed
 }
 
 func runStoreStats(cmd *cobra.Command, args []string) error {
@@ -608,50 +620,79 @@ func extractCategoryAndTags(content string) (category string, tags []string) {
 
 	// YAML frontmatter (only if it starts at top of file).
 	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
-		for i := 1; i < len(lines); i++ {
-			line := strings.TrimSpace(lines[i])
-			if line == "---" {
-				break
-			}
-			if strings.HasPrefix(line, "category:") {
-				category = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "category:")), "\"'")
-				continue
-			}
-			if strings.HasPrefix(line, "tags:") {
-				rest := strings.TrimSpace(strings.TrimPrefix(line, "tags:"))
-				// Support: tags: [a, b, c]
-				if strings.HasPrefix(rest, "[") && strings.HasSuffix(rest, "]") {
-					inner := strings.TrimSuffix(strings.TrimPrefix(rest, "["), "]")
-					for _, t := range strings.Split(inner, ",") {
-						tt := strings.TrimSpace(strings.Trim(t, "\"'"))
-						if tt != "" {
-							tags = append(tags, tt)
-						}
-					}
-				}
-			}
-		}
+		category, tags = extractFrontmatterMeta(lines[1:])
 	}
 
-	// Markdown metadata lines (learning format).
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if category == "" && strings.HasPrefix(line, "**Category**:") {
-			category = strings.TrimSpace(strings.TrimPrefix(line, "**Category**:"))
-			continue
-		}
-		if strings.HasPrefix(line, "**Tags**:") {
-			rest := strings.TrimSpace(strings.TrimPrefix(line, "**Tags**:"))
-			for _, t := range strings.Split(rest, ",") {
-				tt := strings.TrimSpace(t)
-				if tt != "" {
-					tags = append(tags, tt)
-				}
-			}
-		}
+	// Markdown metadata lines (learning format) — supplements frontmatter.
+	mdCategory, mdTags := extractMarkdownMeta(lines)
+	if category == "" {
+		category = mdCategory
 	}
+	tags = append(tags, mdTags...)
 
 	return category, tags
+}
+
+// extractFrontmatterMeta parses category/tags from YAML frontmatter lines
+// (everything between the opening and closing "---").
+func extractFrontmatterMeta(lines []string) (category string, tags []string) {
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "---" {
+			break
+		}
+		if strings.HasPrefix(line, "category:") {
+			category = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "category:")), "\"'")
+		}
+		if strings.HasPrefix(line, "tags:") {
+			tags = parseBracketedList(strings.TrimSpace(strings.TrimPrefix(line, "tags:")))
+		}
+	}
+	return category, tags
+}
+
+// extractMarkdownMeta parses category/tags from bold-key markdown lines
+// (e.g. **Category**: foo, **Tags**: a, b, c).
+func extractMarkdownMeta(lines []string) (category string, tags []string) {
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if category == "" && strings.HasPrefix(line, "**Category**:") {
+			category = strings.TrimSpace(strings.TrimPrefix(line, "**Category**:"))
+		}
+		if strings.HasPrefix(line, "**Tags**:") {
+			tags = append(tags, splitCSV(strings.TrimSpace(strings.TrimPrefix(line, "**Tags**:")))...)
+		}
+	}
+	return category, tags
+}
+
+// parseBracketedList parses "[a, b, c]" into a trimmed string slice.
+// Returns nil for non-bracketed input.
+func parseBracketedList(s string) []string {
+	if !strings.HasPrefix(s, "[") || !strings.HasSuffix(s, "]") {
+		return nil
+	}
+	inner := strings.TrimSuffix(strings.TrimPrefix(s, "["), "]")
+	var out []string
+	for _, t := range strings.Split(inner, ",") {
+		tt := strings.TrimSpace(strings.Trim(t, "\"'"))
+		if tt != "" {
+			out = append(out, tt)
+		}
+	}
+	return out
+}
+
+// splitCSV splits a comma-separated string and returns non-empty trimmed values.
+func splitCSV(s string) []string {
+	var out []string
+	for _, t := range strings.Split(s, ",") {
+		tt := strings.TrimSpace(t)
+		if tt != "" {
+			out = append(out, tt)
+		}
+	}
+	return out
 }
 
 // parseMemRLMetadata extracts utility and maturity from content.

@@ -111,6 +111,62 @@ func init() {
 	_ = mailSendCmd.MarkFlagRequired("body")
 }
 
+// renderInboxJSON outputs inbox messages in JSON format.
+func renderInboxJSON(limited []Message, totalMatching, corruptedCount int) error {
+	output := struct {
+		Messages  []Message `json:"messages"`
+		Total     int       `json:"total"`
+		Showing   int       `json:"showing"`
+		Corrupted int       `json:"corrupted,omitempty"`
+	}{
+		Messages:  limited,
+		Total:     totalMatching,
+		Showing:   len(limited),
+		Corrupted: corruptedCount,
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(output)
+}
+
+// renderInboxTable outputs inbox messages in a human-readable table.
+func renderInboxTable(limited []Message, totalMatching int) {
+	fmt.Println()
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	//nolint:errcheck // CLI tabwriter output to stdout, errors unlikely and non-recoverable
+	fmt.Fprintln(w, "TIME\tFROM\tTYPE\tMESSAGE")
+	//nolint:errcheck // CLI tabwriter output to stdout
+	fmt.Fprintln(w, "----\t----\t----\t-------")
+
+	for _, msg := range limited {
+		age := formatAge(msg.Timestamp)
+		body := truncateMessage(msg.Body, 60)
+		unreadMark := ""
+		if !msg.Read {
+			unreadMark = "*"
+		}
+		//nolint:errcheck // CLI tabwriter output to stdout
+		fmt.Fprintf(w, "%s%s\t%s\t%s\t%s\n", unreadMark, age, msg.From, msg.Type, body)
+	}
+
+	_ = w.Flush()
+
+	if len(limited) < totalMatching {
+		fmt.Printf("\nShowing %d of %d message(s) (use --limit 0 for all)\n", len(limited), totalMatching)
+	} else {
+		fmt.Printf("\n%d message(s)\n", totalMatching)
+	}
+}
+
+// applyLimit returns at most limit items from the slice. A limit of 0 or less
+// means no limit.
+func applyLimit(msgs []Message, limit int) []Message {
+	if limit > 0 && len(msgs) > limit {
+		return msgs[:limit]
+	}
+	return msgs
+}
+
 func runInbox(cmd *cobra.Command, args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -120,7 +176,6 @@ func runInbox(cmd *cobra.Command, args []string) error {
 	// Load messages (returns messages and corruption count)
 	messages, corruptedCount, err := loadMessages(cwd)
 	if err != nil {
-		// If no messages file, show empty
 		if os.IsNotExist(err) {
 			fmt.Println("No messages")
 			return nil
@@ -128,15 +183,12 @@ func runInbox(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load messages: %w", err)
 	}
 
-	// Report corrupted messages if any
 	if corruptedCount > 0 {
 		fmt.Fprintf(os.Stderr, "Warning: %d corrupted message(s) skipped\n", corruptedCount)
 	}
 
 	// Filter messages (with duration validation)
 	filtered, durationWarning := filterMessages(messages, inboxSince, inboxFrom, inboxUnread)
-
-	// Report invalid duration if any
 	if durationWarning != "" {
 		fmt.Fprintf(os.Stderr, "Warning: %s, using no time filter\n", durationWarning)
 	}
@@ -152,59 +204,14 @@ func runInbox(cmd *cobra.Command, args []string) error {
 		return b.Timestamp.Compare(a.Timestamp)
 	})
 
-	// Apply pagination limit
-	limited := filtered
-	if inboxLimit > 0 && len(filtered) > inboxLimit {
-		limited = filtered[:inboxLimit]
-	}
+	limited := applyLimit(filtered, inboxLimit)
 
 	// Output based on format
-	switch GetOutput() {
-	case "json":
-		output := struct {
-			Messages  []Message `json:"messages"`
-			Total     int       `json:"total"`
-			Showing   int       `json:"showing"`
-			Corrupted int       `json:"corrupted,omitempty"`
-		}{
-			Messages:  limited,
-			Total:     totalMatching,
-			Showing:   len(limited),
-			Corrupted: corruptedCount,
-		}
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(output)
-
-	default:
-		// Table format
-		fmt.Println()
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		//nolint:errcheck // CLI tabwriter output to stdout, errors unlikely and non-recoverable
-		fmt.Fprintln(w, "TIME\tFROM\tTYPE\tMESSAGE")
-		//nolint:errcheck // CLI tabwriter output to stdout
-		fmt.Fprintln(w, "----\t----\t----\t-------")
-
-		for _, msg := range limited {
-			age := formatAge(msg.Timestamp)
-			body := truncateMessage(msg.Body, 60)
-			unreadMark := ""
-			if !msg.Read {
-				unreadMark = "*"
-			}
-			//nolint:errcheck // CLI tabwriter output to stdout
-			fmt.Fprintf(w, "%s%s\t%s\t%s\t%s\n", unreadMark, age, msg.From, msg.Type, body)
-		}
-
-		_ = w.Flush()
-
-		// Show count with pagination info
-		if len(limited) < totalMatching {
-			fmt.Printf("\nShowing %d of %d message(s) (use --limit 0 for all)\n", len(limited), totalMatching)
-		} else {
-			fmt.Printf("\n%d message(s)\n", totalMatching)
-		}
+	if GetOutput() == "json" {
+		return renderInboxJSON(limited, totalMatching, corruptedCount)
 	}
+
+	renderInboxTable(limited, totalMatching)
 
 	// Mark as read if requested
 	if inboxMarkRead {
@@ -296,44 +303,46 @@ func loadMessages(cwd string) (messages []Message, corruptedCount int, err error
 	return messages, corruptedCount, scanner.Err()
 }
 
-func filterMessages(messages []Message, since, from string, unreadOnly bool) ([]Message, string) {
-	filtered := make([]Message, 0, len(messages))
-	var durationWarning string
-
-	// Parse since duration with validation
-	var sinceTime time.Time
-	if since != "" {
-		duration, err := time.ParseDuration(since)
-		if err != nil {
-			durationWarning = fmt.Sprintf("invalid duration %q", since)
-			// Continue without time filter
-		} else {
-			sinceTime = time.Now().Add(-duration)
-		}
+// parseSinceDuration parses a duration string and returns the cutoff time.
+// Returns zero time and a warning if the duration is invalid, or zero time
+// and empty warning if since is empty (no filter).
+func parseSinceDuration(since string) (time.Time, string) {
+	if since == "" {
+		return time.Time{}, ""
 	}
+	duration, err := time.ParseDuration(since)
+	if err != nil {
+		return time.Time{}, fmt.Sprintf("invalid duration %q", since)
+	}
+	return time.Now().Add(-duration), ""
+}
 
+// messageMatchesFilters returns true if the message passes all filter criteria.
+func messageMatchesFilters(msg Message, sinceTime time.Time, from string, unreadOnly bool) bool {
+	if !sinceTime.IsZero() && msg.Timestamp.Before(sinceTime) {
+		return false
+	}
+	if from != "" && msg.From != from {
+		return false
+	}
+	if unreadOnly && msg.Read {
+		return false
+	}
+	// Default: show messages to "mayor", "all", or empty
+	if msg.To != "mayor" && msg.To != "all" && msg.To != "" {
+		return false
+	}
+	return true
+}
+
+func filterMessages(messages []Message, since, from string, unreadOnly bool) ([]Message, string) {
+	sinceTime, durationWarning := parseSinceDuration(since)
+
+	filtered := make([]Message, 0, len(messages))
 	for _, msg := range messages {
-		// Filter by time
-		if !sinceTime.IsZero() && msg.Timestamp.Before(sinceTime) {
-			continue
+		if messageMatchesFilters(msg, sinceTime, from, unreadOnly) {
+			filtered = append(filtered, msg)
 		}
-
-		// Filter by sender
-		if from != "" && msg.From != from {
-			continue
-		}
-
-		// Filter by unread
-		if unreadOnly && msg.Read {
-			continue
-		}
-
-		// Default: show messages to "mayor" or "all"
-		if msg.To != "mayor" && msg.To != "all" && msg.To != "" {
-			continue
-		}
-
-		filtered = append(filtered, msg)
 	}
 
 	return filtered, durationWarning
@@ -378,6 +387,48 @@ func appendMessage(cwd string, msg *Message) (err error) {
 	return nil
 }
 
+// scanMessagesFromReader reads JSONL messages from a scanner, skipping empty
+// and corrupted lines. Returns the parsed messages.
+func scanMessagesFromReader(scanner *bufio.Scanner) []Message {
+	var msgs []Message
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var msg Message
+		if err := json.Unmarshal(line, &msg); err != nil {
+			continue // Skip corrupted
+		}
+		msgs = append(msgs, msg)
+	}
+	return msgs
+}
+
+// buildIDSet creates a set of message IDs from a slice for O(1) lookups.
+func buildIDSet(messages []Message) map[string]bool {
+	ids := make(map[string]bool, len(messages))
+	for _, msg := range messages {
+		ids[msg.ID] = true
+	}
+	return ids
+}
+
+// writeMessagesJSONL writes messages to a file in JSONL format.
+// The file must already be positioned at the desired write offset.
+func writeMessagesJSONL(file *os.File, messages []Message) error {
+	for _, msg := range messages {
+		data, err := json.Marshal(msg)
+		if err != nil {
+			continue
+		}
+		if _, werr := file.WriteString(string(data) + "\n"); werr != nil {
+			return werr
+		}
+	}
+	return nil
+}
+
 func markMessagesRead(cwd string, messages []Message) (err error) {
 	messagesPath := filepath.Join(cwd, ".agents", "mail", "messages.jsonl")
 
@@ -401,30 +452,14 @@ func markMessagesRead(cwd string, messages []Message) (err error) {
 	}()
 
 	// Read all messages while holding lock
-	var allMessages []Message
 	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var msg Message
-		if err := json.Unmarshal(line, &msg); err != nil {
-			continue // Skip corrupted
-		}
-		allMessages = append(allMessages, msg)
-	}
+	allMessages := scanMessagesFromReader(scanner)
 	if err := scanner.Err(); err != nil {
 		return err
 	}
 
-	// Create a set of IDs to mark
-	toMark := make(map[string]bool)
-	for _, msg := range messages {
-		toMark[msg.ID] = true
-	}
-
-	// Update messages
+	// Mark matching messages as read
+	toMark := buildIDSet(messages)
 	for i := range allMessages {
 		if toMark[allMessages[i].ID] {
 			allMessages[i].Read = true
@@ -439,17 +474,7 @@ func markMessagesRead(cwd string, messages []Message) (err error) {
 		return err
 	}
 
-	for _, msg := range allMessages {
-		data, err := json.Marshal(msg)
-		if err != nil {
-			continue
-		}
-		if _, werr := file.WriteString(string(data) + "\n"); werr != nil {
-			return werr
-		}
-	}
-
-	return nil
+	return writeMessagesJSONL(file, allMessages)
 }
 
 func generateMessageID() string {

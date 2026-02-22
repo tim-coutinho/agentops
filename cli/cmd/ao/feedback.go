@@ -67,40 +67,70 @@ func init() {
 	// Note: reward is no longer required since --helpful/--harmful can be used instead
 }
 
+// resolveReward applies --helpful/--harmful shortcuts and validates the reward and alpha values.
+func resolveReward(helpful, harmful bool, reward, alpha float64) (float64, error) {
+	if helpful && harmful {
+		return 0, fmt.Errorf("cannot use both --helpful and --harmful")
+	}
+	if helpful {
+		reward = 1.0
+	} else if harmful {
+		reward = 0.0
+	}
+	if reward < 0 {
+		return 0, fmt.Errorf("must provide --reward, --helpful, or --harmful")
+	}
+	if reward > 1 {
+		return 0, fmt.Errorf("reward must be between 0.0 and 1.0, got: %f", reward)
+	}
+	if alpha <= 0 || alpha > 1 {
+		return 0, fmt.Errorf("alpha must be between 0 and 1 (exclusive 0), got: %f", alpha)
+	}
+	return reward, nil
+}
+
+// classifyFeedbackType returns a human-readable label for the feedback.
+func classifyFeedbackType(helpful, harmful bool) string {
+	if helpful {
+		return "helpful"
+	}
+	if harmful {
+		return "harmful"
+	}
+	return "custom"
+}
+
+// printFeedbackJSON writes the result as indented JSON to stdout.
+func printFeedbackJSON(learningID, learningPath, feedbackType string, oldUtility, newUtility, reward, alpha float64) error {
+	result := map[string]any{
+		"learning_id":   learningID,
+		"path":          learningPath,
+		"old_utility":   oldUtility,
+		"new_utility":   newUtility,
+		"reward":        reward,
+		"feedback_type": feedbackType,
+		"alpha":         alpha,
+		"updated_at":    time.Now().Format(time.RFC3339),
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(result)
+}
+
 func runFeedback(cmd *cobra.Command, args []string) error {
 	learningID := args[0]
 
-	// Handle --helpful and --harmful shortcuts
-	if feedbackHelpful && feedbackHarmful {
-		return fmt.Errorf("cannot use both --helpful and --harmful")
+	reward, err := resolveReward(feedbackHelpful, feedbackHarmful, feedbackReward, feedbackAlpha)
+	if err != nil {
+		return err
 	}
-	if feedbackHelpful {
-		feedbackReward = 1.0
-	} else if feedbackHarmful {
-		feedbackReward = 0.0
-	}
-
-	// Validate that some feedback was provided
-	if feedbackReward < 0 {
-		return fmt.Errorf("must provide --reward, --helpful, or --harmful")
-	}
-
-	// Validate reward range
-	if feedbackReward > 1 {
-		return fmt.Errorf("reward must be between 0.0 and 1.0, got: %f", feedbackReward)
-	}
-
-	// Validate alpha range
-	if feedbackAlpha <= 0 || feedbackAlpha > 1 {
-		return fmt.Errorf("alpha must be between 0 and 1 (exclusive 0), got: %f", feedbackAlpha)
-	}
+	feedbackReward = reward
 
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("get working directory: %w", err)
 	}
 
-	// Find the learning file
 	learningPath, err := findLearningFile(cwd, learningID)
 	if err != nil {
 		return fmt.Errorf("find learning: %w", err)
@@ -113,114 +143,135 @@ func runFeedback(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Update utility
 	oldUtility, newUtility, err := updateLearningUtility(learningPath, feedbackReward, feedbackAlpha)
 	if err != nil {
 		return fmt.Errorf("update utility: %w", err)
 	}
 
-	// Determine feedback type for display
-	feedbackType := "custom"
-	if feedbackHelpful {
-		feedbackType = "helpful"
-	} else if feedbackHarmful {
-		feedbackType = "harmful"
+	feedbackType := classifyFeedbackType(feedbackHelpful, feedbackHarmful)
+
+	if GetOutput() == "json" {
+		return printFeedbackJSON(learningID, learningPath, feedbackType, oldUtility, newUtility, feedbackReward, feedbackAlpha)
 	}
 
-	switch GetOutput() {
-	case "json":
-		result := map[string]any{
-			"learning_id":   learningID,
-			"path":          learningPath,
-			"old_utility":   oldUtility,
-			"new_utility":   newUtility,
-			"reward":        feedbackReward,
-			"feedback_type": feedbackType,
-			"alpha":         feedbackAlpha,
-			"updated_at":    time.Now().Format(time.RFC3339),
-		}
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(result)
-
-	default:
-		fmt.Printf("Updated utility for %s\n", learningID)
-		fmt.Printf("  Previous: %.3f\n", oldUtility)
-		fmt.Printf("  Feedback: %s (reward=%.2f)\n", feedbackType, feedbackReward)
-		fmt.Printf("  New:      %.3f\n", newUtility)
-	}
-
+	fmt.Printf("Updated utility for %s\n", learningID)
+	fmt.Printf("  Previous: %.3f\n", oldUtility)
+	fmt.Printf("  Feedback: %s (reward=%.2f)\n", feedbackType, feedbackReward)
+	fmt.Printf("  New:      %.3f\n", newUtility)
 	return nil
+}
+
+// learningExtensions lists the file extensions to probe when searching for learnings.
+var learningExtensions = []string{".jsonl", ".md", ".json"}
+
+// learningSubdirs lists the subdirectories under .agents that contain learnings.
+var learningSubdirs = []string{"learnings", "patterns"}
+
+// probeWithExtensions checks for learningID + each extension inside dirPath.
+func probeWithExtensions(dirPath, learningID string) string {
+	for _, ext := range learningExtensions {
+		path := filepath.Join(dirPath, learningID+ext)
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
+// probeDirect checks if learningID exists as-is inside dirPath (for IDs that already include an extension).
+func probeDirect(dirPath, learningID string) string {
+	path := filepath.Join(dirPath, learningID)
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	return ""
+}
+
+// probeGlob searches for files whose names contain learningID inside dirPath.
+func probeGlob(dirPath, learningID string) (string, error) {
+	files, err := filepath.Glob(filepath.Join(dirPath, "*"+learningID+"*"))
+	if err != nil {
+		return "", err
+	}
+	if len(files) > 0 {
+		return files[0], nil
+	}
+	return "", nil
+}
+
+// searchDirsForLearning tries extension-probing, direct-probing, and glob-probing across dirs.
+func searchDirsForLearning(dirs []string, learningID string) (string, error) {
+	for _, d := range dirs {
+		if p := probeWithExtensions(d, learningID); p != "" {
+			return p, nil
+		}
+	}
+	for _, d := range dirs {
+		if p := probeDirect(d, learningID); p != "" {
+			return p, nil
+		}
+	}
+	for _, d := range dirs {
+		p, err := probeGlob(d, learningID)
+		if err != nil {
+			return "", err
+		}
+		if p != "" {
+			return p, nil
+		}
+	}
+	return "", nil
+}
+
+// buildAgentsDirs returns the .agents/learnings and .agents/patterns paths for a given root.
+func buildAgentsDirs(root string) []string {
+	dirs := make([]string, 0, len(learningSubdirs))
+	for _, sub := range learningSubdirs {
+		dirs = append(dirs, filepath.Join(root, ".agents", sub))
+	}
+	return dirs
+}
+
+// isInSet returns true if needle is present in the set.
+func isInSet(needle string, set []string) bool {
+	for _, s := range set {
+		if needle == s {
+			return true
+		}
+	}
+	return false
 }
 
 // findLearningFile locates a learning file by ID.
 func findLearningFile(baseDir, learningID string) (string, error) {
-	searchDirs := []string{
-		filepath.Join(baseDir, ".agents", "learnings"),
-		filepath.Join(baseDir, ".agents", "patterns"),
-	}
+	baseDirs := buildAgentsDirs(baseDir)
 
-	// Try direct match with common extensions
-	extensions := []string{".jsonl", ".md", ".json"}
-	for _, dirPath := range searchDirs {
-		for _, ext := range extensions {
-			path := filepath.Join(dirPath, learningID+ext)
-			if _, err := os.Stat(path); err == nil {
-				return path, nil
-			}
-		}
-	}
-
-	// Try without extension if ID already has one
-	for _, dirPath := range searchDirs {
-		path := filepath.Join(dirPath, learningID)
-		if _, err := os.Stat(path); err == nil {
-			return path, nil
-		}
-	}
-
-	// Search for files containing the ID
-	for _, dirPath := range searchDirs {
-		files, err := filepath.Glob(filepath.Join(dirPath, "*"+learningID+"*"))
-		if err != nil {
-			return "", err
-		}
-		if len(files) > 0 {
-			return files[0], nil
-		}
+	if p, err := searchDirsForLearning(baseDirs, learningID); err != nil || p != "" {
+		return p, err
 	}
 
 	// Walk up to rig root looking for .agents/learnings and .agents/patterns
 	dir := baseDir
 	for {
-		candidates := []string{
-			filepath.Join(dir, ".agents", "learnings"),
-			filepath.Join(dir, ".agents", "patterns"),
-		}
-		for _, candidate := range candidates {
-			isCurrent := false
-			for _, current := range searchDirs {
-				if candidate == current {
-					isCurrent = true
-					break
-				}
-			}
-			if isCurrent {
-				continue
-			}
-			for _, ext := range extensions {
-				path := filepath.Join(candidate, learningID+ext)
-				if _, err := os.Stat(path); err == nil {
-					return path, nil
-				}
-			}
-		}
-
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			break
 		}
 		dir = parent
+
+		candidates := buildAgentsDirs(dir)
+		// Skip directories already searched at baseDir level
+		var novel []string
+		for _, c := range candidates {
+			if !isInSet(c, baseDirs) {
+				novel = append(novel, c)
+			}
+		}
+		for _, c := range novel {
+			if p := probeWithExtensions(c, learningID); p != "" {
+				return p, nil
+			}
+		}
 	}
 
 	return "", fmt.Errorf("learning not found: %s", learningID)
