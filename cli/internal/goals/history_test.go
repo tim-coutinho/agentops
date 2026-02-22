@@ -140,6 +140,55 @@ func TestQueryHistory_GoalIDParameterIgnored(t *testing.T) {
 	}
 }
 
+func TestAppendHistory_OpenFileError(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	entry := HistoryEntry{
+		Timestamp:    "2026-01-01T10:00:00Z",
+		GoalsPassing: 1,
+		GoalsTotal:   1,
+	}
+	err := AppendHistory(entry, filepath.Join(readOnly, "history.jsonl"))
+	if err == nil {
+		t.Error("expected error when appending to file in read-only directory")
+	}
+}
+
+func TestLoadHistory_PermissionError(t *testing.T) {
+	tmpDir := t.TempDir()
+	histPath := filepath.Join(tmpDir, "history.jsonl")
+	if err := os.WriteFile(histPath, []byte(`{"timestamp":"t1"}`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(histPath, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(histPath, 0644) })
+
+	_, err := LoadHistory(histPath)
+	if err == nil {
+		t.Error("expected error when history file is unreadable")
+	}
+}
+
+func TestLoadHistory_MalformedJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	histPath := filepath.Join(tmpDir, "history.jsonl")
+	if err := os.WriteFile(histPath, []byte("{bad json\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadHistory(histPath)
+	if err == nil {
+		t.Error("expected error for malformed JSON in history")
+	}
+}
+
 func TestAppendHistory_GoalsAdded(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "history.jsonl")

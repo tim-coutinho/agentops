@@ -135,3 +135,39 @@ func TestLoadLatestSnapshot_IgnoresNonJSON(t *testing.T) {
 		t.Fatal("expected error when no JSON files present")
 	}
 }
+
+func TestSaveSnapshot_ReadOnlyDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	readOnly := filepath.Join(tmpDir, "readonly")
+	if err := os.MkdirAll(readOnly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0700) })
+
+	snap := &Snapshot{Timestamp: "2026-01-01T00:00:00Z"}
+	_, err := SaveSnapshot(snap, filepath.Join(readOnly, "snapshots"))
+	if err == nil {
+		t.Error("expected error when saving to read-only directory")
+	}
+}
+
+func TestSaveSnapshot_WriteFileError(t *testing.T) {
+	tmpDir := t.TempDir()
+	snapDir := filepath.Join(tmpDir, "snaps")
+	if err := os.MkdirAll(snapDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	snap := &Snapshot{Timestamp: "2026-01-01T00:00:00Z"}
+
+	// Make the directory read-only after creation to trigger WriteFile error
+	if err := os.Chmod(snapDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(snapDir, 0700) })
+
+	_, err := SaveSnapshot(snap, snapDir)
+	if err == nil {
+		t.Error("expected error writing snapshot to read-only dir")
+	}
+}

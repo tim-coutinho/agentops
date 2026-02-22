@@ -394,6 +394,88 @@ func TestSearch_TieBreakByPath(t *testing.T) {
 	}
 }
 
+func TestSaveIndex_CreateFileError(t *testing.T) {
+	dir := t.TempDir()
+	idx := NewIndex()
+	idx.Terms["test"] = map[string]bool{"/a.md": true}
+
+	// Create a directory where the file should go, but make it read-only
+	targetDir := filepath.Join(dir, "indexdir")
+	if err := os.MkdirAll(targetDir, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(targetDir, 0700) })
+
+	err := SaveIndex(idx, filepath.Join(targetDir, "index.jsonl"))
+	if err == nil {
+		t.Error("expected error when directory is read-only for file creation")
+	}
+}
+
+func TestIndexFile_UnreadableFile(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a file then make it unreadable
+	mdFile := filepath.Join(dir, "secret.md")
+	writeFile(t, mdFile, "secret content")
+	if err := os.Chmod(mdFile, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(mdFile, 0644) })
+
+	idx := NewIndex()
+	err := indexFile(idx, mdFile)
+	if err == nil {
+		t.Error("expected error when indexing unreadable file")
+	}
+}
+
+func TestBuildIndex_SkipsUnreadableFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a readable file and an unreadable file
+	writeFile(t, filepath.Join(dir, "readable.md"), "visible content")
+	secretFile := filepath.Join(dir, "secret.md")
+	writeFile(t, secretFile, "hidden content")
+	if err := os.Chmod(secretFile, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(secretFile, 0644) })
+
+	// BuildIndex should succeed, skipping unreadable files
+	idx, err := BuildIndex(dir)
+	if err != nil {
+		t.Fatalf("BuildIndex: %v", err)
+	}
+	if _, ok := idx.Terms["visible"]; !ok {
+		t.Error("expected 'visible' in index from readable.md")
+	}
+	if _, ok := idx.Terms["hidden"]; ok {
+		t.Error("expected 'hidden' NOT in index from unreadable file")
+	}
+}
+
+func TestBuildIndex_EmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	idx, err := BuildIndex(dir)
+	if err != nil {
+		t.Fatalf("BuildIndex empty dir: %v", err)
+	}
+	if len(idx.Terms) != 0 {
+		t.Errorf("expected 0 terms for empty dir, got %d", len(idx.Terms))
+	}
+}
+
+func TestUpdateIndex_UnreadableFile(t *testing.T) {
+	idx := NewIndex()
+
+	// Try to update with a nonexistent file
+	err := UpdateIndex(idx, "/nonexistent/file.md")
+	if err == nil {
+		t.Error("expected error when updating with nonexistent file")
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
