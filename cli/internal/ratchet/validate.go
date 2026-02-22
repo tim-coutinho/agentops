@@ -183,34 +183,47 @@ func (v *Validator) validateStep(step Step, artifactPath string, result *Validat
 	}
 }
 
-// validateResearch checks research artifact quality.
-func (v *Validator) validateResearch(path string, result *ValidationResult) {
+// readArtifactText reads a file and checks for schema_version in frontmatter.
+// Returns the file text, or empty string if the file cannot be read (with result marked invalid).
+func (v *Validator) readArtifactText(path string, result *ValidationResult) string {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		result.Valid = false
 		result.Issues = append(result.Issues, "Cannot read file: "+err.Error())
-		return
+		return ""
 	}
 
 	text := string(content)
 
-	// Check for schema_version field (lenient mode: warning only)
 	if !v.hasFrontmatterField(text, "schema_version") {
 		result.Warnings = append(result.Warnings,
 			"Missing schema_version field in frontmatter - new artifacts should include schema_version: 1")
 	}
 
-	// Check for required sections
-	requiredSections := []string{
-		"## Summary",
-		"## Key Findings",
-		"## Recommendations",
+	return text
+}
+
+// checkSectionAny warns if none of the given markers appear in text.
+func checkSectionAny(text string, markers []string, warning string, result *ValidationResult) {
+	for _, m := range markers {
+		if strings.Contains(text, m) {
+			return
+		}
+	}
+	result.Warnings = append(result.Warnings, warning)
+}
+
+// validateResearch checks research artifact quality.
+func (v *Validator) validateResearch(path string, result *ValidationResult) {
+	text := v.readArtifactText(path, result)
+	if text == "" {
+		return
 	}
 
-	for _, section := range requiredSections {
+	// Check for required sections
+	for _, section := range []string{"## Summary", "## Key Findings", "## Recommendations"} {
 		if !strings.Contains(text, section) {
-			result.Warnings = append(result.Warnings,
-				"Missing recommended section: "+section)
+			result.Warnings = append(result.Warnings, "Missing recommended section: "+section)
 		}
 	}
 
@@ -222,42 +235,22 @@ func (v *Validator) validateResearch(path string, result *ValidationResult) {
 	}
 
 	// Check for citations/sources
-	if !strings.Contains(text, "Source") && !strings.Contains(text, "Reference") && !strings.Contains(text, "http") {
-		result.Warnings = append(result.Warnings,
-			"No sources or references found")
-	}
+	checkSectionAny(text, []string{"Source", "Reference", "http"},
+		"No sources or references found", result)
 }
 
 // validatePreMortem checks pre-mortem/spec artifact quality.
 func (v *Validator) validatePreMortem(path string, result *ValidationResult) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		result.Valid = false
-		result.Issues = append(result.Issues, "Cannot read file: "+err.Error())
+	text := v.readArtifactText(path, result)
+	if text == "" {
 		return
 	}
 
-	text := string(content)
+	checkSectionAny(text, []string{"Finding", "| ID |"},
+		"Missing findings table - pre-mortem should identify failure modes", result)
+	checkSectionAny(text, []string{"Mitigation", "Fix"},
+		"Missing mitigations - each finding should have a fix", result)
 
-	// Check for schema_version field (lenient mode: warning only)
-	if !v.hasFrontmatterField(text, "schema_version") {
-		result.Warnings = append(result.Warnings,
-			"Missing schema_version field in frontmatter - new artifacts should include schema_version: 1")
-	}
-
-	// Check for pre-mortem findings table
-	if !strings.Contains(text, "Finding") && !strings.Contains(text, "| ID |") {
-		result.Warnings = append(result.Warnings,
-			"Missing findings table - pre-mortem should identify failure modes")
-	}
-
-	// Check for mitigations
-	if !strings.Contains(text, "Mitigation") && !strings.Contains(text, "Fix") {
-		result.Warnings = append(result.Warnings,
-			"Missing mitigations - each finding should have a fix")
-	}
-
-	// Check version indicator
 	versionPattern := regexp.MustCompile(`-v\d+\.md$`)
 	if !versionPattern.MatchString(filepath.Base(path)) {
 		result.Warnings = append(result.Warnings,
@@ -273,16 +266,20 @@ func (v *Validator) validatePlan(path string, result *ValidationResult) {
 		return
 	}
 
-	content, err := os.ReadFile(path)
-	if err != nil {
-		result.Valid = false
-		result.Issues = append(result.Issues, "Cannot read file: "+err.Error())
+	// TOML plans skip frontmatter checks (no schema_version in TOML)
+	if strings.HasSuffix(path, ".toml") {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			result.Valid = false
+			result.Issues = append(result.Issues, "Cannot read file: "+err.Error())
+			return
+		}
+		v.validateFormulaToml(string(content), result)
 		return
 	}
 
-	text := string(content)
-	if strings.HasSuffix(path, ".toml") {
-		v.validateFormulaToml(text, result)
+	text := v.readArtifactText(path, result)
+	if text == "" {
 		return
 	}
 
@@ -291,58 +288,27 @@ func (v *Validator) validatePlan(path string, result *ValidationResult) {
 
 // validatePlanContent checks a markdown plan for required sections.
 func (v *Validator) validatePlanContent(text string, result *ValidationResult) {
-	if !v.hasFrontmatterField(text, "schema_version") {
-		result.Warnings = append(result.Warnings,
-			"Missing schema_version field in frontmatter - new artifacts should include schema_version: 1")
-	}
-	if !strings.Contains(text, "## Objective") && !strings.Contains(text, "## Goal") {
-		result.Warnings = append(result.Warnings,
-			"Missing objective/goal section")
-	}
-	if !strings.Contains(text, "## Tasks") && !strings.Contains(text, "## Issues") {
-		result.Warnings = append(result.Warnings,
-			"Missing tasks/issues breakdown")
-	}
-	if !strings.Contains(text, "## Success Criteria") && !strings.Contains(text, "## Acceptance") {
-		result.Warnings = append(result.Warnings,
-			"Missing success criteria")
-	}
+	checkSectionAny(text, []string{"## Objective", "## Goal"},
+		"Missing objective/goal section", result)
+	checkSectionAny(text, []string{"## Tasks", "## Issues"},
+		"Missing tasks/issues breakdown", result)
+	checkSectionAny(text, []string{"## Success Criteria", "## Acceptance"},
+		"Missing success criteria", result)
 }
 
 // validatePostMortem checks post-mortem/retro artifact quality.
 func (v *Validator) validatePostMortem(path string, result *ValidationResult) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		result.Valid = false
-		result.Issues = append(result.Issues, "Cannot read file: "+err.Error())
+	text := v.readArtifactText(path, result)
+	if text == "" {
 		return
 	}
 
-	text := string(content)
-
-	// Check for schema_version field (lenient mode: warning only)
-	if !v.hasFrontmatterField(text, "schema_version") {
-		result.Warnings = append(result.Warnings,
-			"Missing schema_version field in frontmatter - new artifacts should include schema_version: 1")
-	}
-
-	// Check for learnings section
-	if !strings.Contains(text, "## Learnings") && !strings.Contains(text, "## Key Learnings") {
-		result.Warnings = append(result.Warnings,
-			"Missing learnings section - retros should capture what was learned")
-	}
-
-	// Check for patterns section
-	if !strings.Contains(text, "## Patterns") && !strings.Contains(text, "## Reusable Patterns") {
-		result.Warnings = append(result.Warnings,
-			"Consider adding patterns section for reusable workflows")
-	}
-
-	// Check for next steps
-	if !strings.Contains(text, "## Next") && !strings.Contains(text, "## Follow-up") {
-		result.Warnings = append(result.Warnings,
-			"Missing next steps/follow-up section")
-	}
+	checkSectionAny(text, []string{"## Learnings", "## Key Learnings"},
+		"Missing learnings section - retros should capture what was learned", result)
+	checkSectionAny(text, []string{"## Patterns", "## Reusable Patterns"},
+		"Consider adding patterns section for reusable workflows", result)
+	checkSectionAny(text, []string{"## Next", "## Follow-up"},
+		"Missing next steps/follow-up section", result)
 }
 
 // validateEpicIssue validates an epic via beads CLI.
