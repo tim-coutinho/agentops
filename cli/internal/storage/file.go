@@ -183,44 +183,42 @@ func (fs *FileStorage) ReadSession(sessionID string) (*Session, error) {
 }
 
 // ListSessions returns all session index entries.
-func (fs *FileStorage) ListSessions() (entries []IndexEntry, err error) {
+func (fs *FileStorage) ListSessions() ([]IndexEntry, error) {
 	indexPath := filepath.Join(fs.BaseDir, IndexDir, IndexFile)
 
-	f, err := os.Open(indexPath)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if cerr := f.Close(); cerr != nil && err == nil {
-			err = cerr
-		}
-	}()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
+	var entries []IndexEntry
+	err := scanJSONLFile(indexPath, func(line []byte) {
 		var entry IndexEntry
-		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
-			continue // Skip malformed lines
+		if err := json.Unmarshal(line, &entry); err == nil {
+			entries = append(entries, entry)
 		}
-		entries = append(entries, entry)
-	}
-
-	return entries, scanner.Err()
+	})
+	return entries, err
 }
 
 // QueryProvenance finds provenance records for an artifact.
-func (fs *FileStorage) QueryProvenance(artifactPath string) (records []ProvenanceRecord, err error) {
+func (fs *FileStorage) QueryProvenance(artifactPath string) ([]ProvenanceRecord, error) {
 	provPath := filepath.Join(fs.BaseDir, ProvenanceDir, ProvenanceFile)
 
-	f, err := os.Open(provPath)
+	var records []ProvenanceRecord
+	err := scanJSONLFile(provPath, func(line []byte) {
+		var record ProvenanceRecord
+		if err := json.Unmarshal(line, &record); err == nil && record.ArtifactPath == artifactPath {
+			records = append(records, record)
+		}
+	})
+	return records, err
+}
+
+// scanJSONLFile opens a JSONL file and calls fn for each non-empty line.
+// Returns nil (not an error) if the file does not exist.
+func scanJSONLFile(path string, fn func(line []byte)) (err error) {
+	f, err := os.Open(path)
 	if os.IsNotExist(err) {
-		return nil, nil
+		return nil
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer func() {
 		if cerr := f.Close(); cerr != nil && err == nil {
@@ -230,16 +228,9 @@ func (fs *FileStorage) QueryProvenance(artifactPath string) (records []Provenanc
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		var record ProvenanceRecord
-		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
-			continue
-		}
-		if record.ArtifactPath == artifactPath {
-			records = append(records, record)
-		}
+		fn(scanner.Bytes())
 	}
-
-	return records, scanner.Err()
+	return scanner.Err()
 }
 
 // Close releases any resources.

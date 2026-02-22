@@ -37,20 +37,18 @@ func AppendHistory(entry HistoryEntry, path string) error {
 	return err
 }
 
-// LoadHistory reads all history entries from a JSON-lines file.
-// Returns an empty slice (not an error) if the file does not exist.
-func LoadHistory(path string) ([]HistoryEntry, error) {
+// openOrEmpty opens a file for reading, returning (nil, nil) if it does not exist.
+func openOrEmpty(path string) (*os.File, error) {
 	f, err := os.Open(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return []HistoryEntry{}, nil
-		}
-		return nil, err
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
 	}
-	defer f.Close()
+	return f, err
+}
 
+// parseHistoryLines parses JSONL lines from a scanner into history entries.
+func parseHistoryLines(scanner *bufio.Scanner) ([]HistoryEntry, error) {
 	var entries []HistoryEntry
-	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		if len(line) == 0 {
@@ -69,6 +67,21 @@ func LoadHistory(path string) ([]HistoryEntry, error) {
 		entries = []HistoryEntry{}
 	}
 	return entries, nil
+}
+
+// LoadHistory reads all history entries from a JSON-lines file.
+// Returns an empty slice (not an error) if the file does not exist.
+func LoadHistory(path string) ([]HistoryEntry, error) {
+	f, err := openOrEmpty(path)
+	if err != nil {
+		return nil, err
+	}
+	if f == nil {
+		return []HistoryEntry{}, nil
+	}
+	defer f.Close()
+
+	return parseHistoryLines(bufio.NewScanner(f))
 }
 
 // QueryHistory filters history entries to those with Timestamp >= since.
