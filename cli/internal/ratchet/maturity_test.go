@@ -1034,6 +1034,192 @@ func TestGetEstablishedLearnings_MalformedJSON(t *testing.T) {
 	}
 }
 
+// --- updateJSONLFirstLine error paths ---
+
+func TestUpdateJSONLFirstLine_ReadError(t *testing.T) {
+	// Exercise line 244-246: os.ReadFile fails on nonexistent file.
+	err := updateJSONLFirstLine("/nonexistent/learning.jsonl", map[string]any{"key": "val"})
+	if err == nil {
+		t.Error("expected error for nonexistent file")
+	}
+	if !strings.Contains(err.Error(), "read learning for update") {
+		t.Errorf("expected 'read learning for update' error, got: %v", err)
+	}
+}
+
+func TestUpdateJSONLFirstLine_EmptyFile(t *testing.T) {
+	// Exercise line 249-251: empty file returns ErrEmptyFile.
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "empty.jsonl")
+	if err := os.WriteFile(path, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := updateJSONLFirstLine(path, map[string]any{"key": "val"})
+	if err == nil {
+		t.Error("expected error for empty file")
+	}
+}
+
+func TestUpdateJSONLFirstLine_BadJSON(t *testing.T) {
+	// Exercise line 254-256: bad JSON on first line.
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "bad.jsonl")
+	if err := os.WriteFile(path, []byte("{bad json\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := updateJSONLFirstLine(path, map[string]any{"key": "val"})
+	if err == nil {
+		t.Error("expected error for bad JSON")
+	}
+	if !strings.Contains(err.Error(), "parse learning for update") {
+		t.Errorf("expected 'parse learning for update' error, got: %v", err)
+	}
+}
+
+func TestUpdateJSONLFirstLine_WriteError(t *testing.T) {
+	// Exercise the write error path (line 268-270) by making the file read-only.
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "readonly.jsonl")
+	if err := os.WriteFile(path, []byte(`{"id":"L1"}`+"\n"), 0444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0644) })
+
+	err := updateJSONLFirstLine(path, map[string]any{"key": "val"})
+	if err == nil {
+		t.Error("expected error writing to read-only file")
+	}
+	if !strings.Contains(err.Error(), "write updated learning") {
+		t.Errorf("expected 'write updated learning' error, got: %v", err)
+	}
+}
+
+func TestUpdateJSONLFirstLine_Success(t *testing.T) {
+	// Exercise the success path: read, merge, write back.
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "learning.jsonl")
+	if err := os.WriteFile(path, []byte(`{"id":"L1","maturity":"provisional"}`+"\nsecond line\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := updateJSONLFirstLine(path, map[string]any{"maturity": "candidate"})
+	if err != nil {
+		t.Fatalf("updateJSONLFirstLine: %v", err)
+	}
+
+	// Verify the file was updated
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), `"candidate"`) {
+		t.Error("expected 'candidate' in updated file")
+	}
+	if !strings.Contains(string(content), "second line") {
+		t.Error("expected second line preserved")
+	}
+}
+
+// --- readFirstLineMaturity edge cases ---
+
+func TestReadFirstLineMaturity_EmptyFile(t *testing.T) {
+	// Exercise line 327-329: scanner.Scan() returns false on empty file.
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "empty.jsonl")
+	if err := os.WriteFile(path, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := readFirstLineMaturity(path)
+	if result != "" {
+		t.Errorf("expected empty string for empty file, got %q", result)
+	}
+}
+
+func TestReadFirstLineMaturity_BadJSON(t *testing.T) {
+	// Exercise line 331-333: bad JSON returns "".
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "bad.jsonl")
+	if err := os.WriteFile(path, []byte("{bad\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := readFirstLineMaturity(path)
+	if result != "" {
+		t.Errorf("expected empty string for bad JSON, got %q", result)
+	}
+}
+
+func TestReadFirstLineMaturity_NoMaturityField(t *testing.T) {
+	// Exercise line 334: data["maturity"] not a string.
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "no-maturity.jsonl")
+	if err := os.WriteFile(path, []byte(`{"id":"L1"}`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := readFirstLineMaturity(path)
+	if result != "" {
+		t.Errorf("expected empty string for missing maturity field, got %q", result)
+	}
+}
+
+func TestReadFirstLineMaturity_NonexistentFile(t *testing.T) {
+	// Exercise line 319-321: os.Open fails.
+	result := readFirstLineMaturity("/nonexistent/path.jsonl")
+	if result != "" {
+		t.Errorf("expected empty string for nonexistent file, got %q", result)
+	}
+}
+
+// --- classifyLearningFile edge cases ---
+
+func TestClassifyLearningFile_BadJSON(t *testing.T) {
+	// Exercise line 386-389: bad JSON in scanner -> Unknown++.
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "bad.jsonl")
+	if err := os.WriteFile(path, []byte("{bad json\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	dist := &MaturityDistribution{}
+	classifyLearningFile(path, dist)
+	if dist.Unknown != 1 {
+		t.Errorf("expected Unknown=1, got %d", dist.Unknown)
+	}
+	if dist.Total != 1 {
+		t.Errorf("expected Total=1, got %d", dist.Total)
+	}
+}
+
+func TestClassifyLearningFile_EmptyFile(t *testing.T) {
+	// Exercise line 381-383: scanner.Scan() returns false on empty file.
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "empty.jsonl")
+	if err := os.WriteFile(path, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	dist := &MaturityDistribution{}
+	classifyLearningFile(path, dist)
+	// Empty file: scanner.Scan returns false, function returns early.
+	// No counts should be incremented.
+	if dist.Total != 0 {
+		t.Errorf("expected Total=0 for empty file, got %d", dist.Total)
+	}
+}
+
+func TestClassifyLearningFile_NonexistentFile(t *testing.T) {
+	// Exercise line 375-377: os.Open fails, function returns early.
+	dist := &MaturityDistribution{}
+	classifyLearningFile("/nonexistent/file.jsonl", dist)
+	if dist.Total != 0 {
+		t.Errorf("expected Total=0 for nonexistent file, got %d", dist.Total)
+	}
+}
+
 // contains is a test helper for substring matching.
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstr(s, substr))

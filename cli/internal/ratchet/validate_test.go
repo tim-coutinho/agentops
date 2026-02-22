@@ -2330,3 +2330,99 @@ func TestCheckTierRequirements_TierCore(t *testing.T) {
 		t.Error("TierCore should add a manual review warning")
 	}
 }
+
+// --- validatePlan TOML read error (direct call) ---
+
+func TestValidatePlan_TomlReadErrorDirect(t *testing.T) {
+	// Exercise the TOML read error path (validate.go lines 272-276).
+	// Calling validatePlan directly bypasses Validate's os.Stat check.
+	v, _ := helperNewValidator(t)
+	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	v.validatePlan("/nonexistent/formula.toml", result)
+
+	if result.Valid {
+		t.Error("expected valid=false for unreadable TOML file")
+	}
+	found := false
+	for _, issue := range result.Issues {
+		if strings.Contains(issue, "Cannot read file") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'Cannot read file' issue, got %v", result.Issues)
+	}
+}
+
+func TestValidatePlan_TomlSuccessDirect(t *testing.T) {
+	// Exercise the TOML success path (validate.go lines 277-278).
+	// Calls validatePlan directly with a valid TOML file.
+	v, tmpDir := helperNewValidator(t)
+	artifact := filepath.Join(tmpDir, "formula.toml")
+	content := "formula = \"test\"\ndescription = \"A test formula\"\nversion = \"1.0\"\ntype = \"epic\"\nschema_version = 1\n\n[[steps]]\nname = \"step1\"\n"
+	if err := os.WriteFile(artifact, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result := &ValidationResult{Valid: true, Issues: []string{}, Warnings: []string{}}
+	v.validatePlan(artifact, result)
+
+	if !result.Valid {
+		t.Errorf("expected valid=true for valid TOML formula, issues=%v", result.Issues)
+	}
+}
+
+// --- ValidateCloseReason with non-absolute extracted path ---
+
+func TestValidateCloseReason_ExtractedRelativePath(t *testing.T) {
+	// Exercise the ValidateArtifactPath error append path (validate.go line 750-752).
+	// "Artifact: relative/path.md" extracts "relative/path.md" which is not absolute.
+	// But ExtractArtifactPaths only matches paths starting with /.
+	// We use "See /valid/path then check relative pattern" to test the
+	// relative pattern detection path (lines 762-764).
+	issues := ValidateCloseReason("found at ~/home/file.md")
+	if len(issues) == 0 {
+		t.Error("expected issues for close_reason with tilde path")
+	}
+}
+
+// --- gatherSessionDirs with sessions ---
+
+func TestGatherSessionDirs_WithLocalSessions(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessionsDir := filepath.Join(tmpDir, ".agents", "ao", "sessions")
+	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	v, err := NewValidator(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dirs := v.gatherSessionDirs()
+	found := false
+	for _, d := range dirs {
+		if d == sessionsDir {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected local sessions dir %q in results, got %v", sessionsDir, dirs)
+	}
+}
+
+// --- countRefsInDir walk error ---
+
+func TestCountRefsInDir_WalkError(t *testing.T) {
+	// Exercise the filepath.Walk error fprintf path (validate.go line 509-511).
+	v, _ := helperNewValidator(t)
+	seen := make(map[string]bool)
+	// Pass a nonexistent directory -- Walk fails and should still return 0
+	count := v.countRefsInDir("/nonexistent/sessions", "target.md", seen)
+	if count != 0 {
+		t.Errorf("expected 0 for nonexistent directory, got %d", count)
+	}
+}
