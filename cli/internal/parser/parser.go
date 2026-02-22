@@ -47,10 +47,10 @@ type rawMessage struct {
 	ParentUUID string `json:"parentUuid,omitempty"`
 	Message    *struct {
 		Role    string      `json:"role"`
-		Content interface{} `json:"content"` // Can be string or array
+		Content any `json:"content"` // Can be string or array
 	} `json:"message,omitempty"`
 	// ToolUseResult contains structured tool output (e.g., for TodoWrite)
-	ToolUseResult interface{} `json:"toolUseResult,omitempty"`
+	ToolUseResult any `json:"toolUseResult,omitempty"`
 }
 
 // ParseResult contains the result of parsing a JSONL stream.
@@ -221,12 +221,12 @@ func isValidMessageType(msgType string) bool {
 }
 
 // parseContentBlocks extracts text and tool calls from content block array.
-func (p *Parser) parseContentBlocks(blocks []interface{}) (string, []types.ToolCall) {
+func (p *Parser) parseContentBlocks(blocks []any) (string, []types.ToolCall) {
 	var content string
 	var tools []types.ToolCall
 
 	for _, block := range blocks {
-		blockMap, ok := block.(map[string]interface{})
+		blockMap, ok := block.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -241,7 +241,7 @@ func (p *Parser) parseContentBlocks(blocks []interface{}) (string, []types.ToolC
 }
 
 // classifyBlock dispatches a single content block into text or tool call.
-func (p *Parser) classifyBlock(blockMap map[string]interface{}) (string, *types.ToolCall) {
+func (p *Parser) classifyBlock(blockMap map[string]any) (string, *types.ToolCall) {
 	blockType, _ := blockMap["type"].(string)
 	switch blockType {
 	case "text":
@@ -285,17 +285,17 @@ func (p *Parser) parseLine(line []byte, lineNum int) (*types.TranscriptMessage, 
 }
 
 // extractMessageContent populates msg.Content and msg.Tools from raw content.
-func (p *Parser) extractMessageContent(rawContent interface{}, msg *types.TranscriptMessage) {
+func (p *Parser) extractMessageContent(rawContent any, msg *types.TranscriptMessage) {
 	switch content := rawContent.(type) {
 	case string:
 		msg.Content = p.truncate(content)
-	case []interface{}:
+	case []any:
 		msg.Content, msg.Tools = p.parseContentBlocks(content)
 	}
 }
 
 // parseToolUse extracts tool call information from a tool_use block.
-func (p *Parser) parseToolUse(block map[string]interface{}) *types.ToolCall {
+func (p *Parser) parseToolUse(block map[string]any) *types.ToolCall {
 	name, _ := block["name"].(string)
 	if name == "" {
 		return nil
@@ -306,7 +306,7 @@ func (p *Parser) parseToolUse(block map[string]interface{}) *types.ToolCall {
 	}
 
 	// Extract input parameters
-	if input, ok := block["input"].(map[string]interface{}); ok {
+	if input, ok := block["input"].(map[string]any); ok {
 		toolCall.Input = input
 	}
 
@@ -314,7 +314,7 @@ func (p *Parser) parseToolUse(block map[string]interface{}) *types.ToolCall {
 }
 
 // parseToolResult extracts tool result information from a tool_result block.
-func (p *Parser) parseToolResult(block map[string]interface{}) *types.ToolCall {
+func (p *Parser) parseToolResult(block map[string]any) *types.ToolCall {
 	toolCall := &types.ToolCall{
 		Name: "tool_result",
 	}
@@ -328,10 +328,10 @@ func (p *Parser) parseToolResult(block map[string]interface{}) *types.ToolCall {
 	switch content := block["content"].(type) {
 	case string:
 		toolCall.Output = p.truncate(content)
-	case []interface{}:
+	case []any:
 		// Content can be an array of text blocks
 		for _, item := range content {
-			if itemMap, ok := item.(map[string]interface{}); ok {
+			if itemMap, ok := item.(map[string]any); ok {
 				if text, ok := itemMap["text"].(string); ok {
 					toolCall.Output += p.truncate(text)
 				}

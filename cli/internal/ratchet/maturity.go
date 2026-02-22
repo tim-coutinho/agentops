@@ -69,7 +69,7 @@ func CheckMaturityTransition(learningPath string) (*MaturityTransitionResult, er
 	return result, nil
 }
 
-func readLearningData(learningPath string) (map[string]interface{}, error) {
+func readLearningData(learningPath string) (map[string]any, error) {
 	content, err := os.ReadFile(learningPath)
 	if err != nil {
 		return nil, fmt.Errorf("read learning: %w", err)
@@ -80,7 +80,7 @@ func readLearningData(learningPath string) (map[string]interface{}, error) {
 		return nil, ErrEmptyLearningFile
 	}
 
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal([]byte(lines[0]), &data); err != nil {
 		return nil, fmt.Errorf("parse learning: %w", err)
 	}
@@ -88,7 +88,7 @@ func readLearningData(learningPath string) (map[string]interface{}, error) {
 	return data, nil
 }
 
-func buildMaturityTransitionResult(learningPath string, data map[string]interface{}) *MaturityTransitionResult {
+func buildMaturityTransitionResult(learningPath string, data map[string]any) *MaturityTransitionResult {
 	learningID := stringFromData(data, "id", filepath.Base(learningPath), false)
 	currentMaturity := types.Maturity(stringFromData(data, "maturity", string(types.MaturityProvisional), true))
 
@@ -186,7 +186,7 @@ func applyAntiPatternRehabilitationTransition(result *MaturityTransitionResult) 
 	result.Reason = "maintaining anti-pattern status"
 }
 
-func stringFromData(data map[string]interface{}, key, defaultValue string, requireNonEmpty bool) string {
+func stringFromData(data map[string]any, key, defaultValue string, requireNonEmpty bool) string {
 	value, ok := data[key].(string)
 	if !ok {
 		return defaultValue
@@ -197,7 +197,7 @@ func stringFromData(data map[string]interface{}, key, defaultValue string, requi
 	return value
 }
 
-func floatFromData(data map[string]interface{}, key string, defaultValue float64) float64 {
+func floatFromData(data map[string]any, key string, defaultValue float64) float64 {
 	value, ok := data[key].(float64)
 	if !ok {
 		return defaultValue
@@ -205,7 +205,7 @@ func floatFromData(data map[string]interface{}, key string, defaultValue float64
 	return value
 }
 
-func intFromData(data map[string]interface{}, key string) int {
+func intFromData(data map[string]any, key string) int {
 	value, ok := data[key].(float64)
 	if !ok {
 		return 0
@@ -236,7 +236,7 @@ func ApplyMaturityTransition(learningPath string) (*MaturityTransitionResult, er
 		return nil, ErrEmptyFile
 	}
 
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal([]byte(lines[0]), &data); err != nil {
 		return nil, fmt.Errorf("parse learning for update: %w", err)
 	}
@@ -301,7 +301,7 @@ func GetAntiPatterns(learningsDir string) ([]string, error) {
 
 		scanner := bufio.NewScanner(f)
 		if scanner.Scan() {
-			var data map[string]interface{}
+			var data map[string]any
 			if err := json.Unmarshal(scanner.Bytes(), &data); err != nil {
 				_ = f.Close() //nolint:errcheck // read-only, moving to next file
 				continue
@@ -334,7 +334,7 @@ func GetEstablishedLearnings(learningsDir string) ([]string, error) {
 
 		scanner := bufio.NewScanner(f)
 		if scanner.Scan() {
-			var data map[string]interface{}
+			var data map[string]any
 			if err := json.Unmarshal(scanner.Bytes(), &data); err != nil {
 				_ = f.Close() //nolint:errcheck // read-only, moving to next file
 				continue
@@ -387,7 +387,7 @@ func classifyLearningFile(file string, dist *MaturityDistribution) {
 		return
 	}
 
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal(scanner.Bytes(), &data); err != nil {
 		dist.Unknown++
 		dist.Total++

@@ -36,7 +36,7 @@ type Record struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	// Metadata holds additional provenance data.
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // Graph manages provenance records and enables querying.

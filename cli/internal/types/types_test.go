@@ -18,7 +18,7 @@ func TestTranscriptMessageJSONRoundTrip(t *testing.T) {
 		Tools: []ToolCall{
 			{
 				Name:   "Read",
-				Input:  map[string]interface{}{"file_path": "/tmp/test.go"},
+				Input:  map[string]any{"file_path": "/tmp/test.go"},
 				Output: "file contents",
 			},
 		},
@@ -73,7 +73,7 @@ func TestCandidateJSONRoundTrip(t *testing.T) {
 		Tier:          TierGold,
 		ProvenanceIDs: []string{"prov-1", "prov-2"},
 		ExtractedAt:   time.Date(2026, 1, 24, 10, 35, 0, 0, time.UTC),
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"extractor": "transcript-forge",
 		},
 	}
@@ -805,7 +805,7 @@ func TestPlanManifestEntryJSONRoundTrip(t *testing.T) {
 		UpdatedAt:    time.Date(2026, 2, 1, 11, 0, 0, 0, time.UTC),
 		Checksum:     "sha256:abcdef",
 		SupersededBy: "",
-		Metadata:     map[string]interface{}{"source": "plan-skill"},
+		Metadata:     map[string]any{"source": "plan-skill"},
 	}
 
 	data, err := json.Marshal(original)

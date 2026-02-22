@@ -145,7 +145,7 @@ func GetRepoRoot(dir string, timeout time.Duration) (string, error) {
 
 // CreateWorktree creates a sibling git worktree for isolated RPI execution.
 // Worktree checkouts are detached (no new branch created).
-func CreateWorktree(cwd string, timeout time.Duration, verbosef func(string, ...interface{})) (worktreePath, runID string, err error) {
+func CreateWorktree(cwd string, timeout time.Duration, verbosef func(string, ...any)) (worktreePath, runID string, err error) {
 	repoRoot, err := GetRepoRoot(cwd, timeout)
 	if err != nil {
 		return "", "", err
@@ -183,7 +183,7 @@ func resolveHeadCommit(repoRoot string, timeout time.Duration) (string, error) {
 }
 
 // tryCreateWorktree attempts to create a worktree up to 3 times, handling path collisions.
-func tryCreateWorktree(repoRoot, currentCommit string, timeout time.Duration, verbosef func(string, ...interface{})) (string, string, error) {
+func tryCreateWorktree(repoRoot, currentCommit string, timeout time.Duration, verbosef func(string, ...any)) (string, string, error) {
 	for attempt := 0; attempt < 3; attempt++ {
 		runID := GenerateRunID()
 		repoBasename := filepath.Base(repoRoot)
@@ -220,7 +220,7 @@ func tryCreateWorktree(repoRoot, currentCommit string, timeout time.Duration, ve
 }
 
 // MergeWorktree merges the RPI worktree commit back into the original branch.
-func MergeWorktree(repoRoot, worktreePath, runID string, timeout time.Duration, verbosef func(string, ...interface{})) error {
+func MergeWorktree(repoRoot, worktreePath, runID string, timeout time.Duration, verbosef func(string, ...any)) error {
 	if err := waitForCleanRepo(repoRoot, timeout, verbosef); err != nil {
 		return err
 	}
@@ -239,7 +239,7 @@ func MergeWorktree(repoRoot, worktreePath, runID string, timeout time.Duration, 
 }
 
 // waitForCleanRepo polls the repo until it has no uncommitted changes, retrying up to 5 times.
-func waitForCleanRepo(repoRoot string, timeout time.Duration, verbosef func(string, ...interface{})) error {
+func waitForCleanRepo(repoRoot string, timeout time.Duration, verbosef func(string, ...any)) error {
 	var dirtyErr error
 	for attempt := 0; attempt < 5; attempt++ {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)

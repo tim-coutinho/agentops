@@ -433,8 +433,8 @@ func TestParser_ParseContentBlocks(t *testing.T) {
 	p := NewParser()
 
 	t.Run("text block", func(t *testing.T) {
-		blocks := []interface{}{
-			map[string]interface{}{"type": "text", "text": "hello"},
+		blocks := []any{
+			map[string]any{"type": "text", "text": "hello"},
 		}
 		content, tools := p.parseContentBlocks(blocks)
 		if content != "hello" {
@@ -446,11 +446,11 @@ func TestParser_ParseContentBlocks(t *testing.T) {
 	})
 
 	t.Run("tool_use block", func(t *testing.T) {
-		blocks := []interface{}{
-			map[string]interface{}{
+		blocks := []any{
+			map[string]any{
 				"type":  "tool_use",
 				"name":  "Read",
-				"input": map[string]interface{}{"file_path": "/tmp/x"},
+				"input": map[string]any{"file_path": "/tmp/x"},
 			},
 		}
 		content, tools := p.parseContentBlocks(blocks)
@@ -463,8 +463,8 @@ func TestParser_ParseContentBlocks(t *testing.T) {
 	})
 
 	t.Run("tool_result block", func(t *testing.T) {
-		blocks := []interface{}{
-			map[string]interface{}{
+		blocks := []any{
+			map[string]any{
 				"type":    "tool_result",
 				"content": "result text",
 			},
@@ -476,7 +476,7 @@ func TestParser_ParseContentBlocks(t *testing.T) {
 	})
 
 	t.Run("non-map block is skipped", func(t *testing.T) {
-		blocks := []interface{}{"not a map", 42}
+		blocks := []any{"not a map", 42}
 		content, tools := p.parseContentBlocks(blocks)
 		if content != "" || len(tools) != 0 {
 			t.Errorf("expected empty results for non-map blocks, got content=%q tools=%d", content, len(tools))
@@ -484,10 +484,10 @@ func TestParser_ParseContentBlocks(t *testing.T) {
 	})
 
 	t.Run("mixed blocks", func(t *testing.T) {
-		blocks := []interface{}{
-			map[string]interface{}{"type": "text", "text": "part1"},
-			map[string]interface{}{"type": "tool_use", "name": "Bash", "input": map[string]interface{}{"command": "ls"}},
-			map[string]interface{}{"type": "text", "text": "part2"},
+		blocks := []any{
+			map[string]any{"type": "text", "text": "part1"},
+			map[string]any{"type": "tool_use", "name": "Bash", "input": map[string]any{"command": "ls"}},
+			map[string]any{"type": "text", "text": "part2"},
 		}
 		content, tools := p.parseContentBlocks(blocks)
 		if content != "part1part2" {
@@ -504,28 +504,28 @@ func TestParser_ParseToolUse(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		block    map[string]interface{}
+		block    map[string]any
 		wantNil  bool
 		wantName string
 	}{
 		{
 			name:     "valid tool_use",
-			block:    map[string]interface{}{"name": "Read", "input": map[string]interface{}{"path": "/x"}},
+			block:    map[string]any{"name": "Read", "input": map[string]any{"path": "/x"}},
 			wantName: "Read",
 		},
 		{
 			name:    "missing name",
-			block:   map[string]interface{}{"input": map[string]interface{}{}},
+			block:   map[string]any{"input": map[string]any{}},
 			wantNil: true,
 		},
 		{
 			name:    "empty name",
-			block:   map[string]interface{}{"name": ""},
+			block:   map[string]any{"name": ""},
 			wantNil: true,
 		},
 		{
 			name:     "no input field",
-			block:    map[string]interface{}{"name": "Bash"},
+			block:    map[string]any{"name": "Bash"},
 			wantName: "Bash",
 		},
 	}
@@ -554,7 +554,7 @@ func TestParser_ParseToolResult(t *testing.T) {
 	p := NewParser()
 
 	t.Run("string content", func(t *testing.T) {
-		block := map[string]interface{}{"content": "output text"}
+		block := map[string]any{"content": "output text"}
 		got := p.parseToolResult(block)
 		if got.Output != "output text" {
 			t.Errorf("Output = %q, want %q", got.Output, "output text")
@@ -565,7 +565,7 @@ func TestParser_ParseToolResult(t *testing.T) {
 	})
 
 	t.Run("error result", func(t *testing.T) {
-		block := map[string]interface{}{"is_error": true, "content": "failed"}
+		block := map[string]any{"is_error": true, "content": "failed"}
 		got := p.parseToolResult(block)
 		if got.Error != "tool error" {
 			t.Errorf("Error = %q, want %q", got.Error, "tool error")
@@ -573,10 +573,10 @@ func TestParser_ParseToolResult(t *testing.T) {
 	})
 
 	t.Run("array content", func(t *testing.T) {
-		block := map[string]interface{}{
-			"content": []interface{}{
-				map[string]interface{}{"text": "line1"},
-				map[string]interface{}{"text": "line2"},
+		block := map[string]any{
+			"content": []any{
+				map[string]any{"text": "line1"},
+				map[string]any{"text": "line2"},
 			},
 		}
 		got := p.parseToolResult(block)
@@ -586,7 +586,7 @@ func TestParser_ParseToolResult(t *testing.T) {
 	})
 
 	t.Run("no content", func(t *testing.T) {
-		block := map[string]interface{}{}
+		block := map[string]any{}
 		got := p.parseToolResult(block)
 		if got.Name != "tool_result" {
 			t.Errorf("Name = %q, want %q", got.Name, "tool_result")

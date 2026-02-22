@@ -21,7 +21,7 @@ func TestChainEntryCycleSerialize(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("unmarshal to map: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestChainEntryOmitemptyZeroValues(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("unmarshal to map: %v", err)
 	}

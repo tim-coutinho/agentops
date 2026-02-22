@@ -295,7 +295,7 @@ func (fs *FileStorage) atomicWrite(path string, writeFunc func(io.Writer) error)
 }
 
 // appendJSONL appends a JSON line to a file atomically.
-func (fs *FileStorage) appendJSONL(path string, v interface{}) error {
+func (fs *FileStorage) appendJSONL(path string, v any) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err

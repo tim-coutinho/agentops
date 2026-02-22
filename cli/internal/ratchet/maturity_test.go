@@ -12,7 +12,7 @@ import (
 )
 
 // writeLearning is a test helper that writes a JSONL learning file.
-func writeLearning(t *testing.T, dir, name string, data map[string]interface{}) string {
+func writeLearning(t *testing.T, dir, name string, data map[string]any) string {
 	t.Helper()
 	b, err := json.Marshal(data)
 	if err != nil {
@@ -28,14 +28,14 @@ func writeLearning(t *testing.T, dir, name string, data map[string]interface{}) 
 func TestCheckMaturityTransition_ProvisionalToCandidate(t *testing.T) {
 	tests := []struct {
 		name         string
-		data         map[string]interface{}
+		data         map[string]any
 		wantTransit  bool
 		wantNew      types.Maturity
 		wantReasonSS string // substring expected in reason
 	}{
 		{
 			name: "promotes when utility and reward_count meet thresholds",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"id":           "learn-001",
 				"maturity":     "provisional",
 				"utility":      0.8,
@@ -46,7 +46,7 @@ func TestCheckMaturityTransition_ProvisionalToCandidate(t *testing.T) {
 		},
 		{
 			name: "promotes at exact thresholds",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"id":           "learn-002",
 				"maturity":     "provisional",
 				"utility":      0.7,
@@ -57,7 +57,7 @@ func TestCheckMaturityTransition_ProvisionalToCandidate(t *testing.T) {
 		},
 		{
 			name: "no promotion when utility too low",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"id":           "learn-003",
 				"maturity":     "provisional",
 				"utility":      0.5,
@@ -69,7 +69,7 @@ func TestCheckMaturityTransition_ProvisionalToCandidate(t *testing.T) {
 		},
 		{
 			name: "no promotion when reward_count too low",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"id":           "learn-004",
 				"maturity":     "provisional",
 				"utility":      0.9,
@@ -106,13 +106,13 @@ func TestCheckMaturityTransition_ProvisionalToCandidate(t *testing.T) {
 func TestCheckMaturityTransition_CandidateToEstablished(t *testing.T) {
 	tests := []struct {
 		name        string
-		data        map[string]interface{}
+		data        map[string]any
 		wantTransit bool
 		wantNew     types.Maturity
 	}{
 		{
 			name: "promotes when all conditions met",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":      "candidate",
 				"utility":       0.8,
 				"reward_count":  6.0,
@@ -124,7 +124,7 @@ func TestCheckMaturityTransition_CandidateToEstablished(t *testing.T) {
 		},
 		{
 			name: "no promotion when helpful not greater than harmful",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":      "candidate",
 				"utility":       0.8,
 				"reward_count":  6.0,
@@ -136,7 +136,7 @@ func TestCheckMaturityTransition_CandidateToEstablished(t *testing.T) {
 		},
 		{
 			name: "no promotion when reward_count less than 5",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":      "candidate",
 				"utility":       0.8,
 				"reward_count":  4.0,
@@ -169,7 +169,7 @@ func TestCheckMaturityTransition_CandidateToEstablished(t *testing.T) {
 
 func TestCheckMaturityTransition_CandidateToProvisionalDemotion(t *testing.T) {
 	dir := t.TempDir()
-	path := writeLearning(t, dir, "test.jsonl", map[string]interface{}{
+	path := writeLearning(t, dir, "test.jsonl", map[string]any{
 		"maturity": "candidate",
 		"utility":  0.2,
 	})
@@ -204,7 +204,7 @@ func TestCheckMaturityTransition_EstablishedToCandidateDemotion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			path := writeLearning(t, dir, "test.jsonl", map[string]interface{}{
+			path := writeLearning(t, dir, "test.jsonl", map[string]any{
 				"maturity": "established",
 				"utility":  tt.utility,
 			})
@@ -227,13 +227,13 @@ func TestCheckMaturityTransition_AntiPatternPriority(t *testing.T) {
 	// Anti-pattern transition takes priority over all other transitions.
 	tests := []struct {
 		name         string
-		data         map[string]interface{}
+		data         map[string]any
 		wantTransit  bool
 		wantNew      types.Maturity
 	}{
 		{
 			name: "provisional becomes anti-pattern",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":      "provisional",
 				"utility":       0.1,
 				"harmful_count": 6.0,
@@ -243,7 +243,7 @@ func TestCheckMaturityTransition_AntiPatternPriority(t *testing.T) {
 		},
 		{
 			name: "candidate becomes anti-pattern",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":      "candidate",
 				"utility":       0.2,
 				"harmful_count": 5.0,
@@ -253,7 +253,7 @@ func TestCheckMaturityTransition_AntiPatternPriority(t *testing.T) {
 		},
 		{
 			name: "established becomes anti-pattern",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":      "established",
 				"utility":       0.15,
 				"harmful_count": 7.0,
@@ -263,7 +263,7 @@ func TestCheckMaturityTransition_AntiPatternPriority(t *testing.T) {
 		},
 		{
 			name: "already anti-pattern stays anti-pattern (no transition)",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":      "anti-pattern",
 				"utility":       0.1,
 				"harmful_count": 10.0,
@@ -273,7 +273,7 @@ func TestCheckMaturityTransition_AntiPatternPriority(t *testing.T) {
 		},
 		{
 			name: "not anti-pattern when harmful_count below threshold",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":      "provisional",
 				"utility":       0.1,
 				"harmful_count": 4.0,
@@ -305,13 +305,13 @@ func TestCheckMaturityTransition_AntiPatternPriority(t *testing.T) {
 func TestCheckMaturityTransition_AntiPatternRehabilitation(t *testing.T) {
 	tests := []struct {
 		name        string
-		data        map[string]interface{}
+		data        map[string]any
 		wantTransit bool
 		wantNew     types.Maturity
 	}{
 		{
 			name: "rehabilitates when utility high and helpful dominant",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":      "anti-pattern",
 				"utility":       0.7,
 				"helpful_count": 11.0,
@@ -322,7 +322,7 @@ func TestCheckMaturityTransition_AntiPatternRehabilitation(t *testing.T) {
 		},
 		{
 			name: "no rehab when helpful not greater than 2x harmful",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":      "anti-pattern",
 				"utility":       0.7,
 				"helpful_count": 10.0,
@@ -333,7 +333,7 @@ func TestCheckMaturityTransition_AntiPatternRehabilitation(t *testing.T) {
 		},
 		{
 			name: "no rehab when utility below 0.6",
-			data: map[string]interface{}{
+			data: map[string]any{
 				"maturity":      "anti-pattern",
 				"utility":       0.5,
 				"helpful_count": 20.0,
@@ -366,7 +366,7 @@ func TestCheckMaturityTransition_AntiPatternRehabilitation(t *testing.T) {
 func TestCheckMaturityTransition_DefaultValues(t *testing.T) {
 	// When fields are missing, defaults should be applied.
 	dir := t.TempDir()
-	path := writeLearning(t, dir, "test.jsonl", map[string]interface{}{
+	path := writeLearning(t, dir, "test.jsonl", map[string]any{
 		"id": "bare-learning",
 	})
 
@@ -400,7 +400,7 @@ func TestCheckMaturityTransition_DefaultValues(t *testing.T) {
 func TestCheckMaturityTransition_IDFromFilename(t *testing.T) {
 	// When no "id" field, LearningID should be derived from filename.
 	dir := t.TempDir()
-	path := writeLearning(t, dir, "my-learning.jsonl", map[string]interface{}{
+	path := writeLearning(t, dir, "my-learning.jsonl", map[string]any{
 		"maturity": "provisional",
 	})
 
@@ -488,7 +488,7 @@ func TestCheckMaturityTransition_SentinelErrors(t *testing.T) {
 
 func TestApplyMaturityTransition_WritesFile(t *testing.T) {
 	dir := t.TempDir()
-	path := writeLearning(t, dir, "test.jsonl", map[string]interface{}{
+	path := writeLearning(t, dir, "test.jsonl", map[string]any{
 		"id":           "apply-test",
 		"maturity":     "provisional",
 		"utility":      0.8,
@@ -511,7 +511,7 @@ func TestApplyMaturityTransition_WritesFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read updated file: %v", err)
 	}
-	var updated map[string]interface{}
+	var updated map[string]any
 	if err := json.Unmarshal(content, &updated); err != nil {
 		t.Fatalf("parse updated file: %v", err)
 	}
@@ -528,7 +528,7 @@ func TestApplyMaturityTransition_WritesFile(t *testing.T) {
 
 func TestApplyMaturityTransition_NoTransitionDoesNotWriteFile(t *testing.T) {
 	dir := t.TempDir()
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":       "no-change",
 		"maturity": "provisional",
 		"utility":  0.3,
@@ -570,7 +570,7 @@ func TestScanForMaturityTransitions(t *testing.T) {
 	dir := t.TempDir()
 
 	// File that would transition (provisional -> candidate).
-	writeLearning(t, dir, "promote.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "promote.jsonl", map[string]any{
 		"id":           "promote",
 		"maturity":     "provisional",
 		"utility":      0.8,
@@ -578,14 +578,14 @@ func TestScanForMaturityTransitions(t *testing.T) {
 	})
 
 	// File that would NOT transition (stays provisional).
-	writeLearning(t, dir, "stay.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "stay.jsonl", map[string]any{
 		"id":       "stay",
 		"maturity": "provisional",
 		"utility":  0.4,
 	})
 
 	// File that would transition (established -> candidate demotion).
-	writeLearning(t, dir, "demote.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "demote.jsonl", map[string]any{
 		"id":       "demote",
 		"maturity": "established",
 		"utility":  0.3,
@@ -627,16 +627,16 @@ func TestScanForMaturityTransitions_EmptyDir(t *testing.T) {
 func TestGetAntiPatterns(t *testing.T) {
 	dir := t.TempDir()
 
-	writeLearning(t, dir, "anti1.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "anti1.jsonl", map[string]any{
 		"maturity": "anti-pattern",
 	})
-	writeLearning(t, dir, "anti2.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "anti2.jsonl", map[string]any{
 		"maturity": "anti-pattern",
 	})
-	writeLearning(t, dir, "prov.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "prov.jsonl", map[string]any{
 		"maturity": "provisional",
 	})
-	writeLearning(t, dir, "est.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "est.jsonl", map[string]any{
 		"maturity": "established",
 	})
 
@@ -667,16 +667,16 @@ func TestGetAntiPatterns_EmptyDir(t *testing.T) {
 func TestGetEstablishedLearnings(t *testing.T) {
 	dir := t.TempDir()
 
-	writeLearning(t, dir, "est1.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "est1.jsonl", map[string]any{
 		"maturity": "established",
 	})
-	writeLearning(t, dir, "est2.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "est2.jsonl", map[string]any{
 		"maturity": "established",
 	})
-	writeLearning(t, dir, "cand.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "cand.jsonl", map[string]any{
 		"maturity": "candidate",
 	})
-	writeLearning(t, dir, "prov.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "prov.jsonl", map[string]any{
 		"maturity": "provisional",
 	})
 
@@ -702,14 +702,14 @@ func TestGetEstablishedLearnings_EmptyDir(t *testing.T) {
 func TestGetMaturityDistribution(t *testing.T) {
 	dir := t.TempDir()
 
-	writeLearning(t, dir, "p1.jsonl", map[string]interface{}{"maturity": "provisional"})
-	writeLearning(t, dir, "p2.jsonl", map[string]interface{}{"maturity": "provisional"})
-	writeLearning(t, dir, "c1.jsonl", map[string]interface{}{"maturity": "candidate"})
-	writeLearning(t, dir, "e1.jsonl", map[string]interface{}{"maturity": "established"})
-	writeLearning(t, dir, "e2.jsonl", map[string]interface{}{"maturity": "established"})
-	writeLearning(t, dir, "e3.jsonl", map[string]interface{}{"maturity": "established"})
-	writeLearning(t, dir, "a1.jsonl", map[string]interface{}{"maturity": "anti-pattern"})
-	writeLearning(t, dir, "u1.jsonl", map[string]interface{}{"maturity": "bogus-value"})
+	writeLearning(t, dir, "p1.jsonl", map[string]any{"maturity": "provisional"})
+	writeLearning(t, dir, "p2.jsonl", map[string]any{"maturity": "provisional"})
+	writeLearning(t, dir, "c1.jsonl", map[string]any{"maturity": "candidate"})
+	writeLearning(t, dir, "e1.jsonl", map[string]any{"maturity": "established"})
+	writeLearning(t, dir, "e2.jsonl", map[string]any{"maturity": "established"})
+	writeLearning(t, dir, "e3.jsonl", map[string]any{"maturity": "established"})
+	writeLearning(t, dir, "a1.jsonl", map[string]any{"maturity": "anti-pattern"})
+	writeLearning(t, dir, "u1.jsonl", map[string]any{"maturity": "bogus-value"})
 
 	// Invalid JSON counts as unknown.
 	if err := os.WriteFile(filepath.Join(dir, "bad.jsonl"), []byte("not json"), 0644); err != nil {
@@ -744,7 +744,7 @@ func TestGetMaturityDistribution(t *testing.T) {
 func TestGetMaturityDistribution_DefaultsToProvisional(t *testing.T) {
 	// A learning with no maturity field should count as provisional.
 	dir := t.TempDir()
-	writeLearning(t, dir, "nomat.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "nomat.jsonl", map[string]any{
 		"id": "no-maturity",
 	})
 
@@ -771,7 +771,7 @@ func TestGetMaturityDistribution_EmptyDir(t *testing.T) {
 }
 
 func TestStringFromData_RequireNonEmptyFallback(t *testing.T) {
-	data := map[string]interface{}{
+	data := map[string]any{
 		"field": "",
 	}
 	// requireNonEmpty=true with empty value should return default
@@ -787,7 +787,7 @@ func TestStringFromData_RequireNonEmptyFallback(t *testing.T) {
 	}
 
 	// Non-string value should return default
-	data2 := map[string]interface{}{
+	data2 := map[string]any{
 		"field": 42,
 	}
 	got = stringFromData(data2, "field", "default-val", false)
@@ -798,7 +798,7 @@ func TestStringFromData_RequireNonEmptyFallback(t *testing.T) {
 
 func TestApplyMaturityTransition_ReadOnlyFile(t *testing.T) {
 	dir := t.TempDir()
-	path := writeLearning(t, dir, "readonly.jsonl", map[string]interface{}{
+	path := writeLearning(t, dir, "readonly.jsonl", map[string]any{
 		"id":           "readonly-test",
 		"maturity":     "provisional",
 		"utility":      0.8,
@@ -819,7 +819,7 @@ func TestApplyMaturityTransition_ReadOnlyFile(t *testing.T) {
 func TestGetEstablishedLearnings_UnreadableFile(t *testing.T) {
 	dir := t.TempDir()
 	// Write a valid established file
-	writeLearning(t, dir, "est.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "est.jsonl", map[string]any{
 		"maturity": "established",
 	})
 	// Write an unreadable file
@@ -844,7 +844,7 @@ func TestGetEstablishedLearnings_UnreadableFile(t *testing.T) {
 
 func TestGetAntiPatterns_UnreadableFile(t *testing.T) {
 	dir := t.TempDir()
-	writeLearning(t, dir, "anti.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "anti.jsonl", map[string]any{
 		"maturity": "anti-pattern",
 	})
 	unreadable := filepath.Join(dir, "unreadable.jsonl")
@@ -867,7 +867,7 @@ func TestGetAntiPatterns_UnreadableFile(t *testing.T) {
 
 func TestGetMaturityDistribution_UnreadableFile(t *testing.T) {
 	dir := t.TempDir()
-	writeLearning(t, dir, "prov.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "prov.jsonl", map[string]any{
 		"maturity": "provisional",
 	})
 	unreadable := filepath.Join(dir, "unreadable.jsonl")
@@ -891,7 +891,7 @@ func TestGetMaturityDistribution_UnreadableFile(t *testing.T) {
 
 func TestGetMaturityDistribution_EmptyMaturityField(t *testing.T) {
 	dir := t.TempDir()
-	writeLearning(t, dir, "empty-mat.jsonl", map[string]interface{}{
+	writeLearning(t, dir, "empty-mat.jsonl", map[string]any{
 		"id":       "test",
 		"maturity": "",
 	})

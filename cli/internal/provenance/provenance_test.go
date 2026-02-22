@@ -245,7 +245,7 @@ func TestRecord_Fields(t *testing.T) {
 		SourceType:   "transcript",
 		SessionID:    "sess-123",
 		CreatedAt:    time.Now(),
-		Metadata: map[string]interface{}{
+		Metadata: map[string]any{
 			"key": "value",
 		},
 	}

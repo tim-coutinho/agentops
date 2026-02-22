@@ -90,7 +90,7 @@ type ProvenanceRecord struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	// Metadata holds additional provenance data.
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 // Storage is the interface for persisting olympus data.

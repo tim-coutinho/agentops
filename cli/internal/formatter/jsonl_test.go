@@ -64,7 +64,7 @@ func TestJSONLFormatter_Format_FullSession(t *testing.T) {
 	}
 
 	// Parse the output
-	var output map[string]interface{}
+	var output map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &output); err != nil {
 		t.Fatalf("Failed to parse output: %v\nOutput: %s", err, buf.String())
 	}
@@ -81,13 +81,13 @@ func TestJSONLFormatter_Format_FullSession(t *testing.T) {
 	}
 
 	// Check array fields
-	decisions := output["decisions"].([]interface{})
+	decisions := output["decisions"].([]any)
 	if len(decisions) != 2 {
 		t.Errorf("decisions length = %d, want 2", len(decisions))
 	}
 
 	// Check tokens
-	tokens := output["tokens"].(map[string]interface{})
+	tokens := output["tokens"].(map[string]any)
 	if int(tokens["total"].(float64)) != 1500 {
 		t.Errorf("tokens.total = %v, want 1500", tokens["total"])
 	}
@@ -107,7 +107,7 @@ func TestJSONLFormatter_Format_MinimalSession(t *testing.T) {
 		t.Fatalf("Format() error = %v", err)
 	}
 
-	var output map[string]interface{}
+	var output map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &output); err != nil {
 		t.Fatalf("Failed to parse output: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestJSONLFormatter_Format_EmptyFields(t *testing.T) {
 	}
 
 	// Should still produce valid JSON
-	var output map[string]interface{}
+	var output map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &output); err != nil {
 		t.Fatalf("Output is not valid JSON: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestJSONLFormatter_Format_SpecialCharacters(t *testing.T) {
 		t.Fatalf("Format() error = %v", err)
 	}
 
-	var output map[string]interface{}
+	var output map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &output); err != nil {
 		t.Fatalf("Failed to parse output with special chars: %v", err)
 	}

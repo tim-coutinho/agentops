@@ -38,7 +38,7 @@ type ToolCall struct {
 	Name string `json:"name"`
 
 	// Input contains the parameters passed to the tool.
-	Input map[string]interface{} `json:"input,omitempty"`
+	Input map[string]any `json:"input,omitempty"`
 
 	// Output is the result returned by the tool.
 	Output string `json:"output,omitempty"`
@@ -132,7 +132,7 @@ type Candidate struct {
 	ExtractedAt time.Time `json:"extracted_at"`
 
 	// Metadata contains additional extraction metadata.
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 
 	// --- Supersession fields (ol-a46.1.4) ---
 
@@ -817,5 +817,5 @@ type PlanManifestEntry struct {
 	SupersededBy string `json:"superseded_by,omitempty"`
 
 	// Metadata contains additional plan metadata.
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }

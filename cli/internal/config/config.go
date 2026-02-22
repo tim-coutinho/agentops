@@ -433,7 +433,7 @@ type ResolvedConfig struct {
 }
 
 type resolved struct {
-	Value  interface{} `json:"value"`
+	Value  any `json:"value"`
 	Source Source      `json:"source"`
 }
 

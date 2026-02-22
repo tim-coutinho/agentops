@@ -64,7 +64,7 @@ func TestGetRepoRoot_EmptyDir(t *testing.T) {
 func TestCreateWorktree_HappyPath(t *testing.T) {
 	repo := initGitRepo(t)
 
-	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, func(f string, a ...interface{}) {})
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, func(f string, a ...any) {})
 	if err != nil {
 		t.Fatalf("CreateWorktree: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestMergeWorktree_HappyPath(t *testing.T) {
 
 	// Merge the worktree back
 	var verboseOutput []string
-	verbosef := func(f string, a ...interface{}) {
+	verbosef := func(f string, a ...any) {
 		verboseOutput = append(verboseOutput, f)
 	}
 	err = MergeWorktree(repo, worktreePath, runID, 30*time.Second, verbosef)
@@ -480,7 +480,7 @@ func TestMergeWorktree_DirtyRepoRetryVerbose(t *testing.T) {
 
 	// Use verbose logging to exercise the retry verbose path
 	var verboseOutput []string
-	verbosef := func(f string, a ...interface{}) {
+	verbosef := func(f string, a ...any) {
 		verboseOutput = append(verboseOutput, fmt.Sprintf(f, a...))
 	}
 
@@ -522,7 +522,7 @@ func TestCreateWorktree_WithVerbosef(t *testing.T) {
 	repo := initGitRepo(t)
 
 	var verboseOutput []string
-	verbosef := func(f string, a ...interface{}) {
+	verbosef := func(f string, a ...any) {
 		verboseOutput = append(verboseOutput, fmt.Sprintf(f, a...))
 	}
 
@@ -665,7 +665,7 @@ func TestCreateWorktree_DetachedHEAD(t *testing.T) {
 
 	// CreateWorktree should still work from detached HEAD
 	// (it resolves HEAD commit, not branch)
-	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, func(f string, a ...interface{}) {})
+	worktreePath, runID, err := CreateWorktree(repo, 30*time.Second, func(f string, a ...any) {})
 	if err != nil {
 		t.Fatalf("CreateWorktree from detached HEAD: %v", err)
 	}
@@ -1004,7 +1004,7 @@ func TestCreateWorktree_AgentsDirWarning(t *testing.T) {
 	runGit(t, repo, "commit", "-m", "add .agents file to block directory creation")
 
 	var warnings []string
-	verbosef := func(f string, a ...interface{}) {
+	verbosef := func(f string, a ...any) {
 		warnings = append(warnings, fmt.Sprintf(f, a...))
 	}
 

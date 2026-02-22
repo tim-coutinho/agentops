@@ -304,7 +304,7 @@ func TestChainEntrySkippedJSONFields(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("unmarshal to map: %v", err)
 	}
@@ -331,7 +331,7 @@ func TestChainEntryOmitemptyFields(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("unmarshal to map: %v", err)
 	}
@@ -410,7 +410,7 @@ func TestChainOmitemptyEpicID(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("unmarshal to map: %v", err)
 	}
@@ -517,7 +517,7 @@ func TestValidationResultOmitemptyFields(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("unmarshal to map: %v", err)
 	}
@@ -585,7 +585,7 @@ func TestFindMatchJSONFields(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("unmarshal to map: %v", err)
 	}
@@ -683,7 +683,7 @@ func TestTierNilPointerInChainEntry(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		t.Fatalf("unmarshal to map: %v", err)
 	}
