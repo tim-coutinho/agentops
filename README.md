@@ -21,15 +21,7 @@
 
 ## How It Works
 
-Coding agents get a blank context window every session. AgentOps is a toolbox of primitives — pick the ones you need, skip the ones you don't. Every skill works standalone. Swarm any of them for parallelism. Chain them into a pipeline when you want structure. Knowledge compounds between sessions automatically.
-
-**DevOps' Three Ways** — applied to the agent loop as composable primitives:
-
-- **Flow** (`/research`, `/plan`, `/crank`, `/swarm`, `/rpi`): orchestration skills that move work through the system. Single-piece flow, minimizing context switches. Swarm parallelizes any skill; crank runs dependency-ordered waves; rpi chains the full pipeline.
-- **Feedback** (`/council`, `/vibe`, `/pre-mortem`): shorten the feedback loop until defects can't survive it. Independent judges catch issues before code ships. Problems found Friday don't wait until Monday.
-- **Learning** (`.agents/`, `ao` CLI, `/retro`, `/knowledge`): stop rediscovering what you already know. Every session extracts learnings into an append-only ledger, scores them by freshness, and re-injects the best ones at next session start. Session 50 knows what session 1 learned the hard way.
-
-**Composition patterns** — skills chain in practice:
+Coding agents get a blank context window every session. AgentOps is a toolbox of skills you compose however you want — use one, chain several, or run the full pipeline. Knowledge compounds between sessions automatically.
 
 | Pattern | Chain | When |
 |---------|-------|------|
@@ -42,7 +34,13 @@ Coding agents get a blank context window every session. AgentOps is a toolbox of
 | **Knowledge query** | `/knowledge` → `/research` (if gaps) | Understanding before building |
 | **Standalone review** | `/council validate <target>` | Ad-hoc multi-judge review |
 
-Here's what that looks like — your agent validates a PR, and the council verdict, decisions, and patterns are automatically written to `.agents/`. Three weeks later, different task, but your agent already knows:
+Every skill maps to one of **DevOps' Three Ways**, applied to the agent loop:
+
+- **Flow** (`/research`, `/plan`, `/crank`, `/swarm`, `/rpi`): move work through the system. Swarm parallelizes any skill; crank runs dependency-ordered waves; rpi chains the full pipeline.
+- **Feedback** (`/council`, `/vibe`, `/pre-mortem`): shorten the feedback loop until defects can't survive it. Independent judges catch issues before code ships.
+- **Learning** (`.agents/`, `ao` CLI, `/retro`, `/knowledge`): stop rediscovering what you already know. Every session extracts learnings, scores them by freshness, and re-injects the best ones next time. Session 50 knows what session 1 learned the hard way.
+
+The learning part is what makes it compound. Your agent validates a PR, and the decisions and patterns are written to `.agents/`. Three weeks later, different task, but your agent already knows:
 
 ```text
 > /research "retry backoff strategies"
