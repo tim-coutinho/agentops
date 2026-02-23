@@ -42,6 +42,8 @@ release-notes.md
 # Claude session artifacts
 .agents/
 tests/claude-code/.agents/
+# Allow testdata fixtures that live under .agents/
+!cli/cmd/ao/testdata/agents-fixture/.agents/
 
 # Runtime state
 state.json
