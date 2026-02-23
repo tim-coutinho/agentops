@@ -173,7 +173,7 @@ This project uses **<tool>** for <purpose>. Run `<onboard-cmd>` to get started.
 **DON'T:**
 - Overwrite existing content without confirmation
 - Generate code documentation (use `$doc`)
-- Create CI/CD files (use `$golden-init`)
+- Create CI/CD files (out of scope — configure CI/CD separately)
 
 ## Examples
 
