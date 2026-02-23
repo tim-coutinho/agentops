@@ -945,6 +945,28 @@ BLOCKED_VIBE
         log_fail "Blocked status not recordable"
     fi
 
+    # Test: pre-mortem gate blocks on critical findings
+    cat > .agents/council/test-premortem-blocked.md << 'BLOCKED_PM'
+# Pre-mortem: Test
+
+## Council Verdict
+
+**Result:** FAIL (1 critical)
+
+## Findings
+
+### CRITICAL
+1. Plan has no error handling strategy for API failures
+BLOCKED_PM
+
+    echo '{"step":"pre-mortem","status":"blocked","reason":"1 critical finding in plan","time":"2026-02-03T12:05:00Z"}' >> .agents/ao/chain.jsonl
+
+    if grep -q '"step":"pre-mortem","status":"blocked"' .agents/ao/chain.jsonl; then
+        log_pass "Pre-mortem gate can block on critical findings"
+    else
+        log_fail "Pre-mortem gate block not recorded"
+    fi
+
     cd "$SCRIPT_DIR"
 }
 
