@@ -47,9 +47,14 @@ func TestHooksPlans_generateMinimalHooksConfig(t *testing.T) {
 		t.Fatalf("Stop hooks: got %d, want 1", len(config.Stop[0].Hooks))
 	}
 
+	// SessionEnd should also have hooks now (forge + maturity)
+	if len(config.SessionEnd) == 0 {
+		t.Error("expected SessionEnd hooks, got none")
+	}
+
 	// All other events should be empty
 	otherEvents := []string{
-		"SessionEnd", "PreToolUse", "PostToolUse",
+		"PreToolUse", "PostToolUse",
 		"UserPromptSubmit", "TaskCompleted", "PreCompact",
 		"SubagentStop", "WorktreeCreate", "WorktreeRemove", "ConfigChange",
 	}

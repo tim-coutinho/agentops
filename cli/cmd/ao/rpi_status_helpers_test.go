@@ -2132,9 +2132,12 @@ func TestHooks_GenerateMinimalHooksConfig_Structure(t *testing.T) {
 	if len(hooks.Stop) == 0 {
 		t.Error("expected Stop")
 	}
+	if len(hooks.SessionEnd) == 0 {
+		t.Error("expected SessionEnd")
+	}
 
 	emptyEvents := []string{
-		"SessionEnd", "PreToolUse", "PostToolUse",
+		"PreToolUse", "PostToolUse",
 		"UserPromptSubmit", "TaskCompleted", "PreCompact",
 		"SubagentStop", "WorktreeCreate", "WorktreeRemove", "ConfigChange",
 	}

@@ -167,13 +167,9 @@ This command:
   3. Creates a backup of the original settings
   4. Writes the updated configuration
 
-Default mode installs flywheel hooks only (SessionStart + Stop).
+Default mode installs bare-minimum flywheel hooks (SessionStart + SessionEnd + Stop).
 
-Use --full to install all 12 events with hook scripts copied to ~/.agentops/:
-  SessionStart, SessionEnd, PreToolUse, PostToolUse,
-  UserPromptSubmit, TaskCompleted, Stop, PreCompact,
-  SubagentStop, WorktreeCreate, WorktreeRemove, ConfigChange
-
+Use --full to install the plugin hooks.json with hook scripts copied to ~/.agentops/.
 Use --source-dir with --full to specify the agentops repo checkout path.
 Use --force to overwrite existing ao hooks.`,
 	RunE: runHooksInstall,
@@ -293,20 +289,27 @@ func replacePluginRoot(config *HooksConfig, basePath string) {
 	}
 }
 
-// generateMinimalHooksConfig returns the backwards-compatible minimal config (SessionStart + Stop only).
+// generateMinimalHooksConfig returns the bare-minimum flywheel config (SessionStart + SessionEnd + Stop).
 func generateMinimalHooksConfig() *HooksConfig {
 	return &HooksConfig{
 		SessionStart: []HookGroup{
 			{
 				Hooks: []HookEntry{
-					{Type: "command", Command: "ao inject --apply-decay --max-tokens 1500 2>/dev/null || true"},
+					{Type: "command", Command: "ao extract 2>/dev/null; ao inject --apply-decay --max-tokens 1500 2>/dev/null || true"},
+				},
+			},
+		},
+		SessionEnd: []HookGroup{
+			{
+				Hooks: []HookEntry{
+					{Type: "command", Command: "ao forge transcript --last-session --quiet --queue 2>/dev/null; ao maturity --scan 2>/dev/null; ao maturity --expire --archive 2>/dev/null; ao maturity --evict --archive 2>/dev/null || true", Timeout: 35},
 				},
 			},
 		},
 		Stop: []HookGroup{
 			{
 				Hooks: []HookEntry{
-					{Type: "command", Command: "ao forge transcript --last-session --quiet --queue 2>/dev/null; ao task-sync --promote 2>/dev/null || true"},
+					{Type: "command", Command: "ao flywheel close-loop --quiet 2>/dev/null || true", Timeout: 15},
 				},
 			},
 		},
@@ -353,14 +356,21 @@ func runHooksInit(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(data))
 
 	case "shell":
-		fmt.Println("# SessionStart hook (knowledge injection)")
+		fmt.Println("# SessionStart hook (extract pending + inject knowledge)")
 		fmt.Printf("# %s\n", hooks.SessionStart[0].Hooks[0].Command)
+		fmt.Println("ao extract")
 		fmt.Println("ao inject --apply-decay --max-tokens 1500")
 		fmt.Println()
-		fmt.Println("# Stop hook (learning extraction)")
-		fmt.Printf("# %s\n", hooks.Stop[0].Hooks[0].Command)
+		fmt.Println("# SessionEnd hook (forge learnings + maturity)")
+		fmt.Printf("# %s\n", hooks.SessionEnd[0].Hooks[0].Command)
 		fmt.Println("ao forge transcript --last-session --quiet --queue")
-		fmt.Println("ao task-sync --promote")
+		fmt.Println("ao maturity --scan")
+		fmt.Println("ao maturity --expire --archive")
+		fmt.Println("ao maturity --evict --archive")
+		fmt.Println()
+		fmt.Println("# Stop hook (close flywheel)")
+		fmt.Printf("# %s\n", hooks.Stop[0].Hooks[0].Command)
+		fmt.Println("ao flywheel close-loop --quiet")
 
 	default:
 		return fmt.Errorf("unknown format: %s (use json or shell)", hooksOutputFormat)
@@ -696,10 +706,9 @@ func printHooksInstallSummary(settingsPath string, newHooks *HooksConfig, events
 		}
 	} else {
 		fmt.Println("Hooks installed:")
-		fmt.Println("  SessionStart: ao inject --apply-decay")
-		fmt.Println("  Stop: ao forge + ao task-sync")
-		fmt.Println()
-		fmt.Println("Run 'ao hooks install --full' for complete hook coverage (all 12 events).")
+		fmt.Println("  SessionStart: ao extract + ao inject")
+		fmt.Println("  SessionEnd: ao forge + ao maturity")
+		fmt.Println("  Stop: ao flywheel close-loop")
 	}
 	fmt.Println()
 	fmt.Println("Run 'ao hooks test' to verify the installation.")
@@ -1000,7 +1009,7 @@ func runAoPathTest(testNum int, allPassed *bool) {
 }
 
 func runRequiredSubcommandsTest(testNum int, allPassed *bool) {
-	subcommands := []string{"inject", "forge", "task-sync", "feedback-loop"}
+	subcommands := []string{"inject", "forge", "maturity", "flywheel"}
 	fmt.Printf("%d. Checking required subcommands... ", testNum)
 	missingCmds := []string{}
 	for _, subcmd := range subcommands {

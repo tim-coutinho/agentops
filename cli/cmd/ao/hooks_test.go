@@ -20,30 +20,46 @@ func TestGenerateMinimalHooksConfig(t *testing.T) {
 		t.Error("expected Stop hooks, got none")
 	}
 
-	// Verify SessionStart contains ao inject
+	// Verify SessionStart contains ao extract + ao inject
 	found := false
 	for _, g := range hooks.SessionStart {
 		for _, h := range g.Hooks {
-			if h.Type == "command" && h.Command == "ao inject --apply-decay --max-tokens 1500 2>/dev/null || true" {
+			if h.Type == "command" && strings.Contains(h.Command, "ao extract") && strings.Contains(h.Command, "ao inject") {
 				found = true
 			}
 		}
 	}
 	if !found {
-		t.Error("expected ao inject command in SessionStart hooks")
+		t.Error("expected ao extract + ao inject command in SessionStart hooks")
 	}
 
-	// Verify Stop contains ao forge
+	// Verify SessionEnd contains ao forge + ao maturity
+	if len(hooks.SessionEnd) == 0 {
+		t.Error("expected SessionEnd hooks, got none")
+	}
+	found = false
+	for _, g := range hooks.SessionEnd {
+		for _, h := range g.Hooks {
+			if h.Type == "command" && strings.Contains(h.Command, "ao forge") && strings.Contains(h.Command, "ao maturity") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("expected ao forge + ao maturity command in SessionEnd hooks")
+	}
+
+	// Verify Stop contains ao flywheel close-loop
 	found = false
 	for _, g := range hooks.Stop {
 		for _, h := range g.Hooks {
-			if h.Type == "command" && h.Command == "ao forge transcript --last-session --quiet --queue 2>/dev/null; ao task-sync --promote 2>/dev/null || true" {
+			if h.Type == "command" && strings.Contains(h.Command, "ao flywheel close-loop") {
 				found = true
 			}
 		}
 	}
 	if !found {
-		t.Error("expected ao forge command in Stop hooks")
+		t.Error("expected ao flywheel close-loop command in Stop hooks")
 	}
 }
 
