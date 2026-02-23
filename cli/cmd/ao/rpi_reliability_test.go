@@ -571,6 +571,46 @@ func TestReadRunHeartbeat_MalformedTimestamp(t *testing.T) {
 	}
 }
 
+func TestReadRunHeartbeat_RFC3339Fallback(t *testing.T) {
+	dir := t.TempDir()
+	runID := "rfc3339-hb"
+	runDir := rpiRunRegistryDir(dir, runID)
+	if err := os.MkdirAll(runDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	heartbeatPath := filepath.Join(runDir, "heartbeat.txt")
+	tsRaw := "2026-02-23T10:11:12Z\n"
+	if err := os.WriteFile(heartbeatPath, []byte(tsRaw), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := readRunHeartbeat(dir, runID)
+	if ts.IsZero() {
+		t.Fatal("expected non-zero heartbeat for RFC3339 timestamp")
+	}
+}
+
+func TestReadRunHeartbeat_UsesFirstNonEmptyLine(t *testing.T) {
+	dir := t.TempDir()
+	runID := "multiline-hb"
+	runDir := rpiRunRegistryDir(dir, runID)
+	if err := os.MkdirAll(runDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	heartbeatPath := filepath.Join(runDir, "heartbeat.txt")
+	content := "\n2026-02-23T10:11:12.123456789Z\njunk-line\n"
+	if err := os.WriteFile(heartbeatPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := readRunHeartbeat(dir, runID)
+	if ts.IsZero() {
+		t.Fatal("expected non-zero heartbeat from first non-empty line")
+	}
+}
+
 // ─── handleGateRetry exhaustion path ─────────────────────────────────────────
 
 // TestHandleGateRetry_ExhaustsRetries verifies that handleGateRetry returns

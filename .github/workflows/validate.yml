@@ -220,6 +220,16 @@ jobs:
           path: ${{ runner.temp }}/agentops-security/
           retention-days: 7
 
+  contract-compatibility-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run contract compatibility check
+        run: |
+          chmod +x scripts/check-contract-compatibility.sh
+          ./scripts/check-contract-compatibility.sh
+
   plugin-load-test:
     runs-on: ubuntu-latest
     steps:
@@ -426,7 +436,7 @@ jobs:
           ./tests/e2e-install-test.sh
 
   summary:
-    needs: [doc-release-gate, smoke-test, hook-preflight, embedded-sync, cli-docs-parity, shellcheck, markdownlint, security-scan, security-toolchain-gate, plugin-load-test, go-build, e2e-install-test]
+    needs: [doc-release-gate, smoke-test, hook-preflight, embedded-sync, cli-docs-parity, shellcheck, markdownlint, security-scan, security-toolchain-gate, contract-compatibility-gate, plugin-load-test, go-build, e2e-install-test]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -442,6 +452,7 @@ jobs:
           echo "markdownlint: ${{ needs.markdownlint.result }}"
           echo "security-scan: ${{ needs.security-scan.result }}"
           echo "security-toolchain-gate: ${{ needs.security-toolchain-gate.result }} (non-blocking)"
+          echo "contract-compatibility-gate: ${{ needs.contract-compatibility-gate.result }}"
           echo "plugin-load-test: ${{ needs.plugin-load-test.result }}"
           echo "go-build: ${{ needs.go-build.result }}"
           echo "e2e-install-test: ${{ needs.e2e-install-test.result }}"

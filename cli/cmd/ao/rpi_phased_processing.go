@@ -926,6 +926,24 @@ func parsePhasedState(data []byte) (*phasedState, error) {
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, fmt.Errorf("unmarshal state: %w", err)
 	}
+	if strings.TrimSpace(state.Goal) == "" {
+		state.Goal = "unknown-goal"
+	}
+	// Backward compatibility: older/partial states may have zero values.
+	// Normalize to safe defaults instead of hard-failing recovery paths.
+	if state.Phase <= 0 {
+		state.Phase = 1
+	}
+	if state.Cycle <= 0 {
+		state.Cycle = 1
+	}
+	// Backward compatibility: older states may omit start_phase.
+	if state.StartPhase == 0 {
+		state.StartPhase = state.Phase
+	}
+	if state.StartPhase < 1 || state.StartPhase > len(phases) {
+		state.StartPhase = state.Phase
+	}
 
 	// Ensure maps are never nil after deserialization.
 	if state.Verdicts == nil {
@@ -969,11 +987,20 @@ func readRunHeartbeat(cwd, runID string) time.Time {
 	if err != nil {
 		return time.Time{}
 	}
-	ts, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(string(data)))
-	if err != nil {
-		return time.Time{}
+	for _, line := range strings.Split(string(data), "\n") {
+		candidate := strings.TrimSpace(line)
+		if candidate == "" {
+			continue
+		}
+		if ts, err := time.Parse(time.RFC3339Nano, candidate); err == nil {
+			return ts
+		}
+		if ts, err := time.Parse(time.RFC3339, candidate); err == nil {
+			return ts
+		}
+		break
 	}
-	return ts
+	return time.Time{}
 }
 
 // --- Ratchet and logging ---

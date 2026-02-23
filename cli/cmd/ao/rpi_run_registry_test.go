@@ -239,6 +239,45 @@ func TestLoadPhasedState_MapsNeverNil(t *testing.T) {
 	loaded.Attempts["phase_1"] = 1
 }
 
+func TestParsePhasedState_DefaultsStartPhaseToPhase(t *testing.T) {
+	stateJSON := `{"schema_version":1,"goal":"x","phase":2,"cycle":1,"started_at":"2026-02-19T00:00:00Z"}`
+	loaded, err := parsePhasedState([]byte(stateJSON))
+	if err != nil {
+		t.Fatalf("parsePhasedState: %v", err)
+	}
+	if loaded.StartPhase != loaded.Phase {
+		t.Fatalf("StartPhase: got %d, want %d", loaded.StartPhase, loaded.Phase)
+	}
+}
+
+func TestParsePhasedState_NormalizesLegacyZeroValues(t *testing.T) {
+	stateJSON := `{"schema_version":1,"goal":"x","phase":0,"start_phase":9,"cycle":0,"started_at":"2026-02-19T00:00:00Z"}`
+	loaded, err := parsePhasedState([]byte(stateJSON))
+	if err != nil {
+		t.Fatalf("parsePhasedState: %v", err)
+	}
+	if loaded.Phase != 1 {
+		t.Fatalf("Phase: got %d, want 1", loaded.Phase)
+	}
+	if loaded.Cycle != 1 {
+		t.Fatalf("Cycle: got %d, want 1", loaded.Cycle)
+	}
+	if loaded.StartPhase != loaded.Phase {
+		t.Fatalf("StartPhase: got %d, want %d", loaded.StartPhase, loaded.Phase)
+	}
+}
+
+func TestParsePhasedState_NormalizesMissingGoal(t *testing.T) {
+	stateJSON := `{"schema_version":1,"phase":1,"cycle":1,"started_at":"2026-02-19T00:00:00Z"}`
+	loaded, err := parsePhasedState([]byte(stateJSON))
+	if err != nil {
+		t.Fatalf("parsePhasedState: %v", err)
+	}
+	if loaded.Goal != "unknown-goal" {
+		t.Fatalf("Goal: got %q, want unknown-goal", loaded.Goal)
+	}
+}
+
 // TestRunRegistry_DirectoryLayout verifies that savePhasedState creates the
 // expected .agents/rpi/runs/<run-id>/ directory layout (acceptance criterion:
 // content check for "runs/").
