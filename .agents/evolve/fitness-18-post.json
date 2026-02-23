@@ -1,0 +1,236 @@
+{
+  "timestamp": "2026-02-23T09:42:25Z",
+  "git_sha": "f5409d4",
+  "goals": [
+    {
+      "goal_id": "pillar-coverage",
+      "result": "pass",
+      "duration_s": 0.018265182,
+      "weight": 7
+    },
+    {
+      "goal_id": "go-complexity-gate",
+      "result": "pass",
+      "duration_s": 0.013668212,
+      "output": "No changed non-test Go files under cli/.",
+      "weight": 5
+    },
+    {
+      "goal_id": "wiring-closure",
+      "result": "pass",
+      "duration_s": 0.185004988,
+      "output": "All wiring checks passed",
+      "weight": 6
+    },
+    {
+      "goal_id": "telemetry-coverage",
+      "result": "pass",
+      "duration_s": 0.004787237,
+      "weight": 5
+    },
+    {
+      "goal_id": "compaction-proofing",
+      "result": "pass",
+      "duration_s": 0.003425521,
+      "weight": 5
+    },
+    {
+      "goal_id": "no-stale-goals",
+      "result": "pass",
+      "duration_s": 0.905084944,
+      "output": "No trivially-true stale goals found.",
+      "weight": 7
+    },
+    {
+      "goal_id": "goal-quality",
+      "result": "pass",
+      "duration_s": 0.759101399,
+      "weight": 7
+    },
+    {
+      "goal_id": "product-freshness",
+      "result": "pass",
+      "duration_s": 0.019069665,
+      "weight": 7
+    },
+    {
+      "goal_id": "go-cli-builds",
+      "result": "pass",
+      "duration_s": 0.186868586,
+      "weight": 5
+    },
+    {
+      "goal_id": "go-cli-tests",
+      "result": "pass",
+      "duration_s": 58.391812826,
+      "weight": 5
+    },
+    {
+      "goal_id": "full-test-suite",
+      "result": "pass",
+      "duration_s": 2.334352722,
+      "output": "═══════════════════════════════════════════\nAgentOps Plugin Test Suite\n═══════════════════════════════════════════\n\n\u001b[0;34m[TEST]\u001b[0m Tier 1: Static Validation\n\u001b[0;32m  ✓\u001b[0m Manifest schema validation\n\u001b[0;32m  ✓\u001b[0m plugin.json valid\n\u001b[0;32m  ✓\u001b[0m hooks.json valid\n\u001b[0;32m  ✓\u001b[0m All 52 skills have valid SKILL.md\n\u001b[0",
+      "weight": 4
+    },
+    {
+      "goal_id": "go-vet-clean",
+      "result": "pass",
+      "duration_s": 0.777860332,
+      "weight": 3
+    },
+    {
+      "goal_id": "hook-preflight",
+      "result": "pass",
+      "duration_s": 0.141863525,
+      "weight": 4
+    },
+    {
+      "goal_id": "toolchain-security-gate",
+      "result": "pass",
+      "duration_s": 0.091674972,
+      "weight": 4
+    },
+    {
+      "goal_id": "ci-security-toolchain-gate",
+      "result": "pass",
+      "duration_s": 0.004094059,
+      "weight": 4
+    },
+    {
+      "goal_id": "release-security-gate",
+      "result": "pass",
+      "duration_s": 0.004715423,
+      "weight": 4
+    },
+    {
+      "goal_id": "go-coverage-floor",
+      "result": "pass",
+      "duration_s": 56.711939649,
+      "weight": 2
+    },
+    {
+      "goal_id": "smoke-tests",
+      "result": "pass",
+      "duration_s": 2.024511177,
+      "output": "\u001b[0;34m[TEST]\u001b[0m Validating manifests against schemas...\n\u001b[0;32m  ✓\u001b[0m Manifest schemas valid\n\u001b[0;34m[TEST]\u001b[0m Validating skill structure...\n\u001b[0;32m  ✓\u001b[0m All 52 skills have valid SKILL.md\n\u001b[0;34m[TEST]\u001b[0m Validating council/crank flag allowlists...\n\u001b[0;32m  ✓\u001b[0m council validate-skill checks passed\n\u001b[0;32m  ✓\u001b[0m crank validate-skill checks passed\n\u001b[0;34m[TEST]\u001b[0m Validating agents structure...\n\u001b[0;32m  ✓\u001b[0m Found 2 agents\n\u001b[0;34m[TEST]\u001b[0m Validating ao CLI...\n\u001b[0;32m  ✓\u001b[0",
+      "weight": 3
+    },
+    {
+      "goal_id": "opencode-live",
+      "result": "pass",
+      "duration_s": 0.047197958,
+      "output": "SKIP: opencode not in PATH",
+      "weight": 2
+    },
+    {
+      "goal_id": "go-absolute-complexity-ceiling",
+      "result": "pass",
+      "duration_s": 0.072548113,
+      "output": "All functions in cli/ are below complexity 10.",
+      "weight": 5
+    },
+    {
+      "goal_id": "go-internal-complexity-ceiling",
+      "result": "pass",
+      "duration_s": 0.03127992,
+      "output": "All functions in cli/internal/ are below complexity 8.",
+      "weight": 4
+    },
+    {
+      "goal_id": "go-cmdao-complexity-tracking",
+      "result": "pass",
+      "duration_s": 0.043640395,
+      "output": "All functions in cli/cmd/ao/ are below complexity 10.",
+      "weight": 3
+    },
+    {
+      "goal_id": "go-per-package-coverage-floor",
+      "result": "pass",
+      "duration_s": 57.395419405,
+      "output": "WARN: github.com/boshu2/agentops/cli/embedded has no test files (counted as 0% coverage)\nWARN: github.com/boshu2/agentops/cli/internal/safety has no test files (counted as 0% coverage)\nAll packages meet 60% per-package coverage floor.",
+      "weight": 3
+    },
+    {
+      "goal_id": "ao-goals-builds",
+      "result": "pass",
+      "duration_s": 0.227393674,
+      "weight": 5
+    },
+    {
+      "goal_id": "manifest-versions-match",
+      "result": "pass",
+      "duration_s": 0.007120145,
+      "weight": 3
+    },
+    {
+      "goal_id": "skill-validation",
+      "result": "pass",
+      "duration_s": 4.814255716,
+      "output": "╔════════════════════════════════════════════════════════════╗\n║   AgentOps Skill Validation Test Suite                     ║\n╠════════════════════════════════════════════════════════════╣\n║  Tests: SKILL.md + frontmatter + skill-specific validat",
+      "weight": 2
+    },
+    {
+      "goal_id": "evolve-cycle-logging",
+      "result": "pass",
+      "duration_s": 0.00263363,
+      "output": "WARN: cycle-history.jsonl exists but is empty.",
+      "weight": 6
+    },
+    {
+      "goal_id": "skill-semantic-stability",
+      "result": "pass",
+      "duration_s": 0.042524405,
+      "weight": 3
+    },
+    {
+      "goal_id": "all-skills-have-frontmatter",
+      "result": "pass",
+      "duration_s": 0.265473615,
+      "weight": 3
+    },
+    {
+      "goal_id": "session-start-injects-knowledge",
+      "result": "pass",
+      "duration_s": 0.002232761,
+      "weight": 4
+    },
+    {
+      "goal_id": "evolve-kill-switch",
+      "result": "pass",
+      "duration_s": 0.003560002,
+      "weight": 4
+    },
+    {
+      "goal_id": "rpi-phased-context-discipline",
+      "result": "pass",
+      "duration_s": 0.18355679,
+      "weight": 3
+    },
+    {
+      "goal_id": "flywheel-proof-passes",
+      "result": "pass",
+      "duration_s": 0.253601779,
+      "output": "[proof-run] === SETUP ===\n[proof-run] Fixture:  /home/boful/agentops/tests/fixtures/proof-repo\n[proof-run] Work dir: /tmp/flywheel-proof-io6j3a\n[proof-run] Work dir initialized\n[proof-run] \n[proof-run] ===================================================================\n[proof-run] SESSION 1: Discovery\n[proof-run]   Simulate /research + /learn on the proof-repo codebase.\n[proof-run]   Assert: learnings exist with valid frontmatter.\n[proof-run] =====================================================",
+      "weight": 6
+    },
+    {
+      "goal_id": "starter-skill-discoverability",
+      "result": "pass",
+      "duration_s": 0.013343199,
+      "weight": 3
+    },
+    {
+      "goal_id": "onboarding-path-completeness",
+      "result": "pass",
+      "duration_s": 0.001590714,
+      "weight": 3
+    }
+  ],
+  "summary": {
+    "total": 35,
+    "passing": 35,
+    "failing": 0,
+    "skipped": 0,
+    "score": 100
+  }
+}
