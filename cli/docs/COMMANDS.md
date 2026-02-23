@@ -15,121 +15,6 @@
 
 ## Commands
 
-### `ao anti-patterns`
-
-List learnings that have been marked as anti-patterns.
-
-```
-ao anti-patterns [flags]
-```
-
----
-
-### `ao badge`
-
-Display a visual badge showing knowledge flywheel health status.
-
-```
-ao badge [flags]
-```
-
----
-
-### `ao batch-feedback`
-
-Process feedback loop for all sessions that have citations but no feedback.
-
-```
-ao batch-feedback [flags]
-```
-
-**Flags:**
-
-```
-      --days int               Process sessions from the last N days (default 7)
-  -h, --help                   help for batch-feedback
-      --max-runtime duration   Maximum wall-clock runtime for this invocation (0 disables)
-      --max-sessions int       Process at most N sessions per run (0 = no limit)
-      --reward float           Override reward value for all sessions (0.0-1.0); -1 = compute from transcript (default -1)
-```
-
----
-
-### `ao completion`
-
-Generate shell completion scripts for ao.
-
-```
-ao completion [bash|zsh|fish]
-```
-
----
-
-### `ao config`
-
-View and manage AgentOps configuration.
-
-```
-ao config [flags]
-```
-
-**Flags:**
-
-```
-  -h, --help   help for config
-      --show   Show resolved configuration with sources
-```
-
----
-
-### `ao context`
-
-Context health telemetry and handoff guardrails
-
-```
-ao context [command]
-```
-
-**Subcommands:**
-
-#### `ao context guard`
-
-Resolve session telemetry from transcript usage, update budget state,
-
-```
-ao context guard [flags]
-```
-
-**Flags:**
-
-```
-      --agent-name string      Worker/agent name for assignment mapping (default: $CLAUDE_AGENT_NAME)
-      --auto-restart-stale     Attempt tmux restart when stale non-optimal sessions appear dead
-  -h, --help                   help for guard
-      --max-tokens int         Context window size for percentage calculations (default 200000)
-      --prompt string          Current user prompt (used as immediate task hint)
-      --session string         Session ID (default: $CLAUDE_SESSION_ID)
-      --watchdog-minutes int   Mark session stale after N minutes without telemetry updates (default 20)
-      --write-handoff          Write auto-handoff marker when status is CRITICAL
-```
-
-#### `ao context status`
-
-Aggregate context budget telemetry from .agents/ao/context and classify
-
-```
-ao context status [flags]
-```
-
-**Flags:**
-
-```
-  -h, --help                   help for status
-      --watchdog-minutes int   Mark sessions stale after N minutes without telemetry updates (default 20)
-```
-
----
-
 ### `ao demo`
 
 Run an interactive demonstration of AgentOps capabilities.
@@ -148,6 +33,54 @@ ao demo [flags]
 
 ---
 
+### `ao init`
+
+Set up a repository for AgentOps: directories, gitignore, and optional hooks.
+
+```
+ao init [flags]
+```
+
+**Flags:**
+
+```
+      --full            With --hooks, explicitly request full coverage (legacy explicit flag)
+  -h, --help            help for init
+      --hooks           Also register hooks (full 12-event coverage by default; equivalent to ao hooks install --full)
+      --minimal-hooks   With --hooks, install only SessionStart + Stop hooks
+      --stealth         Use .git/info/exclude instead of .gitignore
+```
+
+---
+
+### `ao quick-start`
+
+Initialize AgentOps in your current project.
+
+```
+ao quick-start [flags]
+```
+
+**Flags:**
+
+```
+  -h, --help       help for quick-start
+      --minimal    Minimal setup (just directories)
+      --no-beads   Skip beads initialization
+```
+
+---
+
+### `ao badge`
+
+Display a visual badge showing knowledge flywheel health status.
+
+```
+ao badge [flags]
+```
+
+---
+
 ### `ao doctor`
 
 Run health checks on your AgentOps installation.
@@ -161,118 +94,6 @@ ao doctor [flags]
 ```
   -h, --help   help for doctor
       --json   Output results as JSON
-```
-
----
-
-### `ao extract`
-
-Check for pending session extractions and output a prompt for Claude to process.
-
-```
-ao extract [flags]
-```
-
-**Flags:**
-
-```
-      --all               Process all pending entries
-      --clear             Clear pending queue without processing
-  -h, --help              help for extract
-      --max-content int   Maximum characters of session content to include (default 3000)
-```
-
----
-
-### `ao feedback`
-
-Record reward feedback for a learning to update its utility value.
-
-```
-ao feedback <learning-id> [flags]
-```
-
-**Flags:**
-
-```
-      --alpha float    EMA learning rate (default 0.1)
-      --harmful        Mark as harmful (shortcut for --reward 0.0)
-  -h, --help           help for feedback
-      --helpful        Mark as helpful (shortcut for --reward 1.0)
-      --reward float   Reward value (0.0 to 1.0) (default -1)
-```
-
----
-
-### `ao feedback-loop`
-
-Automatically close the MemRL feedback loop by updating utilities of cited learnings.
-
-```
-ao feedback-loop [flags]
-```
-
-**Flags:**
-
-```
-      --alpha float            EMA learning rate (default 0.1)
-      --citation-type string   Filter citations by type (retrieved, applied, all) (default "retrieved")
-  -h, --help                   help for feedback-loop
-      --reward float           Override reward value (0.0-1.0); -1 = compute from transcript (default -1)
-      --session string         Session ID to process
-      --transcript string      Path to transcript for reward computation
-```
-
----
-
-### `ao flywheel`
-
-Knowledge flywheel operations and status.
-
-```
-ao flywheel [command]
-```
-
-**Subcommands:**
-
-#### `ao flywheel close-loop`
-
-Close the knowledge flywheel loop by chaining:
-
-```
-ao flywheel close-loop [flags]
-```
-
-**Flags:**
-
-```
-  -h, --help                 help for close-loop
-      --pending-dir string   Pending directory to ingest from (default ".agents/knowledge/pending")
-      --quiet                Suppress non-essential output (hook-friendly)
-      --threshold string     Minimum age for auto-promotion (default: 24h) (default "24h")
-```
-
-#### `ao flywheel nudge`
-
-Returns structured JSON combining:
-
-```
-ao flywheel nudge [flags]
-```
-
-#### `ao flywheel status`
-
-Display comprehensive flywheel health status.
-
-```
-ao flywheel status [flags]
-```
-
-**Flags:**
-
-```
-      --days int   Period in days for metrics calculation (default 7)
-  -h, --help       help for status
 ```
 
 ---
@@ -405,6 +226,210 @@ ao gate reject <candidate-id> [flags]
 
 ---
 
+### `ao pool`
+
+Manage knowledge candidates in quality pools.
+
+```
+ao pool [command]
+```
+
+**Subcommands:**
+
+#### `ao pool auto-promote`
+
+Automatically approve (and optionally promote) high-quality candidates
+
+```
+ao pool auto-promote [flags]
+```
+
+**Flags:**
+
+```
+  -h, --help               help for auto-promote
+      --include-gold       Include gold-tier candidates when using --promote (default true)
+      --promote            Also stage+promote eligible candidates into .agents/ (not just approval)
+      --threshold string   Minimum age for auto-promotion (default: 24h) (default "24h")
+```
+
+#### `ao pool batch-promote`
+
+Promote pending pool candidates that meet promotion criteria.
+
+```
+ao pool batch-promote [flags]
+```
+
+**Flags:**
+
+```
+  --dry-run   Show what would be promoted without executing
+  --force     Promote all pending candidates regardless of criteria
+  --min-age   Minimum age threshold (default: 24h)
+      --force            Promote all pending regardless of criteria
+  -h, --help             help for batch-promote
+      --min-age string   Minimum age for promotion eligibility (default "24h")
+```
+
+#### `ao pool ingest`
+
+Ingest pending learnings into the quality pool.
+
+```
+ao pool ingest [<files-or-globs...>] [flags]
+```
+
+**Flags:**
+
+```
+      --dir string   Directory to ingest from when no args are provided (default ".agents/knowledge/pending")
+  -h, --help         help for ingest
+```
+
+#### `ao pool list`
+
+List knowledge candidates filtered by tier and/or status.
+
+```
+ao pool list [flags]
+```
+
+**Flags:**
+
+```
+  -h, --help            help for list
+      --limit int       Maximum results to return (default 50, 0 for unlimited) (default 50)
+      --offset int      Skip first N results (for pagination)
+      --status string   Filter by status (pending, staged, promoted, rejected)
+      --tier string     Filter by tier (gold, silver, bronze)
+  -w, --wide            Show full IDs without truncation
+```
+
+#### `ao pool migrate-legacy`
+
+Move legacy knowledge captures from .agents/knowledge/*.md into
+
+```
+ao pool migrate-legacy [flags]
+```
+
+**Flags:**
+
+```
+  -h, --help                 help for migrate-legacy
+      --pending-dir string   Pending directory for migrated captures (default ".agents/knowledge/pending")
+      --source-dir string    Source directory containing legacy markdown captures (default ".agents/knowledge")
+```
+
+#### `ao pool promote`
+
+Move a staged candidate to the knowledge base (.agents/learnings/ or .agents/patterns/).
+
+```
+ao pool promote <candidate-id> [flags]
+```
+
+#### `ao pool reject`
+
+Mark a candidate as rejected and move to rejected directory.
+
+```
+ao pool reject <candidate-id> [flags]
+```
+
+**Flags:**
+
+```
+  -h, --help            help for reject
+      --reason string   Reason for rejection (required)
+```
+
+#### `ao pool show`
+
+Show detailed information about a pool candidate.
+
+```
+ao pool show <candidate-id> [flags]
+```
+
+#### `ao pool stage`
+
+Move a candidate from pending to staged status.
+
+```
+ao pool stage <candidate-id> [flags]
+```
+
+**Flags:**
+
+```
+  -h, --help              help for stage
+      --min-tier string   Minimum tier threshold (default: bronze)
+```
+
+---
+
+### `ao search`
+
+Search AgentOps knowledge using file-based search.
+
+```
+ao search <query> [flags]
+```
+
+**Flags:**
+
+```
+      --cass          Enable CASS session-aware search with maturity weighting
+  -h, --help          help for search
+      --limit int     Maximum results to return (default 10)
+      --type string   Filter by type: decisions, knowledge, sessions
+      --use-sc        Enable Smart Connections semantic search (requires Obsidian)
+```
+
+---
+
+### `ao status`
+
+Display the current state of AgentOps knowledge base.
+
+```
+ao status [flags]
+```
+
+---
+
+### `ao version`
+
+Display the version, build information, and runtime details.
+
+```
+ao version [flags]
+```
+
+---
+
+### `ao vibe-check`
+
+Run a comprehensive vibe-check analysis on your repository.
+
+```
+ao vibe-check [flags]
+```
+
+**Flags:**
+
+```
+      --full           Show all metrics and findings (verbose)
+  -h, --help           help for vibe-check
+      --markdown       Output as markdown report
+      --repo string    Path to git repository (default ".")
+      --since string   Time window for analysis (e.g., 7d, 30d, 90d) (default "7d")
+```
+
+---
+
 ### `ao goals`
 
 Track, measure, and validate project fitness goals.
@@ -511,300 +536,12 @@ Run and report meta-goals only
 ao goals meta [flags]
 ```
 
----
+#### `ao goals migrate`
 
-### `ao help`
-
-Help provides help for any command in the application.
+Migrate a version 1 GOALS.yaml to version 2 format.
 
 ```
-ao help [command] [flags]
-```
-
----
-
-### `ao hooks`
-
-The hooks command manages Claude Code hooks that automate the CASS knowledge flywheel.
-
-```
-ao hooks [command]
-```
-
-**Subcommands:**
-
-#### `ao hooks init`
-
-Generate Claude Code hooks configuration for the CASS knowledge flywheel.
-
-```
-ao hooks init [flags]
-```
-
-**Flags:**
-
-```
-      --format string   Output format: json, shell (default "json")
-  -h, --help            help for init
-```
-
-#### `ao hooks install`
-
-Install ao hooks to ~/.claude/settings.json.
-
-```
-ao hooks install [flags]
-```
-
-**Flags:**
-
-```
-      --dry-run             Show what would be installed without making changes
-      --force               Overwrite existing ao hooks
-      --full                Install all 12 events with hook scripts copied to ~/.agentops/
-  -h, --help                help for install
-      --source-dir string   Path to agentops repo checkout (for --full script installation)
-```
-
-#### `ao hooks show`
-
-Display the current Claude Code hooks configuration from ~/.claude/settings.json.
-
-```
-ao hooks show [flags]
-```
-
-#### `ao hooks test`
-
-Test that all hook dependencies are available and working.
-
-```
-ao hooks test [flags]
-```
-
-**Flags:**
-
-```
-      --dry-run   Show test steps without running hooks
-  -h, --help      help for test
-```
-
----
-
-### `ao inbox`
-
-View messages from the Agent Farm.
-
-```
-ao inbox [flags]
-```
-
-**Flags:**
-
-```
-      --from string    Filter by sender
-  -h, --help           help for inbox
-      --limit int      Maximum messages to display (0 for all) (default 100)
-      --mark-read      Mark displayed messages as read
-      --since string   Show messages from last duration (e.g., 5m, 1h)
-      --unread         Show only unread messages
-```
-
----
-
-### `ao index`
-
-Generate INDEX.md manifest files for .agents/ knowledge directories.
-
-```
-ao index [flags]
-```
-
-**Flags:**
-
-```
-      --check        Verify INDEX.md is current, exit 1 if stale
-      --dir string   Specific directory (default: all 5)
-  -h, --help         help for index
-      --json         Machine-readable output
-      --quiet        Suppress non-error output
-```
-
----
-
-### `ao init`
-
-Set up a repository for AgentOps: directories, gitignore, and optional hooks.
-
-```
-ao init [flags]
-```
-
-**Flags:**
-
-```
-      --full            With --hooks, explicitly request full coverage (legacy explicit flag)
-  -h, --help            help for init
-      --hooks           Also register hooks (full 12-event coverage by default; equivalent to ao hooks install --full)
-      --minimal-hooks   With --hooks, install only SessionStart + Stop hooks
-      --stealth         Use .git/info/exclude instead of .gitignore
-```
-
----
-
-### `ao inject`
-
-Inject searches and outputs relevant knowledge for session startup.
-
-```
-ao inject [context] [flags]
-```
-
-**Flags:**
-
-```
-      --apply-decay      Apply confidence decay before ranking
-      --context string   Context query for filtering (alternative to positional arg)
-      --format string    Output format: markdown, json (default "markdown")
-  -h, --help             help for inject
-      --max-tokens int   Maximum tokens to output (default 1500)
-      --no-cite          Disable citation recording
-      --session string   Session ID for citation tracking (auto-generated if empty)
-```
-
----
-
-### `ao mail`
-
-Inter-agent messaging for the Agent Farm.
-
-```
-ao mail [command]
-```
-
-**Subcommands:**
-
-#### `ao mail send`
-
-Send a message to another agent or the mayor.
-
-```
-ao mail send [flags]
-```
-
-**Flags:**
-
-```
-      --body string   Message body
-  -h, --help          help for send
-      --to string     Recipient (mayor, witness, agent-N)
-      --type string   Message type (progress, completion, blocker, farm_complete) (default "progress")
-```
-
----
-
-### `ao maturity`
-
-Check and manage CASS (Contextual Agent Session Search) maturity levels.
-
-```
-ao maturity [learning-id] [flags]
-```
-
-**Flags:**
-
-```
-      --apply     Apply maturity transitions
-      --archive   Move expired/evicted files to archive (requires --expire or --evict)
-      --evict     Identify eviction candidates (composite criteria)
-      --expire    Scan for expired learnings
-  -h, --help      help for maturity
-      --scan      Scan all learnings for pending transitions
-```
-
----
-
-### `ao metrics`
-
-Track and report on knowledge flywheel metrics.
-
-```
-ao metrics [command]
-```
-
-**Subcommands:**
-
-#### `ao metrics baseline`
-
-Capture a baseline snapshot of the knowledge flywheel.
-
-```
-ao metrics baseline [flags]
-```
-
-**Flags:**
-
-```
-      --days int   Period in days for metrics calculation (default 7)
-  -h, --help       help for baseline
-```
-
-#### `ao metrics cite`
-
-Record that an artifact was cited in this session.
-
-```
-ao metrics cite <artifact-path> [flags]
-```
-
-**Flags:**
-
-```
-  -h, --help             help for cite
-      --query string     Search query that surfaced this artifact
-      --session string   Session ID (auto-detected if not provided)
-      --type string      Citation type: recall, reference, applied (default "reference")
-```
-
-#### `ao metrics cite-report`
-
-Produce an aggregated report from citation data.
-
-```
-ao metrics cite-report [flags]
-```
-
-**Flags:**
-
-```
-      --days int   Period in days (default 30)
-  -h, --help       help for cite-report
-      --json       Output as JSON (alias for -o json)
-```
-
-#### `ao metrics report`
-
-Display a formatted report of knowledge flywheel metrics.
-
-```
-ao metrics report [flags]
-```
-
-**Flags:**
-
-```
-      --days int   Period in days for metrics calculation (default 7)
-  -h, --help       help for report
-```
-
----
-
-### `ao migrate`
-
-Migrate existing learnings to include MemRL utility field.
-
-```
-ao migrate memrl [flags]
+ao goals migrate [flags]
 ```
 
 ---
@@ -890,177 +627,6 @@ ao plans update <plan-path> [flags]
       --beads-id string   Update beads ID
   -h, --help              help for update
       --status string     New status for the plan
-```
-
----
-
-### `ao pool`
-
-Manage knowledge candidates in quality pools.
-
-```
-ao pool [command]
-```
-
-**Subcommands:**
-
-#### `ao pool auto-promote`
-
-Automatically approve (and optionally promote) high-quality candidates
-
-```
-ao pool auto-promote [flags]
-```
-
-**Flags:**
-
-```
-  -h, --help               help for auto-promote
-      --include-gold       Include gold-tier candidates when using --promote (default true)
-      --promote            Also stage+promote eligible candidates into .agents/ (not just approval)
-      --threshold string   Minimum age for auto-promotion (default: 24h) (default "24h")
-```
-
-#### `ao pool batch-promote`
-
-Promote pending pool candidates that meet promotion criteria.
-
-```
-ao pool batch-promote [flags]
-```
-
-**Flags:**
-
-```
-  --dry-run   Show what would be promoted without executing
-  --force     Promote all pending candidates regardless of criteria
-  --min-age   Minimum age threshold (default: 24h)
-      --force            Promote all pending regardless of criteria
-  -h, --help             help for batch-promote
-      --min-age string   Minimum age for promotion eligibility (default "24h")
-```
-
-#### `ao pool ingest`
-
-Ingest pending learnings into the quality pool.
-
-```
-ao pool ingest [<files-or-globs...>] [flags]
-```
-
-**Flags:**
-
-```
-      --dir string   Directory to ingest from when no args are provided (default ".agents/knowledge/pending")
-  -h, --help         help for ingest
-```
-
-#### `ao pool list`
-
-List knowledge candidates filtered by tier and/or status.
-
-```
-ao pool list [flags]
-```
-
-**Flags:**
-
-```
-  -h, --help            help for list
-      --limit int       Maximum results to return (default 50, 0 for unlimited) (default 50)
-      --offset int      Skip first N results (for pagination)
-      --status string   Filter by status (pending, staged, promoted, rejected)
-      --tier string     Filter by tier (gold, silver, bronze)
-```
-
-#### `ao pool migrate-legacy`
-
-Move legacy knowledge captures from .agents/knowledge/*.md into
-
-```
-ao pool migrate-legacy [flags]
-```
-
-**Flags:**
-
-```
-  -h, --help                 help for migrate-legacy
-      --pending-dir string   Pending directory for migrated captures (default ".agents/knowledge/pending")
-      --source-dir string    Source directory containing legacy markdown captures (default ".agents/knowledge")
-```
-
-#### `ao pool promote`
-
-Move a staged candidate to the knowledge base (.agents/learnings/ or .agents/patterns/).
-
-```
-ao pool promote <candidate-id> [flags]
-```
-
-#### `ao pool reject`
-
-Mark a candidate as rejected and move to rejected directory.
-
-```
-ao pool reject <candidate-id> [flags]
-```
-
-**Flags:**
-
-```
-  -h, --help            help for reject
-      --reason string   Reason for rejection (required)
-```
-
-#### `ao pool show`
-
-Show candidate details
-
-```
-ao pool show <candidate-id> [flags]
-```
-
-#### `ao pool stage`
-
-Move a candidate from pending to staged status.
-
-```
-ao pool stage <candidate-id> [flags]
-```
-
-**Flags:**
-
-```
-  -h, --help              help for stage
-      --min-tier string   Minimum tier threshold (default: bronze)
-```
-
----
-
-### `ao promote-anti-patterns`
-
-Scan learnings and promote those meeting anti-pattern criteria.
-
-```
-ao promote-anti-patterns [flags]
-```
-
----
-
-### `ao quick-start`
-
-Initialize AgentOps in your current project.
-
-```
-ao quick-start [flags]
-```
-
-**Flags:**
-
-```
-  -h, --help       help for quick-start
-      --minimal    Minimal setup (just directories)
-      --no-beads   Skip beads initialization
 ```
 
 ---
@@ -1366,26 +932,6 @@ ao rpi verify [flags]
 
 ---
 
-### `ao search`
-
-Search AgentOps knowledge using file-based search.
-
-```
-ao search <query> [flags]
-```
-
-**Flags:**
-
-```
-      --cass          Enable CASS session-aware search with maturity weighting
-  -h, --help          help for search
-      --limit int     Maximum results to return (default 10)
-      --type string   Filter by type: decisions, knowledge, sessions
-      --use-sc        Enable Smart Connections semantic search (requires Obsidian)
-```
-
----
-
 ### `ao session`
 
 Session lifecycle operations.
@@ -1413,202 +959,327 @@ ao session close [flags]
 
 ---
 
-### `ao session-outcome`
+### `ao completion`
 
-Parse a Claude Code session transcript and derive a composite reward signal.
+Generate shell completion scripts for ao.
 
 ```
-ao session-outcome [transcript-path] [flags]
+ao completion [bash|zsh|fish]
+```
+
+---
+
+### `ao config`
+
+View and manage AgentOps configuration.
+
+```
+ao config [flags]
 ```
 
 **Flags:**
 
 ```
-  -h, --help             help for session-outcome
-      --output string    Output format: text, json (default "text")
-      --session string   Session ID (extracted from transcript if not provided)
+  -h, --help   help for config
+      --show   Show resolved configuration with sources
 ```
 
 ---
 
-### `ao status`
+### `ao hooks`
 
-Display the current state of AgentOps knowledge base.
-
-```
-ao status [flags]
-```
-
----
-
-### `ao store`
-
-The STORE phase indexes artifacts for retrieval and search.
+The hooks command manages Claude Code hooks that automate the CASS knowledge flywheel.
 
 ```
-ao store [command]
+ao hooks [command]
 ```
 
 **Subcommands:**
 
-#### `ao store index`
+#### `ao hooks init`
 
-Add artifacts to the search index.
-
-```
-ao store index <files...> [flags]
-```
-
-**Flags:**
+Generate Claude Code hooks configuration for the CASS knowledge flywheel.
 
 ```
-      --categorize   Extract and store category/tags for retrieval
-  -h, --help         help for index
-```
-
-#### `ao store rebuild`
-
-Rebuild the search index from scratch.
-
-```
-ao store rebuild [flags]
+ao hooks init [flags]
 ```
 
 **Flags:**
 
 ```
-      --categorize   Extract and store category/tags for retrieval
-  -h, --help         help for rebuild
+      --format string   Output format: json, shell (default "json")
+  -h, --help            help for init
 ```
 
-#### `ao store search`
+#### `ao hooks install`
 
-Search for artifacts matching a query.
+Install ao hooks to ~/.claude/settings.json.
 
 ```
-ao store search <query> [flags]
+ao hooks install [flags]
 ```
 
 **Flags:**
 
 ```
-  -h, --help        help for search
-      --limit int   Maximum results to return (default 10)
+      --dry-run             Show what would be installed without making changes
+      --force               Overwrite existing ao hooks
+      --full                Install all hook events from hooks.json with scripts copied to ~/.agentops/
+  -h, --help                help for install
+      --source-dir string   Path to agentops repo checkout (for --full script installation)
 ```
 
-#### `ao store stats`
+#### `ao hooks show`
 
-Display statistics about the search index.
+Display the current Claude Code hooks configuration from ~/.claude/settings.json.
 
 ```
-ao store stats [flags]
+ao hooks show [flags]
+```
+
+#### `ao hooks test`
+
+Test that all hook dependencies are available and working.
+
+```
+ao hooks test [flags]
+```
+
+**Flags:**
+
+```
+      --dry-run   Show test steps without running hooks
+  -h, --help      help for test
 ```
 
 ---
 
-### `ao task-feedback`
+### `ao inbox`
 
-Process task completion events and apply feedback to associated learnings.
-
-```
-ao task-feedback [flags]
-```
-
-**Flags:**
+View messages from the Agent Farm.
 
 ```
-      --all              Process all tasks without feedback
-  -h, --help             help for task-feedback
-      --session string   Session ID to process
-```
-
----
-
-### `ao task-status`
-
-Display the status of tracked tasks and their CASS maturity levels.
-
-```
-ao task-status [flags]
+ao inbox [flags]
 ```
 
 **Flags:**
 
 ```
-  -h, --help             help for task-status
-      --session string   Filter by session ID
+      --from string    Filter by sender
+  -h, --help           help for inbox
+      --limit int      Maximum messages to display (0 for all) (default 100)
+      --mark-read      Mark displayed messages as read
+      --since string   Show messages from last duration (e.g., 5m, 1h)
+      --unread         Show only unread messages
 ```
 
 ---
 
-### `ao task-sync`
+### `ao mail`
 
-Import and sync tasks from Claude Code's Task tool to CASS maturity tracking.
-
-```
-ao task-sync [flags]
-```
-
-**Flags:**
+Inter-agent messaging for the Agent Farm.
 
 ```
-  -h, --help                help for task-sync
-      --promote             Promote completed tasks to learnings
-      --session string      Filter tasks by session ID
-      --transcript string   Path to Claude Code transcript
-```
-
----
-
-### `ao temper`
-
-The TEMPER phase validates and locks knowledge artifacts.
-
-```
-ao temper [command]
+ao mail [command]
 ```
 
 **Subcommands:**
 
-#### `ao temper lock`
+#### `ao mail send`
 
-Lock artifacts that have passed validation.
-
-```
-ao temper lock <files...> [flags]
-```
-
-**Flags:**
+Send a message to another agent or the mayor.
 
 ```
-      --force       Lock without validation check
-  -h, --help        help for lock
-      --recursive   Process directories recursively
-```
-
-#### `ao temper status`
-
-Display status of artifacts in the TEMPER pipeline.
-
-```
-ao temper status [flags]
-```
-
-#### `ao temper validate`
-
-Check that artifacts meet quality requirements for TEMPER.
-
-```
-ao temper validate <files...> [flags]
+ao mail send [flags]
 ```
 
 **Flags:**
 
 ```
-  -h, --help                  help for validate
-      --min-feedback int      Minimum feedback count (default 1)
-      --min-maturity string   Minimum maturity level (provisional, candidate, established) (default "provisional")
-      --min-utility float     Minimum utility threshold (default 0.5)
+      --body string   Message body
+  -h, --help          help for send
+      --to string     Recipient (mayor, witness, agent-N)
+      --type string   Message type (progress, completion, blocker, farm_complete) (default "progress")
+```
+
+---
+
+### `ao anti-patterns`
+
+List learnings that have been marked as anti-patterns.
+
+```
+ao anti-patterns [flags]
+```
+
+---
+
+### `ao flywheel`
+
+Knowledge flywheel operations and status.
+
+```
+ao flywheel [command]
+```
+
+**Subcommands:**
+
+#### `ao flywheel close-loop`
+
+Close the knowledge flywheel loop by chaining:
+
+```
+ao flywheel close-loop [flags]
+```
+
+**Flags:**
+
+```
+  -h, --help                 help for close-loop
+      --pending-dir string   Pending directory to ingest from (default ".agents/knowledge/pending")
+      --quiet                Suppress non-essential output (hook-friendly)
+      --threshold string     Minimum age for auto-promotion (default: 24h) (default "24h")
+```
+
+#### `ao flywheel nudge`
+
+Returns structured JSON combining:
+
+```
+ao flywheel nudge [flags]
+```
+
+#### `ao flywheel status`
+
+Display comprehensive flywheel health status.
+
+```
+ao flywheel status [flags]
+```
+
+**Flags:**
+
+```
+      --days int   Period in days for metrics calculation (default 7)
+  -h, --help       help for status
+```
+
+---
+
+### `ao inject`
+
+Inject searches and outputs relevant knowledge for session startup.
+
+```
+ao inject [context] [flags]
+```
+
+**Flags:**
+
+```
+      --apply-decay      Apply confidence decay before ranking
+      --context string   Context query for filtering (alternative to positional arg)
+      --format string    Output format: markdown, json (default "markdown")
+  -h, --help             help for inject
+      --max-tokens int   Maximum tokens to output (default 1500)
+      --no-cite          Disable citation recording
+      --session string   Session ID for citation tracking (auto-generated if empty)
+```
+
+---
+
+### `ao maturity`
+
+Check and manage CASS (Contextual Agent Session Search) maturity levels.
+
+```
+ao maturity [learning-id] [flags]
+```
+
+**Flags:**
+
+```
+      --apply     Apply maturity transitions
+      --archive   Move expired/evicted files to archive (requires --expire or --evict)
+      --evict     Identify eviction candidates (composite criteria)
+      --expire    Scan for expired learnings
+  -h, --help      help for maturity
+      --scan      Scan all learnings for pending transitions
+```
+
+---
+
+### `ao metrics`
+
+Track and report on knowledge flywheel metrics.
+
+```
+ao metrics [command]
+```
+
+**Subcommands:**
+
+#### `ao metrics baseline`
+
+Capture a baseline snapshot of the knowledge flywheel.
+
+```
+ao metrics baseline [flags]
+```
+
+**Flags:**
+
+```
+      --days int   Period in days for metrics calculation (default 7)
+  -h, --help       help for baseline
+```
+
+#### `ao metrics cite`
+
+Record that an artifact was cited in this session.
+
+```
+ao metrics cite <artifact-path> [flags]
+```
+
+**Flags:**
+
+```
+  -h, --help             help for cite
+      --query string     Search query that surfaced this artifact
+      --session string   Session ID (auto-detected if not provided)
+      --type string      Citation type: recall, reference, applied (default "reference")
+```
+
+#### `ao metrics cite-report`
+
+Produce an aggregated report from citation data.
+
+```
+ao metrics cite-report [flags]
+```
+
+**Flags:**
+
+```
+      --days int   Period in days (default 30)
+  -h, --help       help for cite-report
+      --json       Output as JSON (alias for -o json)
+```
+
+#### `ao metrics report`
+
+Display a formatted report of knowledge flywheel metrics.
+
+```
+ao metrics report [flags]
+```
+
+**Flags:**
+
+```
+      --days int   Period in days for metrics calculation (default 7)
+  -h, --help       help for report
 ```
 
 ---
@@ -1630,62 +1301,12 @@ ao trace <artifact-path> [flags]
 
 ---
 
-### `ao version`
+### `ao help`
 
-Display the version, build information, and runtime details.
-
-```
-ao version [flags]
-```
-
----
-
-### `ao vibe-check`
-
-Run a comprehensive vibe-check analysis on your repository.
+Help provides help for any command in the application.
 
 ```
-ao vibe-check [flags]
-```
-
-**Flags:**
-
-```
-      --full           Show all metrics and findings (verbose)
-  -h, --help           help for vibe-check
-      --markdown       Output as markdown report
-      --repo string    Path to git repository (default ".")
-      --since string   Time window for analysis (e.g., 7d, 30d, 90d) (default "7d")
-```
-
----
-
-### `ao worktree`
-
-Worktree maintenance utilities
-
-```
-ao worktree [command]
-```
-
-**Subcommands:**
-
-#### `ao worktree gc`
-
-Safely remove stale AgentOps RPI worktrees and orphaned tmux sessions.
-
-```
-ao worktree gc [flags]
-```
-
-**Flags:**
-
-```
-      --clean-tmux             Clean stale ao-rpi tmux sessions without active run/worktree (default true)
-  -h, --help                   help for gc
-      --include-dirty          Also clean worktrees with uncommitted changes (unsafe)
-      --prune                  Run 'git worktree prune' after cleanup (default true)
-      --stale-after duration   Only clean worktrees/sessions older than this age (default 24h0m0s)
+ao help [command] [flags]
 ```
 
 ---
