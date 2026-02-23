@@ -178,7 +178,7 @@ These are how skills chain in practice:
 
 ## Current Skill Tiers
 
-### User-Facing Skills (42)
+### User-Facing Skills (43)
 
 **Judgment:**
 
@@ -231,6 +231,7 @@ These are how skills chain in practice:
 |-------|------|-------------|
 | **handoff** | session | Session handoff — save context for next session |
 | **recover** | session | Post-compaction context recovery |
+| **inbox** | session | Agent mail inbox — check pending messages and HELP_REQUESTs |
 | **status** | session | Single-screen dashboard |
 | **quickstart** | session | Interactive onboarding |
 
