@@ -29,6 +29,19 @@ Coding agents get a blank context window every session. AgentOps is a toolbox of
 - **Feedback** (`/council`, `/vibe`, `/pre-mortem`): shorten the feedback loop until defects can't survive it. Independent judges catch issues before code ships. Problems found Friday don't wait until Monday.
 - **Learning** (`.agents/`, `ao` CLI, `/retro`, `/knowledge`): stop rediscovering what you already know. Every session extracts learnings into an append-only ledger, scores them by freshness, and re-injects the best ones at next session start. Session 50 knows what session 1 learned the hard way.
 
+**Composition patterns** — skills chain in practice:
+
+| Pattern | Chain | When |
+|---------|-------|------|
+| **Quick fix** | `/implement` | One issue, clear scope |
+| **Validated fix** | `/implement` → `/vibe` | One issue, want confidence |
+| **Planned epic** | `/plan` → `/pre-mortem` → `/crank` → `/post-mortem` | Multi-issue, structured |
+| **Full pipeline** | `/rpi` (chains all above) | End-to-end, autonomous |
+| **Evolve loop** | `/evolve` (chains `/rpi` repeatedly) | Fitness-scored improvement |
+| **PR contribution** | `/pr-research` → `/pr-plan` → `/pr-implement` → `/pr-validate` → `/pr-prep` | External repo |
+| **Knowledge query** | `/knowledge` → `/research` (if gaps) | Understanding before building |
+| **Standalone review** | `/council validate <target>` | Ad-hoc multi-judge review |
+
 Here's what that looks like — your agent validates a PR, and the council verdict, decisions, and patterns are automatically written to `.agents/`. Three weeks later, different task, but your agent already knows:
 
 ```text
