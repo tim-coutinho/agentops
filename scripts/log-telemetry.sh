@@ -8,22 +8,26 @@ EVENT="${2:?Usage: log-telemetry.sh <skill> <event> [key=value...]}"
 shift 2
 
 TIMESTAMP=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)
+SCHEMA_VERSION=1
 
-# Build JSON object
-# Start with required fields
-JSON="{\"skill\":\"${SKILL}\",\"event\":\"${EVENT}\",\"timestamp\":\"${TIMESTAMP}\""
+json_quote() {
+  jq -Rn --arg s "$1" '$s'
+}
+
+# Build JSON object safely (all string values are JSON-escaped).
+JSON="{\"schema_version\":${SCHEMA_VERSION},\"skill\":$(json_quote "${SKILL}"),\"event\":$(json_quote "${EVENT}"),\"timestamp\":$(json_quote "${TIMESTAMP}")"
 
 # Append key=value pairs
 for kv in "$@"; do
   key="${kv%%=*}"
   val="${kv#*=}"
   # Try to detect numeric values
-  if [[ "$val" =~ ^[0-9]+$ ]]; then
-    JSON="${JSON},\"${key}\":${val}"
-  elif [[ "$val" =~ ^[0-9]+\.[0-9]+$ ]]; then
-    JSON="${JSON},\"${key}\":${val}"
+  if [[ "$val" =~ ^-?[0-9]+$ ]]; then
+    JSON="${JSON},$(json_quote "${key}"):${val}"
+  elif [[ "$val" =~ ^-?[0-9]+\.[0-9]+$ ]]; then
+    JSON="${JSON},$(json_quote "${key}"):${val}"
   else
-    JSON="${JSON},\"${key}\":\"${val}\""
+    JSON="${JSON},$(json_quote "${key}"):$(json_quote "${val}")"
   fi
 done
 

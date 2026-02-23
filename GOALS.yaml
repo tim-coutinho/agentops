@@ -28,25 +28,25 @@ goals:
 
   - id: no-stale-goals
     description: "No goals older than 90 days that are trivially true (grep-only checks that always pass)"
-    check: "bash scripts/check-goal-staleness.sh"
+    check: "timeout 60 bash scripts/check-goal-staleness.sh"
     weight: 7
     added: "2026-02-19"
 
   - id: goal-quality
     description: "No goals that are pure grep-for-string-in-file-we-control patterns"
-    check: "bash scripts/check-goal-quality.sh"
+    check: "timeout 60 bash scripts/check-goal-quality.sh"
     weight: 7
     added: "2026-02-19"
 
   - id: product-freshness
     description: "PRODUCT.md is under 200 lines and last_reviewed within 30 days"
-    check: "bash scripts/check-product-freshness.sh"
+    check: "timeout 60 bash scripts/check-product-freshness.sh"
     weight: 7
     added: "2026-02-19"
 
   - id: pillar-coverage
     description: "GOALS.yaml has goals for all 4 product pillars"
-    check: "bash scripts/check-pillar-coverage.sh"
+    check: "timeout 60 bash scripts/check-pillar-coverage.sh"
     weight: 7
     type: meta
     added: "2026-02-21"
@@ -87,13 +87,13 @@ goals:
 
   - id: hook-preflight
     description: "All hooks pass safety checks (kill switches, paths)"
-    check: "./scripts/validate-hook-preflight.sh >/dev/null 2>&1"
+    check: "timeout 60 ./scripts/validate-hook-preflight.sh >/dev/null 2>&1"
     weight: 4
     added: "2026-02-19"
 
   - id: toolchain-security-gate
     description: "Unified security gate script is executable and testable"
-    check: "test -x scripts/security-gate.sh && bash tests/scripts/test-security-gate.sh >/dev/null 2>&1"
+    check: "test -x scripts/security-gate.sh && timeout 60 bash tests/scripts/test-security-gate.sh >/dev/null 2>&1"
     weight: 4
     added: "2026-02-19"
 
@@ -133,7 +133,7 @@ goals:
   #   cli/cmd/ao/       → go-cmdao-complexity-tracking (CC<10, redundant w/ ceiling) + above two
   - id: go-complexity-gate
     description: "Changed non-test Go code under cli/ stays below complexity failure threshold"
-    check: "bash scripts/check-go-complexity.sh"
+    check: "timeout 60 bash scripts/check-go-complexity.sh"
     weight: 5
     type: meta
     added: "2026-02-20"
@@ -152,35 +152,35 @@ goals:
 
   - id: opencode-live
     description: "OpenCode Tier 1 headless tests pass (gracefully skips if opencode not installed)"
-    check: "bash scripts/check-opencode-live.sh"
+    check: "timeout 60 bash scripts/check-opencode-live.sh"
     weight: 2
     pillar: validated-acceleration
     added: "2026-02-21"
 
   - id: go-absolute-complexity-ceiling
     description: "No Go function in cli/ has cyclomatic complexity >= 10 (absolute, not delta-only)"
-    check: "bash scripts/check-go-absolute-complexity.sh --dir cli/ --threshold 10"
+    check: "timeout 60 bash scripts/check-go-absolute-complexity.sh --dir cli/ --threshold 10"
     weight: 5
     pillar: validated-acceleration
     added: "2026-02-22"
 
   - id: go-internal-complexity-ceiling
     description: "No Go function in cli/internal/ has cyclomatic complexity >= 8"
-    check: "bash scripts/check-go-absolute-complexity.sh --dir cli/internal/ --threshold 8"
+    check: "timeout 60 bash scripts/check-go-absolute-complexity.sh --dir cli/internal/ --threshold 8"
     weight: 4
     pillar: validated-acceleration
     added: "2026-02-22"
 
   - id: go-cmdao-complexity-tracking
     description: "No Go function in cli/cmd/ao/ has cyclomatic complexity >= 10"
-    check: "bash scripts/check-go-absolute-complexity.sh --dir cli/cmd/ao/ --threshold 10"
+    check: "timeout 60 bash scripts/check-go-absolute-complexity.sh --dir cli/cmd/ao/ --threshold 10"
     weight: 3
     pillar: validated-acceleration
     added: "2026-02-22"
 
   - id: go-per-package-coverage-floor
     description: "Every Go package under cli/ has test coverage >= 60% (per-package, not just average)"
-    check: "bash scripts/check-go-per-package-coverage.sh --floor 60"
+    check: "timeout 60 bash scripts/check-go-per-package-coverage.sh --floor 60"
     weight: 3
     pillar: validated-acceleration
     added: "2026-02-22"
@@ -204,20 +204,20 @@ goals:
 
   - id: wiring-closure
     description: "All scripts, skills, and hooks are referenced by their parent registries"
-    check: "bash scripts/check-wiring-closure.sh"
+    check: "timeout 60 bash scripts/check-wiring-closure.sh"
     weight: 6
     type: meta
     added: "2026-02-19"
 
   - id: skill-validation
     description: "All skills have valid SKILL.md with frontmatter"
-    check: "./tests/skills/run-all.sh"
+    check: "timeout 120 ./tests/skills/run-all.sh"
     weight: 2
     added: "2026-02-19"
 
   - id: evolve-cycle-logging
     description: "Evolve cycle-history.jsonl has entries for all completed cycles with no gaps or missing fields"
-    check: "bash scripts/check-evolve-cycle-logging.sh"
+    check: "timeout 60 bash scripts/check-evolve-cycle-logging.sh"
     weight: 6
     pillar: goal-driven-automation
     added: "2026-02-22"
