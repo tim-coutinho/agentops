@@ -145,8 +145,8 @@ func TestRunRPIPhased_DryRunBackendSelection(t *testing.T) {
 	lookPath = func(name string) (string, error) {
 		return "", fmt.Errorf("not found: %s", name)
 	}
-	os.Unsetenv("CLAUDECODE")
-	os.Unsetenv("CLAUDE_CODE_ENTRYPOINT")
+	_ = os.Unsetenv("CLAUDECODE")
+	_ = os.Unsetenv("CLAUDE_CODE_ENTRYPOINT")
 
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, ".agents", "rpi", "phased-orchestration.log")
@@ -186,8 +186,8 @@ func TestRunRPIPhased_SwarmFirstBackendLogged(t *testing.T) {
 	lookPath = func(name string) (string, error) {
 		return "", fmt.Errorf("not found: %s", name)
 	}
-	os.Unsetenv("CLAUDECODE")
-	os.Unsetenv("CLAUDE_CODE_ENTRYPOINT")
+	_ = os.Unsetenv("CLAUDECODE")
+	_ = os.Unsetenv("CLAUDE_CODE_ENTRYPOINT")
 
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, ".agents", "rpi", "phased-orchestration.log")

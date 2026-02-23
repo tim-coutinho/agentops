@@ -689,13 +689,6 @@ func filterTasksBySession(tasks []TaskEvent, sessionID string) []TaskEvent {
 	return filtered
 }
 
-// taskDistributions holds precomputed counts for task status reporting.
-type taskDistributions struct {
-	StatusCounts   map[string]int
-	MaturityCounts map[types.Maturity]int
-	WithLearnings  int
-}
-
 // computeTaskDistributions tallies status, maturity, and learning counts.
 func computeTaskDistributions(tasks []TaskEvent) (map[string]int, map[types.Maturity]int, int) {
 	statusCounts := make(map[string]int)

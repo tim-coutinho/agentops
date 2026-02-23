@@ -898,8 +898,12 @@ func TestHooksPlans_installFullHooks(t *testing.T) {
 		dstDir := t.TempDir()
 
 		// Create fake .git dir and hook scripts
-		os.MkdirAll(filepath.Join(srcDir, ".git"), 0755)
-		os.MkdirAll(filepath.Join(srcDir, "hooks"), 0755)
+		if err := os.MkdirAll(filepath.Join(srcDir, ".git"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(srcDir, "hooks"), 0755); err != nil {
+			t.Fatal(err)
+		}
 		writeFile(t, filepath.Join(srcDir, "hooks", "start.sh"), "#!/bin/bash\necho start")
 		writeFile(t, filepath.Join(srcDir, "hooks", "stop.sh"), "#!/bin/bash\necho stop")
 
@@ -1385,7 +1389,9 @@ func TestPlans_findAgentsDir(t *testing.T) {
 	t.Run("finds .agents in current dir", func(t *testing.T) {
 		dir := t.TempDir()
 		agentsDir := filepath.Join(dir, ".agents")
-		os.MkdirAll(agentsDir, 0755)
+		if err := os.MkdirAll(agentsDir, 0755); err != nil {
+			t.Fatal(err)
+		}
 
 		got := findAgentsDir(dir)
 		if got != agentsDir {
@@ -1395,7 +1401,9 @@ func TestPlans_findAgentsDir(t *testing.T) {
 
 	t.Run("finds rig marker (crew)", func(t *testing.T) {
 		dir := t.TempDir()
-		os.MkdirAll(filepath.Join(dir, "crew"), 0755)
+		if err := os.MkdirAll(filepath.Join(dir, "crew"), 0755); err != nil {
+			t.Fatal(err)
+		}
 
 		got := findAgentsDir(dir)
 		want := filepath.Join(dir, ".agents")
@@ -1406,7 +1414,9 @@ func TestPlans_findAgentsDir(t *testing.T) {
 
 	t.Run("finds rig marker (.beads)", func(t *testing.T) {
 		dir := t.TempDir()
-		os.MkdirAll(filepath.Join(dir, ".beads"), 0755)
+		if err := os.MkdirAll(filepath.Join(dir, ".beads"), 0755); err != nil {
+			t.Fatal(err)
+		}
 
 		got := findAgentsDir(dir)
 		want := filepath.Join(dir, ".agents")
@@ -1418,8 +1428,12 @@ func TestPlans_findAgentsDir(t *testing.T) {
 	t.Run("walks up to parent", func(t *testing.T) {
 		dir := t.TempDir()
 		childDir := filepath.Join(dir, "sub", "deep")
-		os.MkdirAll(childDir, 0755)
-		os.MkdirAll(filepath.Join(dir, ".agents"), 0755)
+		if err := os.MkdirAll(childDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(dir, ".agents"), 0755); err != nil {
+			t.Fatal(err)
+		}
 
 		got := findAgentsDir(childDir)
 		want := filepath.Join(dir, ".agents")
@@ -1431,7 +1445,9 @@ func TestPlans_findAgentsDir(t *testing.T) {
 	t.Run("returns empty when nothing found", func(t *testing.T) {
 		dir := t.TempDir()
 		childDir := filepath.Join(dir, "isolated")
-		os.MkdirAll(childDir, 0755)
+		if err := os.MkdirAll(childDir, 0755); err != nil {
+			t.Fatal(err)
+		}
 
 		// This will walk up to / and not find anything.
 		// Since we can't guarantee no .agents or rig markers exist

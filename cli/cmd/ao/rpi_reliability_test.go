@@ -117,7 +117,7 @@ func TestSelectExecutor_DirectFallback(t *testing.T) {
 func TestDirectExecutor_Execute_PropagatesError(t *testing.T) {
 	// Temporarily redirect PATH so claude is not found.
 	origPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", origPath)
+	defer func() { _ = os.Setenv("PATH", origPath) }()
 	t.Setenv("PATH", t.TempDir()) // empty dir = no binaries
 
 	d := &directExecutor{}
@@ -131,7 +131,7 @@ func TestDirectExecutor_Execute_PropagatesError(t *testing.T) {
 // returns an error when claude is not found.
 func TestStreamExecutor_Execute_PropagatesError(t *testing.T) {
 	origPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", origPath)
+	defer func() { _ = os.Setenv("PATH", origPath) }()
 	t.Setenv("PATH", t.TempDir()) // no binaries
 
 	s := &streamExecutor{statusPath: filepath.Join(t.TempDir(), "status.md"), allPhases: nil}
@@ -435,7 +435,7 @@ func TestWritePhasedStateAtomic_LeavesNoTmpOnSuccess(t *testing.T) {
 // does not panic or return an error when ao ratchet is not on PATH.
 func TestRecordRatchetCheckpoint_FailSilently(t *testing.T) {
 	origPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", origPath)
+	defer func() { _ = os.Setenv("PATH", origPath) }()
 	// Use an empty dir so no binaries are found.
 	t.Setenv("PATH", t.TempDir())
 

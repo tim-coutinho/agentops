@@ -23,7 +23,7 @@ func writeJSONLChain(t *testing.T, dir string, id string, epicID string, entries
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	meta := struct {
 		ID      string    `json:"id"`

@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import sys
 import zipfile
 from dataclasses import dataclass
 from io import BytesIO

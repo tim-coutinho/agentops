@@ -516,7 +516,7 @@ func TestRPI_GenerateRunID(t *testing.T) {
 	}
 	// Verify hex characters only
 	for _, c := range id {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("generateRunID contains non-hex char: %c in %q", c, id)
 			break
 		}

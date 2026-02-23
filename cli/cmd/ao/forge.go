@@ -172,7 +172,7 @@ func handleForgeDryRun(w io.Writer, quiet bool, files []string, noun string) boo
 		return false
 	}
 
-	fmt.Fprintf(w, "[dry-run] Would process %d %s\n", len(files), noun)
+	_, _ = fmt.Fprintf(w, "[dry-run] Would process %d %s\n", len(files), noun)
 	for _, path := range files {
 		fmt.Fprintf(w, "  - %s\n", path)
 	}

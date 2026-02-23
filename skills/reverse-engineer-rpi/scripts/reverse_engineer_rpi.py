@@ -5,7 +5,6 @@ import argparse
 import datetime as _dt
 import hashlib
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -428,8 +427,8 @@ def _enrich_registry_with_binary_evidence(
     Returns True if enrichment was applied.
     """
     commands_file = tmp_dir / "binary" / "cli-commands.txt"
-    strings_file = tmp_dir / "binary" / "strings.head.txt"
-    ba_file = tmp_dir / "binary" / "binary-analysis.md"
+    _strings_file = tmp_dir / "binary" / "strings.head.txt"
+    _ba_file = tmp_dir / "binary" / "binary-analysis.md"
 
     # Generate binary-symbols.txt from strings
     full_strings = tmp_dir / "binary" / "strings.head.txt"
@@ -523,7 +522,7 @@ def _enrich_registry_with_binary_evidence(
     lines.append("schema_version: 1")
     lines.append(f"product_name: {product_name!r}")
     lines.append(f"generated_at: {date!r}")
-    lines.append(f"evidence_source: 'binary --help + string extraction'")
+    lines.append("evidence_source: 'binary --help + string extraction'")
     # Preserve docs_features_prefix if present
     dfp = reg.get("docs_features_prefix", "docs/features/")
     lines.append(f"docs_features_prefix: {dfp!r}")
@@ -575,7 +574,7 @@ def _write_binary_cli_surface_spec(
 
     if help_tree.exists():
         tree_text = help_tree.read_text(encoding="utf-8")
-        lines.append(f"## Command Count")
+        lines.append("## Command Count")
         lines.append("")
         lines.append(f"- **{cmd_count} commands** discovered via recursive `--help` execution")
         lines.append("")
@@ -609,7 +608,7 @@ def _write_binary_cli_surface_spec(
     elif strings_file.exists():
         # Fallback: extract command-like patterns from strings
         raw = strings_file.read_text(encoding="utf-8", errors="replace")
-        usage_lines = [l.strip() for l in raw.splitlines() if "usage" in l.lower() or "Usage" in l]
+        usage_lines = [line.strip() for line in raw.splitlines() if "usage" in line.lower() or "Usage" in line]
         lines.append("## CLI Surface (from binary strings, best-effort)")
         lines.append("")
         if usage_lines:
@@ -1280,7 +1279,7 @@ def _write_comparison_report(
 
     # --- Registry groups ---
     binary_groups = 0
-    repo_groups = 0
+    _repo_groups = 0
     registry_yaml = output_dir / "feature-registry.yaml"
     if registry_yaml.exists():
         text = registry_yaml.read_text(encoding="utf-8")

@@ -415,9 +415,10 @@ func TestOlderItemScoresLowerThanNewerItem(t *testing.T) {
 		// Find the scores
 		var newerScore, olderScore float64
 		for _, l := range learnings {
-			if l.ID == "newer" {
+			switch l.ID {
+			case "newer":
 				newerScore = l.CompositeScore
-			} else if l.ID == "older" {
+			case "older":
 				olderScore = l.CompositeScore
 			}
 		}

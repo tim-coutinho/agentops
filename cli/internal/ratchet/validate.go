@@ -601,10 +601,10 @@ func (v *Validator) GetMetrics() *ValidationMetrics {
 
 // formatDays formats the number of days as a human-readable string.
 func formatDays(days int) string {
-	switch {
-	case days == 0:
+	switch days {
+	case 0:
 		return "today"
-	case days == 1:
+	case 1:
 		return "1 day"
 	default:
 		return fmt.Sprintf("%d days", days)

@@ -374,7 +374,7 @@ func TestContext_SeekAndReadTail(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		fi, _ := f.Stat()
 		got, err := seekAndReadTail(f, fi.Size(), 10000)
@@ -398,7 +398,7 @@ func TestContext_SeekAndReadTail(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		fi, _ := f.Stat()
 		got, err := seekAndReadTail(f, fi.Size(), 25)

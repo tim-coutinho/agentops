@@ -537,11 +537,11 @@ func renderHandoffMarkdown(now time.Time, status contextSessionStatus, usage tra
 
 	var b strings.Builder
 	b.WriteString("# Auto-Handoff (Context Guard)\n\n")
-	b.WriteString(fmt.Sprintf("**Timestamp:** %s\n", now.Format(time.RFC3339)))
-	b.WriteString(fmt.Sprintf("**Session:** %s\n", status.SessionID))
-	b.WriteString(fmt.Sprintf("**Status:** %s (%.1f%%)\n", status.Status, status.UsagePercent*100))
-	b.WriteString(fmt.Sprintf("**Hull:** %s (%.1f%% remaining)\n", hull, remaining*100))
-	b.WriteString(fmt.Sprintf("**Action:** %s\n\n", status.Action))
+	fmt.Fprintf(&b, "**Timestamp:** %s\n", now.Format(time.RFC3339))
+	fmt.Fprintf(&b, "**Session:** %s\n", status.SessionID)
+	fmt.Fprintf(&b, "**Status:** %s (%.1f%%)\n", status.Status, status.UsagePercent*100)
+	fmt.Fprintf(&b, "**Hull:** %s (%.1f%% remaining)\n", hull, remaining*100)
+	fmt.Fprintf(&b, "**Action:** %s\n\n", status.Action)
 
 	b.WriteString("## Last Task\n")
 	b.WriteString(status.LastTask)

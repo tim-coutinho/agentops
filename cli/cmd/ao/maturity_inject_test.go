@@ -79,7 +79,7 @@ func TestMaturity_applyCompositeScoringTo(t *testing.T) {
 		applyCompositeScoringTo([]scorable{p}, 1.0)
 		// Just verifying no panic and composite is set
 		if p.CompositeScore == 0 && p.FreshnessScore != p.Utility {
-			// only would be exactly 0 if freshness==utility
+			t.Errorf("composite score unexpectedly zero with freshness=%f utility=%f", p.FreshnessScore, p.Utility)
 		}
 	})
 

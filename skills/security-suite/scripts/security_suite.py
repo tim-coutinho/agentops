@@ -800,7 +800,7 @@ def main() -> int:
     common.add_argument("--binary", required=True)
     common.add_argument("--out-dir", required=True)
 
-    p_static = sub.add_parser("collect-static", parents=[common])
+    _p_static = sub.add_parser("collect-static", parents=[common])
     p_dynamic = sub.add_parser("collect-dynamic", parents=[common])
     p_dynamic.add_argument("--run-args", default="--help", help="Arguments passed to the binary during dynamic run")
     p_dynamic.add_argument("--timeout", type=int, default=8)

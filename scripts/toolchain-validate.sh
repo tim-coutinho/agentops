@@ -149,7 +149,9 @@ run_tool() {
 }
 
 discover_go_modules() {
-    find "$REPO_ROOT" -name go.mod -type f -print0 2>/dev/null | xargs -0 -n1 dirname 2>/dev/null || true
+    find "$REPO_ROOT" -name go.mod -type f \
+        ! -path "*/.tmp/*" ! -path "*/vendor/*" ! -path "*/.git/*" \
+        -print0 2>/dev/null | xargs -0 -n1 dirname 2>/dev/null || true
 }
 
 ensure_json_or_error() {
@@ -214,7 +216,7 @@ run_ruff() {
     fi
 
     # Run ruff and capture output
-    if ruff check "$REPO_ROOT" --output-format=concise > "$output_file" 2>&1; then
+    if ruff check "$REPO_ROOT" --output-format=concise --exclude .tmp > "$output_file" 2>&1; then
         echo "CLEAN" > "$output_file"
         TOOL_STATUS["ruff"]="pass"
     else
@@ -399,8 +401,8 @@ run_radon() {
         return 0
     fi
 
-    # Run radon for cyclomatic complexity (min C = 11+)
-    radon cc "$REPO_ROOT" -a -s --min C > "$output_file" 2>&1 || true
+    # Run radon for cyclomatic complexity (min E = 26+, aligns with Go hard-fail at 25)
+    radon cc "$REPO_ROOT" -a -s --min E --exclude ".tmp/*" > "$output_file" 2>&1 || true
 
     if [[ ! -s "$output_file" ]]; then
         echo "CLEAN" > "$output_file"
@@ -752,7 +754,8 @@ run_hadolint() {
     if ! run_tool "hadolint" hadolint; then return 0; fi
 
     local dockerfiles
-    dockerfiles=$(find "$REPO_ROOT" -name "Dockerfile*" -type f 2>/dev/null)
+    dockerfiles=$(find "$REPO_ROOT" -name "Dockerfile*" -type f \
+        ! -path "*/.tmp/*" ! -path "*/vendor/*" ! -path "*/.git/*" 2>/dev/null)
     if [[ -z "$dockerfiles" ]]; then
         echo "NO_DOCKERFILES" > "$output_file"
         TOOL_STATUS["hadolint"]="skipped"

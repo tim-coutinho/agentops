@@ -83,8 +83,8 @@ func doctorStatusIcon(status string) string {
 
 // renderDoctorTable writes the formatted doctor output table.
 func renderDoctorTable(w io.Writer, output doctorOutput) {
-	fmt.Fprintln(w, "ao doctor")
-	fmt.Fprintln(w, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+	_, _ = fmt.Fprintln(w, "ao doctor")
+	_, _ = fmt.Fprintln(w, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
 
 	maxName := 0
 	for _, c := range output.Checks {
@@ -95,10 +95,10 @@ func renderDoctorTable(w io.Writer, output doctorOutput) {
 
 	for _, c := range output.Checks {
 		padding := strings.Repeat(" ", maxName-len(c.Name))
-		fmt.Fprintf(w, "%s %s%s  %s\n", doctorStatusIcon(c.Status), c.Name, padding, c.Detail)
+		_, _ = fmt.Fprintf(w, "%s %s%s  %s\n", doctorStatusIcon(c.Status), c.Name, padding, c.Detail)
 	}
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "%s\n", output.Summary)
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintf(w, "%s\n", output.Summary)
 }
 
 // hasRequiredFailure returns true if any required check has failed.
@@ -665,7 +665,7 @@ func countHealFindings(output string) int {
 		// Fallback: count from the summary line "N finding(s) detected."
 		for _, line := range strings.Split(output, "\n") {
 			if strings.Contains(line, "finding(s) detected") {
-				fmt.Sscanf(strings.TrimSpace(line), "%d", &count)
+				_, _ = fmt.Sscanf(strings.TrimSpace(line), "%d", &count)
 				break
 			}
 		}

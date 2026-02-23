@@ -292,7 +292,7 @@ func appendNewlineIfMissing(f *os.File, targetPath string) error {
 	if err != nil {
 		return nil // ignore open errors; non-critical
 	}
-	defer rf.Close()
+	defer func() { _ = rf.Close() }()
 
 	buf := make([]byte, 1)
 	if _, err := rf.Seek(-1, 2); err != nil {

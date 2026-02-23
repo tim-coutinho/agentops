@@ -36,9 +36,7 @@ var subdirs = []string{"learnings", "patterns"}
 func (r *FileResolver) Resolve(id string) (string, error) {
 	// Normalize: strip pend- prefix for pool IDs
 	normalized := id
-	if strings.HasPrefix(normalized, "pend-") {
-		normalized = strings.TrimPrefix(normalized, "pend-")
-	}
+	normalized = strings.TrimPrefix(normalized, "pend-")
 
 	// If it looks like an absolute path, try converting to relative
 	if filepath.IsAbs(normalized) {
@@ -235,7 +233,7 @@ func readFrontmatterField(path, field string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	inFrontmatter := false

@@ -44,7 +44,7 @@ def main() -> int:
 
     # Minimal YAML that is still easy to mechanically validate.
     lines: list[str] = []
-    lines.append(f"schema_version: 1")
+    lines.append("schema_version: 1")
     lines.append(f"product_name: {args.product_name!r}")
     lines.append(f"generated_at: {_dt.date.today().isoformat()!r}")
     lines.append(f"docs_features_prefix: {docs_features_prefix!r}")

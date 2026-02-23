@@ -18,7 +18,7 @@ func TestGenerateRunID(t *testing.T) {
 	}
 	// Should be hex
 	for _, c := range id {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("GenerateRunID contains non-hex char %q in %q", c, id)
 			break
 		}
@@ -457,7 +457,7 @@ func TestRemoveWorktree_PathMismatch(t *testing.T) {
 	if err := os.MkdirAll(wrongPath, 0755); err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(wrongPath)
+	defer func() { _ = os.RemoveAll(wrongPath) }()
 
 	err := RemoveWorktree(repo, wrongPath, "abc123def456", 30*time.Second)
 	if err == nil {

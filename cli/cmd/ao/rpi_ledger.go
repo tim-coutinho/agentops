@@ -112,7 +112,7 @@ func AppendRPILedgerRecord(rootDir string, input RPILedgerAppendInput) (RPILedge
 	if err != nil {
 		return RPILedgerRecord{}, fmt.Errorf("open ledger: %w", err)
 	}
-	defer ledgerFile.Close()
+	defer func() { _ = ledgerFile.Close() }()
 
 	record, err := buildLedgerRecord(ledgerFile, input)
 	if err != nil {
@@ -151,7 +151,7 @@ func acquireLedgerLock(ledgerPath string) (*os.File, error) {
 		return nil, fmt.Errorf("open ledger lock: %w", err)
 	}
 	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
-		lockFile.Close()
+		_ = lockFile.Close()
 		return nil, fmt.Errorf("lock ledger: %w", err)
 	}
 	return lockFile, nil
@@ -160,7 +160,7 @@ func acquireLedgerLock(ledgerPath string) (*os.File, error) {
 // releaseLedgerLock releases and closes the ledger lock file.
 func releaseLedgerLock(lockFile *os.File) {
 	_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
-	lockFile.Close()
+	_ = lockFile.Close()
 }
 
 // buildLedgerRecord reads the previous hash, normalizes details, and constructs a complete record.
@@ -419,7 +419,7 @@ func loadRPILedgerRecordsFromPath(path string) ([]RPILedgerRecord, error) {
 		}
 		return nil, fmt.Errorf("open ledger: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var records []RPILedgerRecord
 	scanner := bufio.NewScanner(file)

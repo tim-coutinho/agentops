@@ -23,7 +23,7 @@ def main() -> int:
     lines.append(f"# Feature Inventory: {args.product_name}")
     lines.append("")
     lines.append(f"- Generated: {_dt.date.today().isoformat()}")
-    lines.append(f"- Source: docs sitemap inventory (if provided); otherwise empty/incomplete by design.")
+    lines.append("- Source: docs sitemap inventory (if provided); otherwise empty/incomplete by design.")
     lines.append(f"- Count: {len(slugs)}")
     lines.append("")
     lines.append("## Docs Slugs")
