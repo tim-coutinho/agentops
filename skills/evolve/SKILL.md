@@ -56,9 +56,9 @@ fi
 SESSION_START_SHA=$(git rev-parse HEAD)
 
 # Recover idle streak from disk (not in-memory — survives compaction)
-IDLE_STREAK=$(tail -20 .agents/evolve/cycle-history.jsonl 2>/dev/null \
-  | tac \
-  | awk '/"result"\s*:\s*"(idle|unchanged)"/{count++; next} {exit} END{print count+0}')
+# Portable: forward-scanning awk counts trailing idle run without tac (unavailable on stock macOS)
+IDLE_STREAK=$(awk '/"result"\s*:\s*"(idle|unchanged)"/{streak++; next} {streak=0} END{print streak+0}' \
+  .agents/evolve/cycle-history.jsonl 2>/dev/null)
 
 PRODUCTIVE_THIS_SESSION=0
 
@@ -69,7 +69,7 @@ if [ -n "$LAST_PRODUCTIVE_TS" ]; then
   NOW_EPOCH=$(date +%s)
   LAST_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$LAST_PRODUCTIVE_TS" +%s 2>/dev/null \
     || date -d "$LAST_PRODUCTIVE_TS" +%s 2>/dev/null || echo 0)
-  if [ $((NOW_EPOCH - LAST_EPOCH)) -ge 3600 ]; then
+  if [ "$LAST_EPOCH" -gt 1000000000 ] && [ $((NOW_EPOCH - LAST_EPOCH)) -ge 3600 ]; then
     echo "CIRCUIT BREAKER: No productive work in 60+ minutes. Stopping."
     # go to Teardown
   fi
@@ -96,6 +96,7 @@ fi
 Run at the TOP of every cycle:
 
 ```bash
+CYCLE_START_SHA=$(git rev-parse HEAD)
 [ -f ~/.config/evolve/KILL ] && echo "KILL: $(cat ~/.config/evolve/KILL)" && exit 0
 [ -f .agents/evolve/STOP ] && echo "STOP: $(cat .agents/evolve/STOP 2>/dev/null)" && exit 0
 ```
@@ -116,7 +117,7 @@ This writes a fitness snapshot to `.agents/evolve/`. If `ao goals measure` is un
 
 **Priority 1 — Failing goals** (skip if `--beads-only`):
 ```bash
-FAILING=$(jq -r '.goals[] | select(.result=="fail") | .goal_id' .agents/evolve/fitness-latest.json | head -1)
+FAILING=$(jq -r '.goals[] | select(.result=="fail") | .id' .agents/evolve/fitness-latest.json | head -1)
 ```
 Pick the highest-weight failing goal. Skip goals that regressed 3 consecutive cycles.
 
@@ -172,10 +173,9 @@ See `references/quality-mode.md` for scoring and full details.
 **Nothing found?** HARD GATE — re-derive idle streak from disk:
 
 ```bash
-# Count trailing idle/unchanged entries in cycle-history.jsonl
-IDLE_STREAK=$(tail -20 .agents/evolve/cycle-history.jsonl 2>/dev/null \
-  | tac \
-  | awk '/"result"\s*:\s*"(idle|unchanged)"/{count++; next} {exit} END{print count+0}')
+# Count trailing idle/unchanged entries in cycle-history.jsonl (portable, no tac)
+IDLE_STREAK=$(awk '/"result"\s*:\s*"(idle|unchanged)"/{streak++; next} {streak=0} END{print streak+0}' \
+  .agents/evolve/cycle-history.jsonl 2>/dev/null)
 
 if [ "$IDLE_STREAK" -ge 2 ]; then
   # This would be the 3rd consecutive idle cycle — STOP
@@ -229,6 +229,10 @@ bash scripts/check-wiring-closure.sh
 If not `--beads-only`, also re-measure to produce a post-cycle snapshot:
 ```bash
 ao goals measure --json --timeout 60 --goal $GOAL_ID > .agents/evolve/fitness-latest-post.json
+
+# Extract goal counts for cycle history entry
+PASSING=$(jq '[.goals[] | select(.result=="pass")] | length' .agents/evolve/fitness-latest-post.json 2>/dev/null || echo 0)
+TOTAL=$(jq '.goals | length' .agents/evolve/fitness-latest-post.json 2>/dev/null || echo 0)
 ```
 
 **If regression detected** (previously-passing goal now fails):
@@ -246,12 +250,23 @@ Two paths: productive cycles get committed, idle cycles are local-only.
 **PRODUCTIVE cycles** (result is improved, regressed, or harvested):
 
 ```bash
+# Quality mode: compute quality_score BEFORE writing the JSONL entry
+QUALITY_SCORE_FIELD=""
+if [ "$QUALITY_MODE" = "true" ]; then
+  REMAINING_HIGH=$(jq -r 'select(.consumed==false) | .items[] | select(.severity=="high")' \
+    .agents/rpi/next-work.jsonl 2>/dev/null | wc -l | tr -d ' ')
+  REMAINING_MEDIUM=$(jq -r 'select(.consumed==false) | .items[] | select(.severity=="medium")' \
+    .agents/rpi/next-work.jsonl 2>/dev/null | wc -l | tr -d ' ')
+  QUALITY_SCORE=$((100 - (REMAINING_HIGH * 10) - (REMAINING_MEDIUM * 3)))
+  [ "$QUALITY_SCORE" -lt 0 ] && QUALITY_SCORE=0
+  QUALITY_SCORE_FIELD=",\"quality_score\":${QUALITY_SCORE}"
+fi
+
 # Append to cycle history (atomic write)
 # Note: flock is Linux-native. On macOS use plain >> append if single-process.
-flock .agents/evolve/cycle-history.jsonl -c \
-  "echo '{\"cycle\":${CYCLE},\"target\":\"${TARGET}\",\"result\":\"${OUTCOME}\",\"sha\":\"$(git rev-parse --short HEAD)\",\"timestamp\":\"$(date -Iseconds)\",\"goals_passing\":${PASSING},\"goals_total\":${TOTAL}}' >> .agents/evolve/cycle-history.jsonl" \
-  2>/dev/null \
-  || echo "{\"cycle\":${CYCLE},\"target\":\"${TARGET}\",\"result\":\"${OUTCOME}\",\"sha\":\"$(git rev-parse --short HEAD)\",\"timestamp\":\"$(date -Iseconds)\",\"goals_passing\":${PASSING},\"goals_total\":${TOTAL}}" >> .agents/evolve/cycle-history.jsonl
+ENTRY="{\"cycle\":${CYCLE},\"target\":\"${TARGET}\",\"result\":\"${OUTCOME}\",\"sha\":\"$(git rev-parse --short HEAD)\",\"timestamp\":\"$(date -Iseconds)\",\"goals_passing\":${PASSING},\"goals_total\":${TOTAL}${QUALITY_SCORE_FIELD}}"
+flock .agents/evolve/cycle-history.jsonl -c "echo '${ENTRY}' >> .agents/evolve/cycle-history.jsonl" 2>/dev/null \
+  || echo "${ENTRY}" >> .agents/evolve/cycle-history.jsonl
 
 # Verify write
 LAST=$(tail -1 .agents/evolve/cycle-history.jsonl | jq -r '.cycle')
@@ -259,17 +274,6 @@ LAST=$(tail -1 .agents/evolve/cycle-history.jsonl | jq -r '.cycle')
 
 # Telemetry
 bash scripts/log-telemetry.sh evolve cycle-complete cycle=${CYCLE} goal=${TARGET} outcome=${OUTCOME} 2>/dev/null || true
-
-# Quality mode: record quality_score in cycle history
-if [ "$QUALITY_MODE" = "true" ]; then
-  REMAINING_HIGH=$(jq -r 'select(.consumed==false) | .items[] | select(.severity=="high")' \
-    .agents/rpi/next-work.jsonl 2>/dev/null | wc -l)
-  REMAINING_MEDIUM=$(jq -r 'select(.consumed==false) | .items[] | select(.severity=="medium")' \
-    .agents/rpi/next-work.jsonl 2>/dev/null | wc -l)
-  QUALITY_SCORE=$((100 - (REMAINING_HIGH * 10) - (REMAINING_MEDIUM * 3)))
-  [ "$QUALITY_SCORE" -lt 0 ] && QUALITY_SCORE=0
-  # Include quality_score in the JSONL entry written above
-fi
 
 # Check if this cycle changed real code (not just artifacts)
 # Note: Using ${CYCLE_START_SHA} instead of HEAD~1 safely handles sub-skill multi-commit cases

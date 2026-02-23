@@ -105,7 +105,8 @@ producing value.
 ```bash
 LAST_PRODUCTIVE_TS=$(grep -v '"idle"\|"unchanged"' .agents/evolve/cycle-history.jsonl 2>/dev/null \
   | tail -1 | jq -r '.timestamp // empty')
-# If >3600s since last productive cycle: CIRCUIT BREAKER → Teardown
+# If >3600s since last productive cycle AND timestamp parsed correctly: CIRCUIT BREAKER → Teardown
+# Guard: LAST_EPOCH > 1e9 prevents false trigger on date parse failure
 ```
 
 ## Recovery Protocol

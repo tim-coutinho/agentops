@@ -17,7 +17,7 @@ cycle 15: goal-X → fail
 
 ## Detection
 
-Count **improved→fail transitions** for the same `goal_id` in
+Count **improved→fail transitions** for the same `target` in
 `.agents/evolve/cycle-history.jsonl`:
 
 ```bash

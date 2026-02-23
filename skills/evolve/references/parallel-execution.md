@@ -96,14 +96,14 @@ caused the regression without testing each in isolation.
 
 ## Cycle History Schema
 
-Sequential cycles use `goal_id` (string). Parallel cycles use `goal_ids` (array):
+Sequential cycles use `target` (string). Parallel cycles use `goal_ids` (array) with `parallel: true`:
 
 ```jsonl
-{"cycle": 1, "goal_id": "test-pass-rate", "result": "improved", ...}
-{"cycle": 2, "goal_ids": ["doc-coverage", "lint-clean"], "result": "improved", "parallel": true, ...}
+{"cycle": 1, "target": "test-pass-rate", "result": "improved", "sha": "abc1234", ...}
+{"cycle": 2, "goal_ids": ["doc-coverage", "lint-clean"], "result": "improved", "sha": "def5678", "parallel": true, ...}
 ```
 
-Both formats coexist in `cycle-history.jsonl` for backward compatibility.
+Legacy entries may use `goal_id` instead of `target` and `commit_sha` instead of `sha`. Tools should handle both.
 
 ## Compounding
 
