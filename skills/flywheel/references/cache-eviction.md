@@ -7,7 +7,7 @@ Passive Read tracking → Confidence decay → Maturity scan → Archive
 ```
 
 **How it works:**
-1. **Passive tracking** — PostToolUse(Read) hook records when learnings are accessed
+1. **Passive tracking** — `ao maturity --scan` records when learnings are accessed
 2. **Confidence decay** — Unused learnings lose confidence at 10%/week
 3. **Composite criteria** — Learnings are eviction candidates when ALL conditions met:
    - Utility < 0.3 (low MemRL score)

@@ -231,7 +231,7 @@ Agent classifies as "gotcha", generates slug `bd-dep-direction`, creates file in
 
 Manual captures feed the same flywheel as automatic extraction:
 ```
-/learn → .agents/knowledge/pending/ → ao pool ingest → .agents/learnings/ → /inject + feedback-loop
+/learn → .agents/knowledge/pending/ → ao pool ingest → .agents/learnings/ → /inject
 ```
 
 This skill is for quick wins. For deeper reflection, use `/retro`.

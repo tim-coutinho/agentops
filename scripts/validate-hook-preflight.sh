@@ -230,14 +230,6 @@ if command -v jq >/dev/null 2>&1; then
 
     if jq -e '
       .hooks.SessionEnd[]?.hooks[]?
-      | select(.command | contains("ao batch-feedback"))
-      | select(.command | contains("--max-sessions"))
-      | select(.command | contains("--max-runtime"))
-      | select((.timeout // 0) > 0)
-    ' hooks/hooks.json >/dev/null 2>&1; then
-        pass "batch-feedback hook is bounded (inline)"
-    elif jq -e '
-      .hooks.SessionEnd[]?.hooks[]?
       | select(.command | contains("session-end-maintenance.sh"))
       | select((.timeout // 0) > 0)
     ' hooks/hooks.json >/dev/null 2>&1; then

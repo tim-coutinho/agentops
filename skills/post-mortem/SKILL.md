@@ -261,15 +261,6 @@ if command -v ao &>/dev/null; then
   ao forge markdown .agents/learnings/*.md 2>/dev/null
   echo "Learnings indexed in knowledge flywheel"
 
-  # Close the MemRL feedback loop — update utility scores for cited learnings
-  ao feedback-loop 2>/dev/null
-  echo "Feedback loop closed"
-
-  # Record session outcome when transcript/session metadata is available
-  # (skip gracefully when unavailable)
-  ao session-outcome --session "${SESSION_ID:-post-mortem}" 2>/dev/null || true
-  echo "Session outcome recorded (or skipped if metadata unavailable)"
-
   # Validate and lock artifacts that passed council review
   ao temper validate .agents/learnings/YYYY-MM-DD-*.md 2>/dev/null || true
   echo "Artifacts validated for tempering"

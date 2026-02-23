@@ -57,12 +57,9 @@ These control the optional hook system installed via `ao init --hooks`. Each hoo
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AGENTOPS_HOOKS_DISABLED` | `0` | Set to `1` to disable **all** hooks at once. Global kill switch. Useful for debugging or when hooks interfere with a specific workflow. |
-| `AGENTOPS_PRECOMPACT_DISABLED` | `0` | Set to `1` to disable the pre-compaction snapshot hook. This hook saves a context snapshot before Claude Code compacts the conversation, enabling `/recover` to restore state. |
-| `AGENTOPS_TASK_VALIDATION_DISABLED` | `0` | Set to `1` to disable the task validation gate. This hook validates that completed tasks meet their acceptance criteria before allowing the agent to proceed. |
-| `AGENTOPS_SESSION_START_DISABLED` | `0` | Set to `1` to disable the session-start hook. This hook injects prior knowledge, checks for pending work, and sets up the session context. |
+| `AGENTOPS_SESSION_START_DISABLED` | `0` | Set to `1` to disable the session-start hook. This hook extracts pending knowledge and injects prior learnings at session start. |
 | `AGENTOPS_EVICTION_DISABLED` | `0` | Set to `1` to disable knowledge eviction. Eviction removes stale learnings that have decayed below the retention threshold. Disable if you want to keep all learnings indefinitely. |
 | `AGENTOPS_GITIGNORE_AUTO` | `1` | Set to `0` to prevent the session-start hook from auto-adding `.agents/` to `.gitignore`. Useful if you want to commit knowledge artifacts to your repo. |
-| `AGENTOPS_WORKER` | `0` | Set to `1` to skip the push gate for worker agents. Workers spawned by `/crank` or `/swarm` set this automatically — they write files but the lead agent handles git operations. |
 
 ### Usage Examples
 
