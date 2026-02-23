@@ -145,7 +145,7 @@ func outputVibeCheckJSON(result *vibecheck.VibeCheckResult) error {
 // outputVibeCheckMarkdown outputs the result as markdown.
 func outputVibeCheckMarkdown(result *vibecheck.VibeCheckResult) error {
 	fmt.Printf("# Vibe Check Report\n\n")
-	fmt.Printf("## Overall Health: **%s** (%.1f%%)\n\n", result.Grade, result.Score*100)
+	fmt.Printf("## Overall Health: **%s** (%.1f%%)\n\n", result.Grade, result.Score)
 	printMarkdownMetrics(result.Metrics)
 	printMarkdownFindings(result.Findings)
 	printMarkdownEvents(result.Events)
@@ -231,7 +231,7 @@ func outputVibeCheckTable(result *vibecheck.VibeCheckResult) error {
 	// Header
 	fmt.Println()
 	fmt.Println("╔════════════════════════════════════════════════════════════╗")
-	fmt.Printf("║ Vibe Check Report                                  %s  %3.0f%% ║\n", result.Grade, result.Score*100)
+	fmt.Printf("║ Vibe Check Report                                  %s  %3.0f%% ║\n", result.Grade, result.Score)
 	fmt.Println("╚════════════════════════════════════════════════════════════╝")
 	fmt.Println()
 
