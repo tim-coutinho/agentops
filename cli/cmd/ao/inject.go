@@ -147,7 +147,11 @@ func runInject(cmd *cobra.Command, args []string) error {
 
 	charBudget := injectMaxTokens * InjectCharsPerToken
 	if len(output) > charBudget {
-		output = trimToCharBudget(output, charBudget)
+		if injectFormat == "json" {
+			output = trimJSONToCharBudget(knowledge, charBudget)
+		} else {
+			output = trimToCharBudget(output, charBudget)
+		}
 	}
 
 	fmt.Println(output)
@@ -350,6 +354,62 @@ func formatKnowledgeMarkdown(k *injectedKnowledge) string {
 	}
 	sb.WriteString(fmt.Sprintf("*Last injection: %s*\n", k.Timestamp.Format(time.RFC3339)))
 	return sb.String()
+}
+
+// trimJSONToCharBudget truncates JSON output by progressively removing items
+// from the knowledge struct until it fits the budget, then adds a "truncated" field.
+func trimJSONToCharBudget(knowledge *injectedKnowledge, budget int) string {
+	// Progressively trim: sessions first, then patterns, then learnings
+	trimmed := *knowledge
+	trimmed.Learnings = append([]learning(nil), knowledge.Learnings...)
+	trimmed.Patterns = append([]pattern(nil), knowledge.Patterns...)
+	trimmed.Sessions = append([]session(nil), knowledge.Sessions...)
+	trimmed.OLConstraints = append([]olConstraint(nil), knowledge.OLConstraints...)
+
+	type truncatedKnowledge struct {
+		injectedKnowledge
+		Truncated bool `json:"truncated"`
+	}
+
+	tryMarshal := func() string {
+		tk := truncatedKnowledge{injectedKnowledge: trimmed, Truncated: true}
+		data, err := json.MarshalIndent(tk, "", "  ")
+		if err != nil {
+			return "{\"truncated\": true}"
+		}
+		return string(data)
+	}
+
+	// Remove sessions first
+	for len(trimmed.Sessions) > 0 {
+		if out := tryMarshal(); len(out) <= budget {
+			return out
+		}
+		trimmed.Sessions = trimmed.Sessions[:len(trimmed.Sessions)-1]
+	}
+	// Remove OL constraints
+	for len(trimmed.OLConstraints) > 0 {
+		if out := tryMarshal(); len(out) <= budget {
+			return out
+		}
+		trimmed.OLConstraints = trimmed.OLConstraints[:len(trimmed.OLConstraints)-1]
+	}
+	// Remove patterns
+	for len(trimmed.Patterns) > 0 {
+		if out := tryMarshal(); len(out) <= budget {
+			return out
+		}
+		trimmed.Patterns = trimmed.Patterns[:len(trimmed.Patterns)-1]
+	}
+	// Remove learnings
+	for len(trimmed.Learnings) > 0 {
+		if out := tryMarshal(); len(out) <= budget {
+			return out
+		}
+		trimmed.Learnings = trimmed.Learnings[:len(trimmed.Learnings)-1]
+	}
+
+	return tryMarshal()
 }
 
 // trimToCharBudget truncates output to fit character budget
