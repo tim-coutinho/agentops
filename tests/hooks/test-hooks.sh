@@ -351,32 +351,6 @@ fi
 
 # ============================================================
 echo ""
-echo "=== session-start.sh handoff injection ==="
-# ============================================================
-
-# Test 41: session-start.sh reads auto-handoff and includes content
-MOCK_SESSION_HANDOFF="$TMPDIR/mock-session-handoff"
-mkdir -p "$MOCK_SESSION_HANDOFF/.agents/handoff"
-git -C "$MOCK_SESSION_HANDOFF" init -q >/dev/null 2>&1
-HANDOFF_TEST_FILE="$MOCK_SESSION_HANDOFF/.agents/handoff/auto-2026-01-01.md"
-echo "# Test Handoff" > "$HANDOFF_TEST_FILE"
-echo "HANDOFF_TEST_MARKER_12345" >> "$HANDOFF_TEST_FILE"
-OUTPUT=$(cd "$MOCK_SESSION_HANDOFF" && bash "$HOOKS_DIR/session-start.sh" 2>/dev/null || true)
-if echo "$OUTPUT" | grep -q "HANDOFF_TEST_MARKER_12345"; then
-    pass "session-start.sh reads auto-handoff and includes content"
-else
-    fail "session-start.sh reads auto-handoff and includes content"
-fi
-
-# Test 42: Auto-handoff file deleted after injection
-if [ ! -f "$HANDOFF_TEST_FILE" ]; then
-    pass "auto-handoff file deleted after injection"
-else
-    fail "auto-handoff file deleted after injection"
-fi
-
-# ============================================================
-echo ""
 echo "=== memory packet v1 compatibility ==="
 # ============================================================
 
@@ -406,49 +380,6 @@ if [ -f "$SUB_PACKET_FILE" ] \
     pass "subagent-stop emits schema packet v1"
 else
     fail "subagent-stop emits schema packet v1"
-fi
-
-# Test 45: session-start consumes packet-first and moves packet to consumed
-MOCK_PACKET_CONSUME="$TMPDIR/mock-packet-consume"
-mkdir -p "$MOCK_PACKET_CONSUME/.agents/ao/packets/pending" "$MOCK_PACKET_CONSUME/.agents/handoff"
-git -C "$MOCK_PACKET_CONSUME" init -q >/dev/null 2>&1
-echo "PACKET_CONSUME_MARKER_777" > "$MOCK_PACKET_CONSUME/.agents/handoff/test-packet.md"
-cat > "$MOCK_PACKET_CONSUME/.agents/ao/packets/pending/packet-test.json" <<'EOF'
-{
-  "schema_version": 1,
-  "packet_id": "packet-test",
-  "packet_type": "stop",
-  "created_at": "2026-02-21T00:00:00Z",
-  "source_hook": "stop-auto-handoff",
-  "session_id": "session-20260221-000000",
-  "handoff_file": ".agents/handoff/test-packet.md",
-  "payload": {"summary":"fallback"}
-}
-EOF
-PACKET_OUTPUT=$(cd "$MOCK_PACKET_CONSUME" && bash "$HOOKS_DIR/session-start.sh" 2>/dev/null || true)
-if echo "$PACKET_OUTPUT" | grep -q "PACKET_CONSUME_MARKER_777"; then
-    pass "session-start consumes packet-first handoff content"
-else
-    fail "session-start consumes packet-first handoff content"
-fi
-if [ -f "$MOCK_PACKET_CONSUME/.agents/ao/packets/consumed/packet-test.json" ] \
-  && [ ! -f "$MOCK_PACKET_CONSUME/.agents/ao/packets/pending/packet-test.json" ]; then
-    pass "session-start moves consumed packet to consumed/"
-else
-    fail "session-start moves consumed packet to consumed/"
-fi
-
-# Test 46: malformed packet is quarantined and skipped
-MOCK_PACKET_QUAR="$TMPDIR/mock-packet-quarantine"
-mkdir -p "$MOCK_PACKET_QUAR/.agents/ao/packets/pending"
-git -C "$MOCK_PACKET_QUAR" init -q >/dev/null 2>&1
-echo '{"schema_version":1,"packet_id":"bad-only"}' > "$MOCK_PACKET_QUAR/.agents/ao/packets/pending/bad.json"
-(cd "$MOCK_PACKET_QUAR" && bash "$HOOKS_DIR/session-start.sh" >/dev/null 2>&1 || true)
-if [ -f "$MOCK_PACKET_QUAR/.agents/ao/packets/quarantine/bad.json" ] \
-  && [ ! -f "$MOCK_PACKET_QUAR/.agents/ao/packets/pending/bad.json" ]; then
-    pass "session-start quarantines malformed packet"
-else
-    fail "session-start quarantines malformed packet"
 fi
 
 # ============================================================
@@ -1018,66 +949,7 @@ else
     fail "worktree-cleanup no-path fail-open"
 fi
 
-# ============================================================
-echo ""
-echo "=== chain.jsonl rotation ==="
-# ============================================================
-
-# Test: chain.jsonl rotated when exceeding threshold
-MOCK_CHAIN="$TMPDIR/mock-chain-rotate"
-setup_mock_repo "$MOCK_CHAIN"
-mkdir -p "$MOCK_CHAIN/.agents/ao"
-for i in $(seq 1 300); do echo "{\"gate\":\"step-$i\",\"status\":\"locked\"}" >> "$MOCK_CHAIN/.agents/ao/chain.jsonl"; done
-(cd "$MOCK_CHAIN" && AGENTOPS_CHAIN_MAX_LINES=200 bash "$HOOKS_DIR/session-start.sh" >/dev/null 2>&1 || true)
-CHAIN_LINES=$(wc -l < "$MOCK_CHAIN/.agents/ao/chain.jsonl" | tr -d ' ')
-if [ "$CHAIN_LINES" -eq 200 ]; then
-    pass "chain.jsonl rotated to 200 lines"
-else
-    fail "chain.jsonl rotated to 200 lines (got $CHAIN_LINES)"
-fi
-
-# Test: archive file created during rotation
-if ls "$MOCK_CHAIN/.agents/ao/archive"/chain-*.jsonl >/dev/null 2>&1; then
-    ARCHIVE_LINES=$(wc -l < "$(ls "$MOCK_CHAIN/.agents/ao/archive"/chain-*.jsonl | head -1)" | tr -d ' ')
-    if [ "$ARCHIVE_LINES" -eq 100 ]; then
-        pass "chain archive contains 100 excess lines"
-    else
-        fail "chain archive contains 100 excess lines (got $ARCHIVE_LINES)"
-    fi
-else
-    fail "chain archive file created"
-fi
-
-# Test: chain.jsonl under threshold not rotated
-MOCK_CHAIN_SMALL="$TMPDIR/mock-chain-small"
-setup_mock_repo "$MOCK_CHAIN_SMALL"
-mkdir -p "$MOCK_CHAIN_SMALL/.agents/ao"
-for i in $(seq 1 50); do echo "{\"gate\":\"step-$i\",\"status\":\"locked\"}" >> "$MOCK_CHAIN_SMALL/.agents/ao/chain.jsonl"; done
-(cd "$MOCK_CHAIN_SMALL" && AGENTOPS_CHAIN_MAX_LINES=200 bash "$HOOKS_DIR/session-start.sh" >/dev/null 2>&1 || true)
-SMALL_LINES=$(wc -l < "$MOCK_CHAIN_SMALL/.agents/ao/chain.jsonl" | tr -d ' ')
-if [ "$SMALL_LINES" -eq 50 ]; then
-    pass "chain.jsonl under threshold not rotated"
-else
-    fail "chain.jsonl under threshold not rotated (got $SMALL_LINES)"
-fi
-
-# ============================================================
-echo ""
-echo "=== cached file count (prune check) ==="
-# ============================================================
-
-# Test: prune dry-run log exists when .agents has >500 files
-MOCK_PRUNE_CACHE="$TMPDIR/mock-prune-cache"
-setup_mock_repo "$MOCK_PRUNE_CACHE"
-mkdir -p "$MOCK_PRUNE_CACHE/.agents/ao"
-# Create 510 files to trigger the prune check
-for i in $(seq 1 510); do touch "$MOCK_PRUNE_CACHE/.agents/ao/dummy-$i"; done
-(cd "$MOCK_PRUNE_CACHE" && bash "$HOOKS_DIR/session-start.sh" >/dev/null 2>&1 || true)
-if [ -f "$MOCK_PRUNE_CACHE/.agents/ao/prune-dry-run.log" ]; then
-    pass "prune dry-run triggered with cached file count"
-else
-    fail "prune dry-run triggered with cached file count"
-fi
+# (chain.jsonl rotation and prune tests removed — features stripped in v2.15.2)
 
 # ============================================================
 echo ""
