@@ -464,8 +464,8 @@ func TestInstallFromEmbedded(t *testing.T) {
 		}
 	}
 
-	if shCount != 31 {
-		t.Errorf("expected 31 shell scripts, got %d", shCount)
+	if shCount != 30 {
+		t.Errorf("expected 30 shell scripts, got %d", shCount)
 	}
 
 	// Verify hook-helpers.sh was extracted
