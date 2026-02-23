@@ -199,7 +199,30 @@ func probeGlob(dirPath, learningID string) (string, error) {
 	return "", nil
 }
 
-// searchDirsForLearning tries extension-probing, direct-probing, and glob-probing across dirs.
+// probeFrontmatterID scans .md files in dirPath for a frontmatter "id" field matching learningID.
+func probeFrontmatterID(dirPath, learningID string) string {
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		path := filepath.Join(dirPath, e.Name())
+		fields, err := parseFrontmatterFields(path, "id")
+		if err != nil {
+			continue
+		}
+		if fields["id"] == learningID {
+			return path
+		}
+	}
+	return ""
+}
+
+// searchDirsForLearning tries extension-probing, direct-probing, glob-probing,
+// and frontmatter ID scanning across dirs.
 func searchDirsForLearning(dirs []string, learningID string) (string, error) {
 	for _, d := range dirs {
 		if p := probeWithExtensions(d, learningID); p != "" {
@@ -217,6 +240,12 @@ func searchDirsForLearning(dirs []string, learningID string) (string, error) {
 			return "", err
 		}
 		if p != "" {
+			return p, nil
+		}
+	}
+	// Scan frontmatter id fields (handles learn-2026-... IDs in .md files)
+	for _, d := range dirs {
+		if p := probeFrontmatterID(d, learningID); p != "" {
 			return p, nil
 		}
 	}

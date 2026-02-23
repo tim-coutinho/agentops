@@ -363,16 +363,28 @@ type MaturityDistribution struct {
 }
 
 // GetMaturityDistribution returns the distribution of learnings across maturity levels.
+// Counts both .jsonl files (with full metadata) and .md files (classified as provisional).
 func GetMaturityDistribution(learningsDir string) (*MaturityDistribution, error) {
-	files, err := filepath.Glob(filepath.Join(learningsDir, "*.jsonl"))
+	jsonlFiles, err := filepath.Glob(filepath.Join(learningsDir, "*.jsonl"))
 	if err != nil {
 		return nil, fmt.Errorf("glob learnings: %w", err)
 	}
 
 	dist := &MaturityDistribution{}
-	for _, file := range files {
+	for _, file := range jsonlFiles {
 		classifyLearningFile(file, dist)
 	}
+
+	// Count .md learnings (no JSONL metadata → provisional by default)
+	mdFiles, err := filepath.Glob(filepath.Join(learningsDir, "*.md"))
+	if err != nil {
+		return dist, nil
+	}
+	for range mdFiles {
+		dist.Provisional++
+		dist.Total++
+	}
+
 	return dist, nil
 }
 
