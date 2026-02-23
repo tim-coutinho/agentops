@@ -13,7 +13,7 @@ Detailed step-by-step workflows for common bd usage patterns with checklists.
 - [Multi-Session Resume](#resume) - Returning after days/weeks away
 - [Session Handoff Workflow](#session-handoff) - Collaborative handoff between sessions
 - [Unblocking Work](#unblocking) - Handling blocked issues
-- [Integration with TodoWrite](#integration-with-todowrite) - Using both tools together
+- [Integration with Task tools](#integration-with-todowrite) - Using both tools together
 - [Common Workflow Patterns](#common-workflow-patterns)
   - Systematic Exploration, Bug Investigation, Refactoring with Dependencies, Spike Investigation
 - [Checklist Templates](#checklist-templates)
@@ -57,7 +57,7 @@ After Compaction:
 - [ ] Read notes field to understand: COMPLETED, IN PROGRESS, BLOCKERS, KEY DECISIONS
 - [ ] Check dependencies: bd dep tree <issue-id> for context
 - [ ] If notes insufficient, check bd list --status open for related issues
-- [ ] Reconstruct TodoWrite list from notes if needed
+- [ ] Reconstruct Task tools list from notes if needed
 ```
 
 **Pattern**: Well-written notes enable full context recovery even with zero conversation history.
@@ -455,7 +455,7 @@ Actions:
 
 ---
 
-## Integration with TodoWrite
+## Integration with Task tools
 
 **Using both tools in one session:**
 
@@ -464,13 +464,13 @@ Hybrid Workflow:
 - [ ] Check bd for high-level context
 - [ ] Choose bd issue to work on
 - [ ] Mark bd issue in_progress
-- [ ] Create TodoWrite from acceptance criteria for execution
-- [ ] Work through TodoWrite items
+- [ ] Create Task tools from acceptance criteria for execution
+- [ ] Work through Task tools items
 - [ ] Update bd design notes as you learn
-- [ ] When TodoWrite complete, close bd issue
+- [ ] When Task tools complete, close bd issue
 ```
 
-**Why hybrid**: bd provides persistent structure, TodoWrite provides visible progress.
+**Why hybrid**: bd provides persistent structure, Task tools provides visible progress.
 
 ---
 
@@ -572,7 +572,7 @@ Research or investigation work:
 
 ## Decision Points
 
-**Should I create a bd issue or use TodoWrite?**
+**Should I create a bd issue or use Task tools?**
 → See [BOUNDARIES.md](BOUNDARIES.md) for decision matrix
 
 **Should I ask user before creating issue?**
@@ -603,7 +603,7 @@ Research or investigation work:
 4. If incorrectly blocked, remove dependency
 
 **"Work is more complex than expected"**
-1. Transition from TodoWrite to bd mid-session
+1. Transition from Task tools to bd mid-session
 2. Create bd issue with current context
 3. Note: "Discovered complexity during implementation"
 4. Add dependencies as discovered

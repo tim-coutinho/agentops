@@ -30,13 +30,13 @@ NEXT: Need user input on budget constraints before finalizing recommendations"
 
 **What you do**:
 1. Read notes to understand current state
-2. Create TodoWrite for immediate work:
+2. Create Task tools for immediate work:
    ```
    - [ ] Draft cost-benefit analysis
    - [ ] Ask user about budget constraints
    - [ ] Finalize recommendations
    ```
-3. Work on tasks, mark TodoWrite items completed
+3. Work on tasks, mark Task tools items completed
 4. At milestone, update bd notes:
    ```bash
    bd update bd-42 --notes "COMPLETED: Cost-benefit analysis drafted.
@@ -45,9 +45,9 @@ NEXT: Need user input on budget constraints before finalizing recommendations"
    NEXT: Get user review of draft before closing issue."
    ```
 
-**Outcome**: TodoWrite disappears at session end, but bd notes preserve context for next session.
+**Outcome**: Task tools disappears at session end, but bd notes preserve context for next session.
 
-**Key insight**: Notes field captures the "why" and context, TodoWrite tracks the "doing" right now.
+**Key insight**: Notes field captures the "why" and context, Task tools tracks the "doing" right now.
 
 ---
 
@@ -93,7 +93,7 @@ Working on "Implement checkout flow" (checkout-1), discover payment validation s
 3. **Check recent progress**: Use `mcp__plugin_beads_beads__list` with `status:"closed"` to see completions
 4. **Read detailed context**: Use `mcp__plugin_beads_beads__show` for the issue you'll work on
 5. **Update status**: Use `mcp__plugin_beads_beads__update` with `status:"in_progress"`
-6. **Begin work**: Create TodoWrite from notes field's NEXT section
+6. **Begin work**: Create Task tools from notes field's NEXT section
 
 (CLI: `bd ready`, `bd blocked`, `bd list --status closed`, `bd show <id>`, `bd update <id> --status in_progress`)
 
@@ -117,7 +117,7 @@ NEXT: Implement rotation per OWASP guidelines (7-day refresh tokens)
 BLOCKER: None - ready to proceed
 
 $ bd update auth-5 --status in_progress
-# Now create TodoWrite based on NEXT section
+# Now create Task tools based on NEXT section
 ```
 
 **For complete session start workflow with checklist, see:** [WORKFLOWS.md](WORKFLOWS.md#session-start)
@@ -207,7 +207,7 @@ bd close auth-5 --reason "Implemented OAuth refresh with 7-day rotation. Tests p
 
 **What's lost**:
 - Conversation history
-- TodoWrite lists
+- Task tools lists
 - Recent discussion
 
 ### Recovery Pattern
@@ -223,10 +223,10 @@ bd close auth-5 --reason "Implemented OAuth refresh with 7-day rotation. Tests p
    # Read notes field - should explain current state
    ```
 
-3. **Reconstruct TodoWrite from notes**:
+3. **Reconstruct Task tools from notes**:
    - COMPLETED section: Done, skip
    - IN PROGRESS section: Current state
-   - NEXT section: **This becomes your TodoWrite list**
+   - NEXT section: **This becomes your Task tools list**
 
 4. **Report to user**:
    ```
@@ -250,7 +250,7 @@ BLOCKER: None
 
 **Recovery actions**:
 1. Read notes, understand context
-2. Create TodoWrite:
+2. Create Task tools:
    ```
    - [ ] Implement rate limiting on refresh endpoint
    - [ ] Write tests for token rotation

@@ -17,7 +17,7 @@ Graph-based issue tracker that survives conversation compaction.
 
 **Key Distinction**:
 - **bd**: Multi-session work, dependencies, survives compaction, git-backed
-- **TodoWrite**: Single-session tasks, linear execution, conversation-scoped
+- **Task tools (TaskCreate/TaskUpdate/TaskList)**: Single-session tasks, status tracking, conversation-scoped
 
 **Decision Rule**: If resuming in 2 weeks would be hard without bd, use bd.
 

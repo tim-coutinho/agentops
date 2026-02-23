@@ -143,7 +143,7 @@ Skills that chain to other skills (e.g., `/rpi` calls `/research`, `/vibe` calls
 | `Task(subagent_type="...")` | `task(subagent_type="...")` | Same semantics, different casing |
 | `Skill(skill="X")` | `skill` tool (read-only) | Load content, then follow inline |
 | `AskUserQuestion` | `question` | Same purpose, different name |
-| `TodoWrite` | `todo` | Same purpose, different name |
+| `TaskCreate`, `TaskUpdate`, `TaskList`, `TaskGet` | `todo` | Task tracking (Claude uses 4 tools, OpenCode uses 1) |
 | `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep` | Same names | Identical across runtimes |
 
 ### Rules

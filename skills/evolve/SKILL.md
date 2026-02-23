@@ -52,6 +52,8 @@ else
 fi
 SESSION_START_SHA=$(git rev-parse HEAD)
 IDLE_STREAK=0
+# Track oscillating goals (improved→fail→improved→fail) to avoid burning cycles
+declare -A QUARANTINED_GOALS  # goal_id → true if oscillation count >= 3
 ```
 
 Parse flags: `--max-cycles=N` (default unlimited), `--dry-run`, `--beads-only`, `--skip-baseline`.
@@ -93,15 +95,29 @@ FAILING=$(jq -r '.goals[] | select(.result=="fail") | .goal_id' .agents/evolve/f
 ```
 Pick the highest-weight failing goal. Skip goals that regressed 3 consecutive cycles.
 
+**Oscillation check:** Before working a failing goal, check if it has oscillated (improved→fail transitions ≥ 3 times in cycle-history.jsonl). If so, quarantine it and try the next failing goal. See `references/oscillation.md`.
+```bash
+# Count improved→fail transitions for this goal
+OSC_COUNT=$(jq -r "select(.target==\"$FAILING\") | .result" .agents/evolve/cycle-history.jsonl \
+  | awk 'prev=="improved" && $0=="fail" {count++} {prev=$0} END {print count+0}')
+if [ "$OSC_COUNT" -ge 3 ]; then
+  QUARANTINED_GOALS[$FAILING]=true
+  # Log quarantine and try next failing goal
+  echo "{\"cycle\":${CYCLE},\"target\":\"${FAILING}\",\"result\":\"quarantined\",\"oscillations\":${OSC_COUNT},\"timestamp\":\"$(date -Iseconds)\"}" >> .agents/evolve/cycle-history.jsonl
+fi
+```
+
 **Priority 2 — Open beads** (when all goals pass or `--beads-only`):
 ```bash
 READY_ISSUE=$(bd ready -n 1 2>/dev/null | head -1 | awk '{print $2}')
 ```
 Pick the highest-priority unblocked issue. Use `bd show $READY_ISSUE` for details.
+If `bd ready` fails or returns empty, fall through to Priority 3. Do not treat bd failure as idle.
 
 **Priority 3 — Harvested work** from `.agents/rpi/next-work.jsonl` (unconsumed entries).
 
 **Nothing found?** Increment IDLE_STREAK. Stop after 3 consecutive idle cycles (stagnation = success).
+A cycle is idle if NO work source returned actionable work (all goals pass or quarantined, bd empty/unavailable, no harvested work). A cycle that targeted an oscillating goal and skipped it counts as idle.
 
 If `--dry-run`: report what would be worked on and go to Teardown.
 
@@ -131,6 +147,9 @@ After execution, verify nothing broke:
 ```bash
 # Fast gate: build + vet + test
 cd cli && go build ./cmd/ao/ && go vet ./... && go test ./... -count=1 -timeout 120s
+
+# Cross-cutting constraint check (catches wiring regressions)
+bash scripts/check-wiring-closure.sh
 ```
 
 If not `--beads-only`, also re-measure to produce a fitness-${CYCLE}-post snapshot:
@@ -219,6 +238,7 @@ See `references/cycle-history.md` for advanced troubleshooting.
 - `references/teardown.md` — Trajectory computation and session summary
 - `references/examples.md` — Detailed usage examples
 - `references/artifacts.md` — Generated files registry
+- `references/oscillation.md` — Oscillation detection and quarantine
 
 ## See Also
 

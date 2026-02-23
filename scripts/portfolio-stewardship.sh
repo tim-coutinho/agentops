@@ -8,24 +8,24 @@ set -euo pipefail
 #   scripts/portfolio-stewardship.sh
 
 if ! command -v bd >/dev/null 2>&1; then
-  echo "bd CLI is required for portfolio stewardship."
-  exit 1
+  echo "bd CLI not available — skipping portfolio stewardship."
+  exit 0
 fi
 
 echo "== Portfolio Stewardship Report =="
 echo "Generated: $(date -Iseconds)"
 echo
 
-open_epics=$(bd count --type epic --status open 2>/dev/null || echo 0)
-open_tasks=$(bd count --type task --status open 2>/dev/null || echo 0)
+# Capture bd ready once to avoid multiple calls
+ready_output=$(bd ready 2>/dev/null || true)
+
+open_epics=$(echo "$ready_output" | grep -c '\[epic\]' || true)
+open_tasks=$(echo "$ready_output" | grep -c '.' || true)
 
 echo "Open epics: $open_epics"
 echo "Open tasks: $open_tasks"
 echo
 
 echo "Top 20 open epics:"
-bd list --type epic --status open 2>/dev/null | head -20
+echo "$ready_output" | grep '\[epic\]' | head -20 || echo "No open epics found."
 echo
-
-echo "Stale epic candidates (>30 days since update):"
-bd stale --days 30 --type epic 2>/dev/null || echo "No stale epic candidates found."

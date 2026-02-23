@@ -1,27 +1,27 @@
 # Integration Patterns with Other Skills
 
-How bd-issue-tracking integrates with TodoWrite, writing-plans, and other skills for optimal workflow.
+How bd-issue-tracking integrates with Task tools (TaskCreate, TaskUpdate, TaskList, TaskGet), writing-plans, and other skills for optimal workflow.
 
 ## Contents
 
-- [TodoWrite Integration](#todowrite-integration) - Temporal layering pattern
+- [Task Tools Integration](#task-tools-integration) - Temporal layering pattern
 - [writing-plans Integration](#writing-plans-integration) - Detailed implementation plans
 - [Cross-Skill Workflows](#cross-skill-workflows) - Using multiple skills together
 - [Decision Framework](#decision-framework) - When to use which tool
 
 ---
 
-## TodoWrite Integration
+## Task Tools Integration
 
 **Both tools complement each other at different timescales:**
 
 ### Temporal Layering Pattern
 
-**TodoWrite** (short-term working memory - this hour):
+**Task tools** (short-term working memory - this hour):
 - Tactical execution: "Review Section 3", "Expand Q&A answers"
-- Marked completed as you go
+- Marked completed via TaskUpdate as you go
 - Present/future tense ("Review", "Expand", "Create")
-- Ephemeral: Disappears when session ends
+- Ephemeral: Task list resets when session ends
 
 **Beads** (long-term episodic memory - this week/month):
 - Strategic objectives: "Continue work on strategic planning document"
@@ -29,24 +29,26 @@ How bd-issue-tracking integrates with TodoWrite, writing-plans, and other skills
 - Past tense in notes ("COMPLETED", "Discovered", "Blocked by")
 - Persistent: Survives compaction and session boundaries
 
-**Key insight**: TodoWrite = working copy for the current hour. Beads = project journal for the current month.
+**Key insight**: Task tools = working copy for the current hour. Beads = project journal for the current month.
 
 ### The Handoff Pattern
 
-1. **Session start**: Read bead → Create TodoWrite items for immediate actions
-2. **During work**: Mark TodoWrite items completed as you go
+1. **Session start**: Read bead → Create tasks via TaskCreate for immediate actions
+2. **During work**: Mark tasks completed via TaskUpdate as you go
 3. **Reach milestone**: Update bead notes with outcomes + context
-4. **Session end**: TodoWrite disappears, bead survives with enriched notes
+4. **Session end**: Task list resets, bead survives with enriched notes
 
-**After compaction**: TodoWrite is gone forever, but bead notes reconstruct what happened.
+**After compaction**: Task list is gone, but bead notes reconstruct what happened.
 
-### Example: TodoWrite tracks execution, Beads capture meaning
+### Example: Task tools track execution, Beads capture meaning
 
-**TodoWrite (ephemeral execution view):**
+**Task tools (ephemeral execution view):**
 ```
-[completed] Implement login endpoint
-[in_progress] Add password hashing with bcrypt
-[pending] Create session middleware
+Create session tasks:
+  TaskCreate: "Implement login endpoint" (pending)
+  TaskCreate: "Add password hashing with bcrypt" (pending)
+  TaskCreate: "Create session middleware" (pending)
+Mark completed via TaskUpdate as you go. Check TaskList for progress.
 ```
 
 **Corresponding bead notes (persistent context):**
@@ -58,17 +60,17 @@ NEXT: Need user input on token expiry time (1hr vs 24hr trade-off)."
 ```
 
 **What's different**:
-- TodoWrite: Task names (what to do)
+- Task tools: Task names (what to do)
 - Beads: Outcomes and decisions (what was learned, why it matters)
 
-**Don't duplicate**: TodoWrite tracks execution, Beads captures meaning and context.
+**Don't duplicate**: Task tools track execution, Beads captures meaning and context.
 
 ### When to Update Each Tool
 
-**Update TodoWrite** (frequently):
-- Mark task completed as you finish each one
-- Add new tasks as you break down work
-- Update in_progress when switching tasks
+**Update Task tools** (frequently):
+- Mark task completed via TaskUpdate as you finish each one
+- Add new tasks via TaskCreate as you break down work
+- Set in_progress via TaskUpdate when switching tasks
 
 **Update Beads** (at milestones):
 - Completed a significant piece of work
@@ -78,7 +80,7 @@ NEXT: Need user input on token expiry time (1hr vs 24hr trade-off)."
 - Session token usage > 70%
 - End of session
 
-**Pattern**: TodoWrite changes every few minutes. Beads updates every hour or at natural breakpoints.
+**Pattern**: Task tools change every few minutes. Beads updates every hour or at natural breakpoints.
 
 ### Full Workflow Example
 
@@ -89,17 +91,18 @@ NEXT: Need user input on token expiry time (1hr vs 24hr trade-off)."
 # Create bd issue
 bd create "Implement OAuth authentication" -t feature -p 0 --design "
 JWT tokens with refresh rotation.
-See BOUNDARIES.md for bd vs TodoWrite decision.
+See BOUNDARIES.md for bd vs Task tools decision.
 "
 
 # Mark in_progress
 bd update oauth-1 --status in_progress
 
-# Create TodoWrite for today's work
-TodoWrite:
-- [ ] Research OAuth 2.0 refresh token flow
-- [ ] Design token schema
-- [ ] Set up test environment
+# Create session tasks for today's work
+Create session tasks:
+  TaskCreate: "Research OAuth 2.0 refresh token flow" (pending)
+  TaskCreate: "Design token schema" (pending)
+  TaskCreate: "Set up test environment" (pending)
+Mark completed via TaskUpdate as you go. Check TaskList for progress.
 ```
 
 **End of Session 1**:
@@ -110,7 +113,7 @@ KEY DECISION: RS256 over HS256 (enables key rotation per security review).
 IN PROGRESS: Need to set up test OAuth provider.
 NEXT: Configure test provider, then implement token endpoint."
 
-# TodoWrite disappears when session ends
+# Task list resets when session ends
 ```
 
 **Session 2 - Implementation** (after compaction):
@@ -119,11 +122,12 @@ NEXT: Configure test provider, then implement token endpoint."
 bd show oauth-1
 # See: COMPLETED research, NEXT is configure test provider
 
-# Create fresh TodoWrite from NEXT
-TodoWrite:
-- [ ] Configure test OAuth provider
-- [ ] Implement token endpoint
-- [ ] Add basic tests
+# Create fresh session tasks from NEXT
+Create session tasks:
+  TaskCreate: "Configure test OAuth provider" (pending)
+  TaskCreate: "Implement token endpoint" (pending)
+  TaskCreate: "Add basic tests" (pending)
+Mark completed via TaskUpdate as you go. Check TaskList for progress.
 
 # Work proceeds...
 
@@ -219,7 +223,7 @@ git commit -m "feat: add token refresh endpoint"
 **Three-layer structure**:
 1. **bd issue**: Strategic objective + high-level design
 2. **Detailed plan** (writing-plans): Step-by-step execution guide
-3. **TodoWrite**: Current task within the plan
+3. **Task tools**: Current task within the plan
 
 **During planning phase:**
 1. Create bd issue with high-level design
@@ -228,7 +232,7 @@ git commit -m "feat: add token refresh endpoint"
 
 **During execution phase:**
 1. Open detailed plan (if exists)
-2. Use TodoWrite to track current task within plan
+2. Use Task tools to track current task within plan
 3. Update bd notes at milestones, not per-task
 4. Close bd issue when all plan tasks complete
 
@@ -253,8 +257,8 @@ TESTS: All 12 tests passing (auth, rotation, expiry, error handling)"
 
 **Pattern summary**:
 - **Simple feature**: bd issue only
-- **Complex feature**: bd issue + TodoWrite
-- **Very complex feature**: bd issue + writing-plans + TodoWrite
+- **Complex feature**: bd issue + Task tools
+- **Very complex feature**: bd issue + writing-plans + Task tools
 
 ---
 
@@ -283,14 +287,16 @@ TESTS: All 12 tests passing (auth, rotation, expiry, error handling)"
    NEXT: Get exec review of draft recommendations before finalizing"
    ```
 
-4. TodoWrite tracks immediate writing tasks:
+4. Task tools track immediate writing tasks:
    ```
-   - [ ] Draft recommendation 1: Market expansion
-   - [ ] Add supporting data from research
-   - [ ] Create budget estimates
+   Create session tasks:
+     TaskCreate: "Draft recommendation 1: Market expansion" (pending)
+     TaskCreate: "Add supporting data from research" (pending)
+     TaskCreate: "Create budget estimates" (pending)
+   Mark completed via TaskUpdate as you go. Check TaskList for progress.
    ```
 
-**Why this works**: bd preserves context across sessions (document might take days), skill provides writing framework, TodoWrite tracks current work.
+**Why this works**: bd preserves context across sessions (document might take days), skill provides writing framework, Task tools track current work.
 
 ### Pattern: Multi-File Refactoring
 
@@ -319,14 +325,15 @@ TESTS: All 12 tests passing (auth, rotation, expiry, error handling)"
    bd dep add tests-4 middleware-3  # tests depend on middleware
    ```
 
-2. Work through subtasks in order, using TodoWrite for each:
+2. Work through subtasks in order, using Task tools for each:
    ```
    Current: login-1
-   TodoWrite:
-   - [ ] Update login route signature
-   - [ ] Add JWT generation
-   - [ ] Update tests
-   - [ ] Verify backward compatibility
+   Create session tasks:
+     TaskCreate: "Update login route signature" (pending)
+     TaskCreate: "Add JWT generation" (pending)
+     TaskCreate: "Update tests" (pending)
+     TaskCreate: "Verify backward compatibility" (pending)
+   Mark completed via TaskUpdate as you go. Check TaskList for progress.
    ```
 
 3. Update bd notes as each completes:
@@ -336,7 +343,7 @@ TESTS: All 12 tests passing (auth, rotation, expiry, error handling)"
 
 4. If issues discovered, use systematic-debugging skill + create blocker issues
 
-**Why this works**: bd tracks dependencies and progress across files, TodoWrite focuses on current file, skills provide specialized frameworks when needed.
+**Why this works**: bd tracks dependencies and progress across files, Task tools focus on current file, skills provide specialized frameworks when needed.
 
 ---
 
@@ -346,7 +353,7 @@ TESTS: All 12 tests passing (auth, rotation, expiry, error handling)"
 
 | Need | Tool | Why |
 |------|------|-----|
-| Track today's execution | TodoWrite | Lightweight, shows current progress |
+| Track today's execution | Task tools | Lightweight, shows current progress |
 | Preserve context across sessions | bd | Survives compaction, persistent memory |
 | Detailed implementation steps | writing-plans | RED-GREEN-REFACTOR breakdown |
 | Research document structure | developing-strategic-documents | Domain-specific framework |
@@ -356,38 +363,38 @@ TESTS: All 12 tests passing (auth, rotation, expiry, error handling)"
 
 ```
 Is this work done in this session?
-├─ Yes → Use TodoWrite only
+├─ Yes → Use Task tools only
 └─ No → Use bd
-    ├─ Simple feature → bd issue + TodoWrite
-    └─ Complex feature → bd issue + writing-plans + TodoWrite
+    ├─ Simple feature → bd issue + Task tools
+    └─ Complex feature → bd issue + writing-plans + Task tools
 
 Will conversation history get compacted?
 ├─ Likely → Use bd (context survives)
-└─ Unlikely → TodoWrite is sufficient
+└─ Unlikely → Task tools are sufficient
 
 Does work have dependencies or blockers?
 ├─ Yes → Use bd (tracks relationships)
-└─ No → TodoWrite is sufficient
+└─ No → Task tools are sufficient
 
 Is this specialized domain work?
 ├─ Research/writing → developing-strategic-documents
 ├─ Complex debugging → systematic-debugging
 ├─ Detailed implementation → writing-plans
-└─ General tracking → bd + TodoWrite
+└─ General tracking → bd + Task tools
 ```
 
 ### Integration Anti-Patterns
 
 **Don't**:
-- Duplicate TodoWrite tasks into bd notes (different purposes)
-- Create bd issues for single-session linear work (use TodoWrite)
+- Duplicate session tasks into bd notes (different purposes)
+- Create bd issues for single-session linear work (use Task tools)
 - Put detailed implementation steps in bd notes (use writing-plans)
-- Update bd after every TodoWrite task (update at milestones)
+- Update bd after every task completion (update at milestones)
 - Use writing-plans for exploratory work (defeats the purpose)
 
 **Do**:
 - Update bd when changing tools or reaching milestones
-- Use TodoWrite as "working copy" of bd's NEXT section
+- Use Task tools as "working copy" of bd's NEXT section
 - Link between tools (bd design field → writing-plans file path)
 - Choose the right level of formality for the work complexity
 
@@ -397,7 +404,7 @@ Is this specialized domain work?
 
 **Key principle**: Each tool operates at a different timescale and level of detail.
 
-- **TodoWrite**: Minutes to hours (current execution)
+- **Task tools**: Minutes to hours (current execution)
 - **bd**: Hours to weeks (persistent context)
 - **writing-plans**: Days to weeks (detailed breakdown)
 - **Other skills**: As needed (domain frameworks)

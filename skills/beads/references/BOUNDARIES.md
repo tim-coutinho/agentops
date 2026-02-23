@@ -1,22 +1,22 @@
-# Boundaries: When to Use bd vs TodoWrite
+# Boundaries: When to Use bd vs Task Tools
 
-This reference provides detailed decision criteria for choosing between bd issue tracking and TodoWrite for task management.
+This reference provides detailed decision criteria for choosing between bd issue tracking and Task tools (`TaskCreate`, `TaskUpdate`, `TaskList`, `TaskGet`) for task management.
 
 ## Contents
 
 - [The Core Question](#the-core-question)
 - [Decision Matrix](#decision-matrix)
   - [Use bd for](#use-bd-for): Multi-Session Work, Complex Dependencies, Knowledge Work, Side Quests, Project Memory
-  - [Use TodoWrite for](#use-todowrite-for): Single-Session Tasks, Linear Execution, Immediate Context, Simple Tracking
+  - [Use Task tools for](#use-task-tools-for): Single-Session Tasks, Linear Execution, Immediate Context, Simple Tracking
 - [Detailed Comparison](#detailed-comparison)
 - [Integration Patterns](#integration-patterns)
-  - Pattern 1: bd as Strategic, TodoWrite as Tactical
-  - Pattern 2: TodoWrite as Working Copy of bd
+  - Pattern 1: bd as Strategic, Task tools as Tactical
+  - Pattern 2: Task tools as Working Copy of bd
   - Pattern 3: Transition Mid-Session
 - [Real-World Examples](#real-world-examples)
   - Strategic Document Development, Simple Feature Implementation, Bug Investigation, Refactoring with Dependencies
 - [Common Mistakes](#common-mistakes)
-  - Using TodoWrite for multi-session work, using bd for simple tasks, not transitioning when complexity emerges, creating too many bd issues, never using bd
+  - Using Task tools for multi-session work, using bd for simple tasks, not transitioning when complexity emerges, creating too many bd issues, never using bd
 - [The Transition Point](#the-transition-point)
 - [Summary Heuristics](#summary-heuristics)
 
@@ -25,9 +25,9 @@ This reference provides detailed decision criteria for choosing between bd issue
 **"Could I resume this work after 2 weeks away?"**
 
 - If bd would help you resume → **use bd**
-- If markdown skim would suffice → **TodoWrite is fine**
+- If markdown skim would suffice → **Task tools are fine**
 
-This heuristic captures the essential difference: bd provides structured context that persists across long gaps, while TodoWrite excels at immediate session tracking.
+This heuristic captures the essential difference: bd provides structured context that persists across long gaps, while Task tools excel at immediate session tracking.
 
 ## Decision Matrix
 
@@ -90,7 +90,7 @@ Need to resume work after significant time with full context.
 
 ---
 
-### Use TodoWrite for:
+### Use Task tools for:
 
 #### Single-Session Tasks
 Work that completes within current conversation.
@@ -101,7 +101,7 @@ Work that completes within current conversation.
 - Adding unit tests for existing code
 - Updating documentation for recent changes
 
-**Why TodoWrite wins**: Simple checklist is perfect for linear execution. No need for persistence or dependencies. Clear completion within session.
+**Why Task tools win**: Lightweight task tracking is perfect for linear execution. No need for persistence or dependencies. Clear completion within session.
 
 #### Linear Execution
 Straightforward step-by-step tasks with no branching.
@@ -112,7 +112,7 @@ Straightforward step-by-step tasks with no branching.
 - Code style cleanup across files
 - Dependency updates following upgrade guide
 
-**Why TodoWrite wins**: Steps are predetermined and sequential. No discovery, no blockers, no side quests. Just execute top to bottom.
+**Why Task tools win**: Steps are predetermined and sequential. No discovery, no blockers, no side quests. Just execute top to bottom.
 
 #### Immediate Context
 All information already in conversation.
@@ -123,7 +123,7 @@ All information already in conversation.
 - Refactoring request with clear before/after vision
 - Config changes based on user preferences
 
-**Why TodoWrite wins**: No external context to track. Everything needed is in current conversation. TodoWrite provides user visibility, nothing more needed.
+**Why Task tools win**: No external context to track. Everything needed is in current conversation. Task tools provide user visibility, nothing more needed.
 
 #### Simple Tracking
 Just need a checklist to show progress to user.
@@ -134,34 +134,34 @@ Just need a checklist to show progress to user.
 - Demonstrating systematic approach
 - Providing reassurance work is proceeding
 
-**Why TodoWrite wins**: User wants to see thinking and progress. TodoWrite is visible in conversation. bd is invisible background structure.
+**Why Task tools win**: User wants to see thinking and progress. Task tools are visible in conversation. bd is invisible background structure.
 
 ---
 
 ## Detailed Comparison
 
-| Aspect | bd | TodoWrite |
+| Aspect | bd | Task tools |
 |--------|-----|-----------|
-| **Persistence** | Git-backed, survives compaction | Session-only, lost after conversation |
-| **Dependencies** | Graph-based, automatic ready detection | Manual, no automatic tracking |
-| **Discoverability** | `bd ready` surfaces work | Scroll conversation for todos |
-| **Complexity** | Handles nested epics, blockers | Flat list only |
+| **Persistence** | Git-backed, survives compaction | Session-only, task list resets when session ends |
+| **Dependencies** | Graph-based, automatic ready detection | Supports blockedBy/blocks via TaskUpdate |
+| **Discoverability** | `bd ready` surfaces work | TaskList shows all tasks with status |
+| **Complexity** | Handles nested epics, blockers | Flat task list with status and dependencies |
 | **Visibility** | Background structure, not in conversation | Visible to user in chat |
 | **Setup** | Requires `.beads/` directory in project | Always available |
 | **Best for** | Complex, multi-session, explorative | Simple, single-session, linear |
-| **Context capture** | Design notes, acceptance criteria, links | Just task description |
-| **Evolution** | Issues can be updated, refined over time | Static once written |
+| **Context capture** | Design notes, acceptance criteria, links | Subject and description |
+| **Evolution** | Issues can be updated, refined over time | Tasks updated via TaskUpdate as work progresses |
 | **Audit trail** | Full history of changes | Only visible in conversation |
 
 ## Integration Patterns
 
-bd and TodoWrite can coexist effectively in a session. Use both strategically.
+bd and Task tools can coexist effectively in a session. Use both strategically.
 
-### Pattern 1: bd as Strategic, TodoWrite as Tactical
+### Pattern 1: bd as Strategic, Task tools as Tactical
 
 **Setup:**
 - bd tracks high-level issues and dependencies
-- TodoWrite tracks current session's execution steps
+- Task tools track current session's execution steps
 
 **Example:**
 ```
@@ -170,11 +170,12 @@ bd issue: "Implement user authentication" (epic)
   ├─ Child issue: "Add JWT token validation"  ← Currently working on this
   └─ Child issue: "Implement logout"
 
-TodoWrite (for JWT validation):
-- [ ] Install JWT library
-- [ ] Create token validation middleware
-- [ ] Add tests for token expiry
-- [ ] Update API documentation
+Create session tasks:
+  TaskCreate: "Install JWT library" (pending)
+  TaskCreate: "Create token validation middleware" (pending)
+  TaskCreate: "Add tests for token expiry" (pending)
+  TaskCreate: "Update API documentation" (pending)
+Mark completed via TaskUpdate as you go.
 ```
 
 **When to use:**
@@ -182,22 +183,22 @@ TodoWrite (for JWT validation):
 - User wants to see current progress but larger context exists
 - Multi-session work currently in single-session execution phase
 
-### Pattern 2: TodoWrite as Working Copy of bd
+### Pattern 2: Task tools as Working Copy of bd
 
 **Setup:**
 - Start with bd issue containing full context
-- Create TodoWrite checklist from bd issue's acceptance criteria
-- Update bd as TodoWrite items complete
+- Create session tasks from bd issue's acceptance criteria
+- Update bd as tasks complete
 
 **Example:**
 ```
 Session start:
 - Check bd: "issue-auth-42: Add JWT token validation" is ready
-- Extract acceptance criteria into TodoWrite
+- Extract acceptance criteria into session tasks via TaskCreate
 - Mark bd issue as in_progress
-- Work through TodoWrite items
+- Work through tasks, marking completed via TaskUpdate
 - Update bd design notes as you learn
-- When TodoWrite completes, close bd issue
+- When all tasks complete, close bd issue
 ```
 
 **When to use:**
@@ -207,7 +208,7 @@ Session start:
 
 ### Pattern 3: Transition Mid-Session
 
-**From TodoWrite to bd:**
+**From Task tools to bd:**
 
 Recognize mid-execution that work is more complex than anticipated.
 
@@ -219,15 +220,15 @@ Recognize mid-execution that work is more complex than anticipated.
 
 **How to transition:**
 ```
-1. Create bd issue with current TodoWrite content
+1. Create bd issue with current task list content
 2. Note: "Discovered this is multi-session work during implementation"
 3. Add dependencies as discovered
-4. Keep TodoWrite for current session
+4. Keep task list for current session
 5. Update bd issue before session ends
-6. Next session: resume from bd, create new TodoWrite if needed
+6. Next session: resume from bd, create new tasks if needed
 ```
 
-**From bd to TodoWrite:**
+**From bd to Task tools:**
 
 Rare, but happens when bd issue turns out simpler than expected.
 
@@ -240,8 +241,8 @@ Rare, but happens when bd issue turns out simpler than expected.
 **How to transition:**
 ```
 1. Keep bd issue for historical record
-2. Create TodoWrite from issue description
-3. Execute via TodoWrite
+2. Create session tasks from issue description via TaskCreate
+3. Execute via task list
 4. Close bd issue when done
 5. Note: "Completed in single session, simpler than expected"
 ```
@@ -268,38 +269,38 @@ db-epic: "Migrate production database to PostgreSQL"
   └─ db-4: "Create migration scripts and test data integrity" (blocked by db-3)
 ```
 
-**TodoWrite role**: None initially. Might use TodoWrite for single-session testing sprints once migration scripts ready.
+**Task tools role**: None initially. Might use Task tools for single-session testing sprints once migration scripts ready.
 
 ### Example 2: Simple Feature Implementation
 
 **Scenario**: Add logging to existing endpoint based on clear specification.
 
-**Why TodoWrite**:
+**Why Task tools**:
 - Single session work
 - Linear execution - add import, call logger, add test
 - All context in user message
 - Completes within conversation
 
-**TodoWrite**:
+**Task tools**:
 ```
-- [ ] Import logging library
-- [ ] Add log statements to endpoint
-- [ ] Add test for log output
-- [ ] Run tests
+TaskCreate: "Import logging library" (pending)
+TaskCreate: "Add log statements to endpoint" (pending)
+TaskCreate: "Add test for log output" (pending)
+TaskCreate: "Run tests" (pending)
 ```
 
 **bd role**: None. Overkill for straightforward task.
 
 ### Example 3: Bug Investigation
 
-**Initial assessment**: Seems simple, try TodoWrite first.
+**Initial assessment**: Seems simple, try Task tools first.
 
-**TodoWrite**:
+**Task tools**:
 ```
-- [ ] Reproduce bug
-- [ ] Identify root cause
-- [ ] Implement fix
-- [ ] Add regression test
+TaskCreate: "Reproduce bug" (pending)
+TaskCreate: "Identify root cause" (pending)
+TaskCreate: "Implement fix" (pending)
+TaskCreate: "Add regression test" (pending)
 ```
 
 **What actually happens**: Reproducing bug reveals it's intermittent. Root cause investigation shows multiple potential issues. Needs time to investigate.
@@ -334,13 +335,13 @@ refactor-3: "Update user controller to use shared validation"
 refactor-4: "Update payment controller to use shared validation"
 ```
 
-**TodoWrite role**: Could use TodoWrite for individual controller updates as implementing.
+**Task tools role**: Could use Task tools for individual controller updates as implementing.
 
 **Why this works**: bd ensures you don't forget to update a controller. `bd ready` shows next available work. Dependencies prevent starting controller update before extraction complete.
 
 ## Common Mistakes
 
-### Mistake 1: Using TodoWrite for Multi-Session Work
+### Mistake 1: Using Task tools for Multi-Session Work
 
 **What happens**:
 - Next session, forget what was done
@@ -357,14 +358,14 @@ refactor-4: "Update payment controller to use shared validation"
 - User can't see progress in conversation
 - Extra tool use for no benefit
 
-**Solution**: Use TodoWrite. It's designed for exactly this case.
+**Solution**: Use Task tools. They're designed for exactly this case.
 
 ### Mistake 3: Not Transitioning When Complexity Emerges
 
 **What happens**:
-- Start with TodoWrite for "simple" task
+- Start with Task tools for "simple" task
 - Discover blockers and dependencies mid-way
-- Keep using TodoWrite despite poor fit
+- Keep using Task tools despite poor fit
 - Lose context when conversation ends
 
 **Solution**: Transition to bd when complexity signal appears. Not too late mid-session.
@@ -378,7 +379,7 @@ refactor-4: "Update payment controller to use shared validation"
 
 **Solution**: Reserve bd for work that actually benefits from persistence. Use "2 week test" - would bd help resume after 2 weeks? If no, skip it.
 
-### Mistake 5: Never Using bd Because TodoWrite is Familiar
+### Mistake 5: Never Using bd Because Task tools are Familiar
 
 **What happens**:
 - Multi-session projects become markdown swamps
@@ -409,22 +410,22 @@ refactor-4: "Update payment controller to use shared validation"
 **Rule of thumb**: If you can write a clear, specific issue title and description in one sentence, create directly. If you need user input to clarify the work, ask first.
 
 **Examples**:
-- ✅ Create directly: "workspace MCP: Google Doc → .docx export fails with UTF-8 encoding error"
-- ✅ Create directly: "Research: Workarounds for reading Google Slides from Shared Drives"
-- ❓ Ask first: "Should we refactor the auth system now or later?" (strategic decision)
-- ❓ Ask first: "I found several data validation issues, should I file them all?" (potential overwhelming)
+- Create directly: "workspace MCP: Google Doc -> .docx export fails with UTF-8 encoding error"
+- Create directly: "Research: Workarounds for reading Google Slides from Shared Drives"
+- Ask first: "Should we refactor the auth system now or later?" (strategic decision)
+- Ask first: "I found several data validation issues, should I file them all?" (potential overwhelming)
 
 ## The Transition Point
 
 Most work starts with an implicit mental model:
 
-**"This looks straightforward"** → TodoWrite
+**"This looks straightforward"** → Task tools
 
 **As work progresses:**
 
-✅ **Stays straightforward** → Continue with TodoWrite, complete in session
+**Stays straightforward** → Continue with Task tools, complete in session
 
-⚠️ **Complexity emerges** → Transition to bd, preserve context
+**Complexity emerges** → Transition to bd, preserve context
 
 The skill is recognizing the transition point:
 
@@ -443,27 +444,27 @@ The skill is recognizing the transition point:
 Quick decision guides:
 
 **Time horizon:**
-- Same session → TodoWrite
+- Same session → Task tools
 - Multiple sessions → bd
 
 **Dependency structure:**
-- Linear steps → TodoWrite
+- Linear steps → Task tools
 - Blockers/prerequisites → bd
 
 **Scope clarity:**
-- Well-defined → TodoWrite
+- Well-defined → Task tools
 - Exploratory → bd
 
 **Context complexity:**
-- Conversation has everything → TodoWrite
+- Conversation has everything → Task tools
 - External context needed → bd
 
 **User interaction:**
-- User watching progress → TodoWrite visible in chat
+- User watching progress → Task tools visible in chat
 - Background work → bd invisible structure
 
 **Resume difficulty:**
-- Easy from markdown → TodoWrite
+- Easy from markdown → Task tools
 - Need structured history → bd
 
 When in doubt: **Use the 2-week test**. If you'd struggle to resume this work after 2 weeks without bd, use bd.

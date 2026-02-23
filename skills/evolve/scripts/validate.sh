@@ -23,6 +23,7 @@ check "SKILL.md documents session_start_sha" "grep -qi 'session.start.sha\|cycle
 check "SKILL.md documents continuous values" "grep -qi 'continuous\|value.*threshold' '$SKILL_DIR/SKILL.md'"
 check "SKILL.md documents full regression gate" "grep -qi 'full.*regression\|all goals' '$SKILL_DIR/SKILL.md'"
 check "SKILL.md documents post-cycle snapshot" "grep -q 'fitness-.*-post' '$SKILL_DIR/SKILL.md'"
+check "SKILL.md documents oscillation detection" "grep -qi 'oscillat' '$SKILL_DIR/SKILL.md'"
 
 echo ""; echo "Results: $PASS passed, $FAIL failed"
 [ $FAIL -eq 0 ] && exit 0 || exit 1
