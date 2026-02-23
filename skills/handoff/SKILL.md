@@ -236,8 +236,8 @@ Reason: No session activity found to hand off
 
 ```
 Handoff created:
-  .agents/handoff/2026-01-31-auth-refactor.md
-  .agents/handoff/2026-01-31-auth-refactor-prompt.md
+  .agents/handoff/20260131T143000Z-auth-refactor.md
+  .agents/handoff/20260131T143000Z-auth-refactor-prompt.md
 
 Session captured:
 - 5 commits, 12 files changed
