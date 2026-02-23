@@ -86,7 +86,7 @@ Research → Plan → Implement → Validate
 
 ## Available Skills
 
-## Start Here (8 starters)
+## Start Here (11 starters)
 
 These are the skills every user needs first. Everything else is available when you need it.
 
@@ -100,6 +100,9 @@ These are the skills every user needs first. Everything else is available when y
 | `/implement` | Execute single issue |
 | `/learn` | Capture knowledge manually into the flywheel |
 | `/status` | Single-screen dashboard of current work and suggested next action |
+| `/goals` | Maintain GOALS.yaml fitness specification |
+| `/flywheel` | Knowledge flywheel health monitoring (σ×ρ > δ) |
+| `/inbox` | Agent mail inbox — check pending messages and HELP_REQUESTs |
 
 ## Advanced Skills (when you need them)
 
@@ -117,6 +120,12 @@ These are the skills every user needs first. Everything else is available when y
 | `/doc` | Documentation generation |
 | `/retro` | Extract learnings from completed work |
 | `/knowledge` | Query knowledge artifacts |
+| `/ratchet` | Brownian Ratchet progress gates for RPI workflow |
+| `/extract` | Extract decisions and learnings from session transcripts |
+| `/forge` | Mine transcripts for knowledge — decisions, learnings, patterns |
+| `/readme` | Generate gold-standard README for any project |
+| `/security` | Continuous repository security scanning and release gating |
+| `/security-suite` | Binary security suite — static analysis, dynamic tracing, policy gating |
 
 ## Expert Skills (specialized workflows)
 
@@ -125,6 +134,7 @@ These are the skills every user needs first. Everything else is available when y
 | `/codex-team` | Parallel Codex agent execution |
 | `/openai-docs` | Official OpenAI docs lookup with citations |
 | `/oss-docs` | OSS documentation scaffold and audit |
+| `/reverse-engineer-rpi` | Reverse-engineer a product into feature catalog and specs |
 | `/pr-research` | Upstream repository research before contribution |
 | `/pr-plan` | External contribution planning |
 | `/pr-implement` | Fork-based PR implementation |
