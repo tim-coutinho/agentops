@@ -26,7 +26,7 @@ Coding agents get a blank context window every session. AgentOps is a toolbox of
 **DevOps' Three Ways** — applied to the agent loop as composable primitives:
 
 - **Flow** (`/research`, `/plan`, `/crank`, `/swarm`, `/rpi`): orchestration skills that move work through the system. Single-piece flow, minimizing context switches. Swarm parallelizes any skill; crank runs dependency-ordered waves; rpi chains the full pipeline.
-- **Feedback** (`/council`, `/vibe`, `/pre-mortem`, hooks): shorten the feedback loop until defects can't survive it. Independent judges catch issues before code ships. Hooks make the rules unavoidable — validation gates, push blocking, standards injection. Problems found Friday don't wait until Monday.
+- **Feedback** (`/council`, `/vibe`, `/pre-mortem`): shorten the feedback loop until defects can't survive it. Independent judges catch issues before code ships. Problems found Friday don't wait until Monday.
 - **Learning** (`.agents/`, `ao` CLI, `/retro`, `/knowledge`): stop rediscovering what you already know. Every session extracts learnings into an append-only ledger, scores them by freshness, and re-injects the best ones at next session start. Session 50 knows what session 1 learned the hard way.
 
 Here's what that looks like — your agent validates a PR, and the council verdict, decisions, and patterns are automatically written to `.agents/`. Three weeks later, different task, but your agent already knows:
@@ -88,16 +88,13 @@ brew update && brew upgrade agentops
 ao version
 ```
 
-This installs 30+ hooks across core lifecycle events:
+This installs 3 hooks — the bare minimum for the knowledge flywheel:
 
 | Event | What happens |
 |-------|-------------|
-| **SessionStart** | Extract from prior session, inject top learnings (freshness-weighted), check progress gates |
-| **SessionEnd** | Mine transcript for knowledge, record session outcome, expire stale artifacts, evict dead knowledge |
-| **PreToolUse** | Inject coding standards before edits, gate dangerous git ops, validate before push |
-| **PostToolUse** | Advance progress ratchets, track citations |
-| **TaskCompleted** | Validate task output against acceptance criteria |
-| **Stop/PreCompact** | Close feedback loops, snapshot before compaction |
+| **SessionStart** | Extract pending queue, inject top learnings (freshness-weighted) |
+| **SessionEnd** | Mine transcript for knowledge (`ao forge`), expire/evict stale artifacts (`ao maturity`) |
+| **Stop** | Close the feedback loop (`ao flywheel close-loop`) |
 
 </details>
 
@@ -129,12 +126,9 @@ All optional. AgentOps works out of the box with no configuration.
 | Variable | Default | What it does |
 |----------|---------|-------------|
 | `AGENTOPS_HOOKS_DISABLED` | 0 | `1` to disable all hooks (kill switch) |
-| `AGENTOPS_PRECOMPACT_DISABLED` | 0 | `1` to disable pre-compaction snapshot |
-| `AGENTOPS_TASK_VALIDATION_DISABLED` | 0 | `1` to disable task validation gate |
 | `AGENTOPS_SESSION_START_DISABLED` | 0 | `1` to disable session-start hook |
 | `AGENTOPS_EVICTION_DISABLED` | 0 | `1` to disable knowledge eviction |
 | `AGENTOPS_GITIGNORE_AUTO` | 1 | `0` to skip auto-adding `.agents/` to `.gitignore` |
-| `AGENTOPS_WORKER` | 0 | `1` to skip push gate (for worker agents) |
 
 Full reference with examples and precedence rules: [docs/ENV-VARS.md](docs/ENV-VARS.md)
 
@@ -145,7 +139,6 @@ Full reference with examples and precedence rules: [docs/ENV-VARS.md](docs/ENV-V
 | Skills | Global skills dir (outside your repo; for Claude Code: `~/.claude/skills/`) | `npx skills@latest remove boshu2/agentops -g` |
 | Knowledge artifacts | `.agents/` in your repo (git-ignored by default) | `rm -rf .agents/` |
 | Hook registration | `.claude/settings.json` | `ao hooks uninstall` or delete entries |
-| Git push gate | Pre-push hook (optional, only with CLI) | `AGENTOPS_HOOKS_DISABLED=1` |
 
 Nothing modifies your source code.
 
@@ -493,7 +486,7 @@ Each level treats the one below as a black box: spec in, validated result out. W
 
 **Two-tier execution model.** Skills follow a strict rule: *the orchestrator never forks; the workers it spawns always fork.* Orchestrators (`/evolve`, `/rpi`, `/crank`, `/vibe`, `/post-mortem`) stay in the main session so you can see progress and intervene. Worker spawners (`/council`, `/codex-team`) fork into subagents where results merge back via the filesystem. This was learned the hard way — orchestrators that forked became invisible, losing cycle-by-cycle visibility during long runs. See [`SKILL-TIERS.md`](skills/SKILL-TIERS.md) for the full classification.
 
-Validation is mechanical, not advisory. [Multi-model councils](docs/ARCHITECTURE.md#pillar-2-brownian-ratchet) judge before and after implementation. [Hooks](docs/how-it-works.md) enforce gates — push blocked until `/vibe` passes, `/crank` blocked until `/pre-mortem` passes. The [knowledge flywheel](docs/ARCHITECTURE.md#pillar-4-knowledge-flywheel) extracts learnings, scores them, and re-injects them at session start so each cycle compounds.
+Validation is mechanical, not advisory. [Multi-model councils](docs/ARCHITECTURE.md#pillar-2-brownian-ratchet) judge before and after implementation. The [knowledge flywheel](docs/ARCHITECTURE.md#pillar-4-knowledge-flywheel) extracts learnings, scores them, and re-injects them at session start so each cycle compounds.
 
 Full treatment: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — all five pillars, operational invariants, component overview.
 
