@@ -153,3 +153,12 @@ Skills that chain to other skills (e.g., `/rpi` calls `/research`, `/vibe` calls
 2. **Always inform** — tell the user what was skipped and how to enable it
 3. **Preserve core function** — the skill's primary purpose must still work without optional CLIs
 4. **Progressive enhancement** — CLIs add capabilities, their absence removes them cleanly
+
+## Reference Documents
+
+- [references/backend-background-tasks.md](references/backend-background-tasks.md)
+- [references/backend-claude-teams.md](references/backend-claude-teams.md)
+- [references/backend-codex-subagents.md](references/backend-codex-subagents.md)
+- [references/backend-inline.md](references/backend-inline.md)
+- [references/claude-code-latest-features.md](references/claude-code-latest-features.md)
+- [references/ralph-loop-contract.md](references/ralph-loop-contract.md)

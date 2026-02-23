@@ -320,3 +320,11 @@ The complexity level is persisted in `.agents/rpi/phased-state.json` as the `com
 - `skills/crank/SKILL.md` — implementation execution
 - `skills/vibe/SKILL.md` — validation gate
 - `skills/post-mortem/SKILL.md` — validation close-out
+
+## Reference Documents
+
+- [references/complexity-scaling.md](references/complexity-scaling.md)
+- [references/context-windowing.md](references/context-windowing.md)
+- [references/gate-retry-logic.md](references/gate-retry-logic.md)
+- [references/gate4-loop-and-spawn.md](references/gate4-loop-and-spawn.md)
+- [references/phase-data-contracts.md](references/phase-data-contracts.md)

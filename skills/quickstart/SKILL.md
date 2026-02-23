@@ -523,3 +523,8 @@ git rev-parse --is-inside-work-tree &>/dev/null && GIT_REPO=true || GIT_REPO=fal
 - `skills/vibe/SKILL.md` — Code validation
 - `skills/research/SKILL.md` — Codebase exploration
 - `skills/plan/SKILL.md` — Epic decomposition
+
+## Reference Documents
+
+- [references/getting-started.md](references/getting-started.md)
+- [references/troubleshooting.md](references/troubleshooting.md)

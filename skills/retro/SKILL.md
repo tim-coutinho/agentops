@@ -283,3 +283,8 @@ Future sessions start smarter because of your retrospective.
 | Learnings too generic | Insufficient analysis or surface-level review | Dig deeper into code changes. Ask "why" repeatedly. Ensure learnings are actionable (specific pattern, not vague principle). Check confidence level. |
 | ao forge markdown fails | ao CLI not installed or .agents/ structure wrong | Graceful fallback: index learnings locally to `.agents/ao/search-index.jsonl`. Notify user ao not available. Learnings still in `.agents/learnings/` and discoverable via grep-based search. |
 | Duplicate learnings extracted | Same insight from multiple sources | Deduplicate before writing. Check existing learnings with grep. Merge duplicates into single learning with multiple source citations. |
+
+## Reference Documents
+
+- [references/context-gathering.md](references/context-gathering.md)
+- [references/output-templates.md](references/output-templates.md)

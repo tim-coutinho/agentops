@@ -344,3 +344,8 @@ If bd CLI not available:
 | "BLOCKED" status | Contract contradicts tests or is incomplete in GREEN mode | Write BLOCKED with specific reason, do NOT modify tests |
 | Fresh verification missing | Agent claims success without running verification command | MUST run verification command fresh with full output before claiming completion |
 | Ratchet record failed | ao CLI unavailable or chain.jsonl corrupted | Implementation still closes via bd, but ratchet chain needs manual repair |
+
+## Reference Documents
+
+- [references/gate-checks.md](references/gate-checks.md)
+- [references/resume-protocol.md](references/resume-protocol.md)

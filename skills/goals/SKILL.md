@@ -235,5 +235,10 @@ Recount all goals mechanically and update the header comment.
 ## See Also
 
 - `/evolve` — consumes GOALS.yaml for fitness-scored improvement loops
-- `skills/evolve/references/goals-schema.md` — GOALS.yaml schema definition
+- `../evolve/references/goals-schema.md` — GOALS.yaml schema definition
 - `references/generation-heuristics.md` — goal quality criteria and scan sources
+
+## Reference Documents
+
+- [references/generation-heuristics.md](references/generation-heuristics.md)
+- [references/goals-schema.md](references/goals-schema.md)

@@ -11,7 +11,7 @@ metadata:
 
 The lead orchestrates, Codex agents execute. Each agent gets one focused task. The team lead prevents file conflicts before spawning — the orchestrator IS the lock manager.
 
-For Claude-runtime feature compatibility (agents/hooks/worktree/settings), use `skills/shared/references/claude-code-latest-features.md` when this skill falls back to `/swarm`.
+For Claude-runtime feature compatibility (agents/hooks/worktree/settings), use `../shared/references/claude-code-latest-features.md` when this skill falls back to `/swarm`.
 
 ## When to Use
 
@@ -352,3 +352,7 @@ Skill(skill="swarm")
 | Agents produce file conflicts | Multiple agents editing same file | Use file-target analysis and apply merge or multi-wave strategy |
 | Agent timeout with no output | Task too complex or vague prompt | Break into smaller tasks, add specific file:line instructions |
 | Output files empty or missing | `-o` path invalid or permission denied | Check `.agents/codex-team/` directory exists and is writable |
+
+## Reference Documents
+
+- [references/claude-code-latest-features.md](references/claude-code-latest-features.md)

@@ -526,3 +526,19 @@ See `references/examples.md` for additional examples: security audit with spec c
 - `skills/council/SKILL.md` — Multi-model validation council
 - `skills/complexity/SKILL.md` — Standalone complexity analysis
 - `.agents/specs/conflict-resolution-algorithm.md` — Conflict resolution between agent findings
+
+## Reference Documents
+
+- [references/examples.md](references/examples.md)
+- [references/go-patterns.md](references/go-patterns.md)
+- [references/go-standards.md](references/go-standards.md)
+- [references/json-standards.md](references/json-standards.md)
+- [references/markdown-standards.md](references/markdown-standards.md)
+- [references/patterns.md](references/patterns.md)
+- [references/python-standards.md](references/python-standards.md)
+- [references/report-format.md](references/report-format.md)
+- [references/rust-standards.md](references/rust-standards.md)
+- [references/shell-standards.md](references/shell-standards.md)
+- [references/typescript-standards.md](references/typescript-standards.md)
+- [references/vibe-coding.md](references/vibe-coding.md)
+- [references/yaml-standards.md](references/yaml-standards.md)

@@ -215,3 +215,9 @@ gh pr create --title "type(scope): brief description" \
 | Submission blocked | Mandatory review gate not passed | Get explicit user approval before `gh pr create` |
 | Test plan incomplete | Commands/results not captured | Add executed checks and outcomes explicitly |
 | Title/body mismatch | Scope drift during edits | Regenerate from latest branch diff and constraints |
+
+## Reference Documents
+
+- [references/case-study-historical-context.md](references/case-study-historical-context.md)
+- [references/lessons-learned.md](references/lessons-learned.md)
+- [references/package-extraction.md](references/package-extraction.md)

@@ -62,3 +62,19 @@ Graph-based issue tracker that survives conversation compaction.
 | "not a git repository" error | bd requires git repo, current dir not initialized | Run `git init` or navigate to git repo root |
 | "beads not initialized" error | .beads/ directory missing | Human runs `bd init --prefix <prefix>` once |
 | Issue ID format errors | Wrong prefix or malformed ID | Check rigs.json for correct prefix, follow `<prefix>-<tag>-<num>` format |
+
+## Reference Documents
+
+- [references/ANTI_PATTERNS.md](references/ANTI_PATTERNS.md)
+- [references/BOUNDARIES.md](references/BOUNDARIES.md)
+- [references/CLI_REFERENCE.md](references/CLI_REFERENCE.md)
+- [references/DEPENDENCIES.md](references/DEPENDENCIES.md)
+- [references/INTEGRATION_PATTERNS.md](references/INTEGRATION_PATTERNS.md)
+- [references/ISSUE_CREATION.md](references/ISSUE_CREATION.md)
+- [references/MOLECULES.md](references/MOLECULES.md)
+- [references/PATTERNS.md](references/PATTERNS.md)
+- [references/RESUMABILITY.md](references/RESUMABILITY.md)
+- [references/ROUTING.md](references/ROUTING.md)
+- [references/STATIC_DATA.md](references/STATIC_DATA.md)
+- [references/TROUBLESHOOTING.md](references/TROUBLESHOOTING.md)
+- [references/WORKFLOWS.md](references/WORKFLOWS.md)

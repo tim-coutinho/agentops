@@ -23,7 +23,7 @@ Autonomous execution: implement all issues until the epic is DONE.
 
 **CLI dependencies:** bd (issue tracking), ao (knowledge flywheel). Both optional — see `skills/shared/SKILL.md` for fallback table. If bd is unavailable, use TaskList for issue tracking and skip beads sync. If ao is unavailable, skip knowledge injection/extraction.
 
-For Claude runtime feature coverage (agents/hooks/worktree/settings), see `skills/shared/references/claude-code-latest-features.md`.
+For Claude runtime feature coverage (agents/hooks/worktree/settings), see `../shared/references/claude-code-latest-features.md`.
 
 ## Architecture: Crank + Swarm
 
@@ -59,7 +59,7 @@ Crank (orchestrator, TaskList mode)    Swarm (executor)
 - **Crank** = Orchestration, epic/task lifecycle, knowledge flywheel
 - **Swarm** = Runtime-native parallel execution (Ralph Wiggum pattern via fresh worker set per wave)
 
-Ralph alignment source: `skills/shared/references/ralph-loop-contract.md` (fresh context, scheduler/worker split, disk-backed state, backpressure).
+Ralph alignment source: `../shared/references/ralph-loop-contract.md` (fresh context, scheduler/worker split, disk-backed state, backpressure).
 
 ## Flags
 
@@ -536,3 +536,18 @@ See `skills/crank/references/troubleshooting.md` for extended troubleshooting.
 - **Failure recovery:** `skills/crank/references/failure-recovery.md`
 - **Failure Taxonomy:** `references/failure-taxonomy.md`
 - **FIRE Protocol:** `references/fire.md`
+
+## Reference Documents
+
+- [references/claude-code-latest-features.md](references/claude-code-latest-features.md)
+- [references/commit-strategies.md](references/commit-strategies.md)
+- [references/contract-template.md](references/contract-template.md)
+- [references/failure-recovery.md](references/failure-recovery.md)
+- [references/failure-taxonomy.md](references/failure-taxonomy.md)
+- [references/fire.md](references/fire.md)
+- [references/ralph-loop-contract.md](references/ralph-loop-contract.md)
+- [references/taskcreate-examples.md](references/taskcreate-examples.md)
+- [references/team-coordination.md](references/team-coordination.md)
+- [references/test-first-mode.md](references/test-first-mode.md)
+- [references/troubleshooting.md](references/troubleshooting.md)
+- [references/wave-patterns.md](references/wave-patterns.md)

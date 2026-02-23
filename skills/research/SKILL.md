@@ -79,11 +79,11 @@ Before launching the explore agent, detect which backend is available:
 Record the selected backend — it will be included in the research output document for traceability.
 
 **Read the matching backend reference for concrete tool call examples:**
-- Claude feature contract → `skills/shared/references/claude-code-latest-features.md`
-- Codex → `skills/shared/references/backend-codex-subagents.md`
-- Claude Native Teams → `skills/shared/references/backend-claude-teams.md`
-- Background Tasks → `skills/shared/references/backend-background-tasks.md`
-- Inline → `skills/shared/references/backend-inline.md`
+- Claude feature contract → `../shared/references/claude-code-latest-features.md`
+- Codex → `../shared/references/backend-codex-subagents.md`
+- Claude Native Teams → `../shared/references/backend-claude-teams.md`
+- Background Tasks → `../shared/references/backend-background-tasks.md`
+- Inline → `../shared/references/backend-inline.md`
 
 ### Step 3: Launch Explore Agent
 
@@ -307,3 +307,16 @@ Include in your Explore agent prompt:
 | Auto mode skips important areas | Automated exploration prioritizes breadth over depth | Remove `--auto` flag to enable human approval gate for guided exploration |
 | Explore agent times out | Topic too broad for single exploration pass | Split into smaller focused topics (e.g., "auth flow" vs "entire auth system") |
 | No backend available for spawning | Running in environment without Task or TeamCreate support | Research runs inline — still functional but slower |
+
+## Reference Documents
+
+- [references/backend-background-tasks.md](references/backend-background-tasks.md)
+- [references/backend-claude-teams.md](references/backend-claude-teams.md)
+- [references/backend-codex-subagents.md](references/backend-codex-subagents.md)
+- [references/backend-inline.md](references/backend-inline.md)
+- [references/claude-code-latest-features.md](references/claude-code-latest-features.md)
+- [references/context-discovery.md](references/context-discovery.md)
+- [references/document-template.md](references/document-template.md)
+- [references/failure-patterns.md](references/failure-patterns.md)
+- [references/ralph-loop-contract.md](references/ralph-loop-contract.md)
+- [references/vibe-methodology.md](references/vibe-methodology.md)

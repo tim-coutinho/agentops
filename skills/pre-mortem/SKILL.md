@@ -276,3 +276,10 @@ Tell the user:
 - `skills/council/SKILL.md` — Multi-model validation council
 - `skills/plan/SKILL.md` — Create implementation plans
 - `skills/vibe/SKILL.md` — Validate code after implementation
+
+## Reference Documents
+
+- [references/enhancement-patterns.md](references/enhancement-patterns.md)
+- [references/failure-taxonomy.md](references/failure-taxonomy.md)
+- [references/simulation-prompts.md](references/simulation-prompts.md)
+- [references/spec-verification-checklist.md](references/spec-verification-checklist.md)

@@ -60,11 +60,11 @@ Council requires a runtime that can **spawn parallel subagents** and (for `--deb
 Skills describe WHAT to do, not WHICH tool to call. See `skills/shared/SKILL.md` for the capability contract.
 
 **After detecting your backend, read the matching reference for concrete spawn/wait/message/cleanup examples:**
-- Claude feature contract → `skills/shared/references/claude-code-latest-features.md`
-- Claude Native Teams → `skills/shared/references/backend-claude-teams.md`
-- Codex Sub-Agents / CLI → `skills/shared/references/backend-codex-subagents.md`
-- Background Tasks → `skills/shared/references/backend-background-tasks.md`
-- Inline (`--quick`) → `skills/shared/references/backend-inline.md`
+- Claude feature contract → `../shared/references/claude-code-latest-features.md`
+- Claude Native Teams → `../shared/references/backend-claude-teams.md`
+- Codex Sub-Agents / CLI → `../shared/references/backend-codex-subagents.md`
+- Background Tasks → `../shared/references/backend-background-tasks.md`
+- Inline (`--quick`) → `../shared/references/backend-inline.md`
 
 See also `references/cli-spawning.md` for council-specific spawning flow (phases, timeouts, output collection).
 
@@ -466,17 +466,17 @@ All reports write to `.agents/council/YYYY-MM-DD-<type>-<target>.md`.
 
 ---
 
-## Migration from /judge
+## Migration from judge
 
-`/council` replaces `/judge`. Migration:
+`/council` replaces the old judge skill. Migration:
 
 | Old | New |
 |-----|-----|
-| `/judge recent` | `/council validate recent` |
-| `/judge 2 opus` | `/council recent` (default) |
-| `/judge 3 opus` | `/council --deep recent` |
+| judge recent | `/council validate recent` |
+| judge 2 opus | `/council recent` (default) |
+| judge 3 opus | `/council --deep recent` |
 
-The `/judge` skill is deprecated. Use `/council`.
+The judge skill is deprecated. Use `/council`.
 
 ---
 
@@ -532,3 +532,16 @@ Judge names: `judge-{N}` for independent judges (e.g., `judge-1`, `judge-2`), or
 - `skills/swarm/SKILL.md` — Multi-agent orchestration
 - `skills/standards/SKILL.md` — Language-specific coding standards
 - `skills/research/SKILL.md` — Codebase exploration (complementary to council research mode)
+
+## Reference Documents
+
+- [references/backend-background-tasks.md](references/backend-background-tasks.md)
+- [references/backend-claude-teams.md](references/backend-claude-teams.md)
+- [references/backend-codex-subagents.md](references/backend-codex-subagents.md)
+- [references/backend-inline.md](references/backend-inline.md)
+- [references/brainstorm-techniques.md](references/brainstorm-techniques.md)
+- [references/claude-code-latest-features.md](references/claude-code-latest-features.md)
+- [references/model-profiles.md](references/model-profiles.md)
+- [references/presets.md](references/presets.md)
+- [references/quick-mode.md](references/quick-mode.md)
+- [references/ralph-loop-contract.md](references/ralph-loop-contract.md)

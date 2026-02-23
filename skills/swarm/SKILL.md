@@ -57,11 +57,11 @@ Use runtime capability detection, not hardcoded tool names. Swarm requires:
 See `skills/shared/SKILL.md` for the capability contract.
 
 **After detecting your backend, read the matching reference for concrete spawn/wait/message/cleanup examples:**
-- Claude feature contract → `skills/shared/references/claude-code-latest-features.md`
-- Claude Native Teams → `skills/shared/references/backend-claude-teams.md`
-- Codex Sub-Agents / CLI → `skills/shared/references/backend-codex-subagents.md`
-- Background Tasks → `skills/shared/references/backend-background-tasks.md`
-- Inline (no spawn) → `skills/shared/references/backend-inline.md`
+- Claude feature contract → `../shared/references/claude-code-latest-features.md`
+- Claude Native Teams → `../shared/references/backend-claude-teams.md`
+- Codex Sub-Agents / CLI → `../shared/references/backend-codex-subagents.md`
+- Background Tasks → `../shared/references/backend-background-tasks.md`
+- Inline (no spawn) → `../shared/references/backend-inline.md`
 
 See also `references/local-mode.md` for swarm-specific execution details (worktrees, validation, git commit policy, wave repeat).
 
@@ -183,7 +183,7 @@ Follows the [Ralph Wiggum Pattern](https://ghuntley.com/ralph/): **fresh context
 - **Filesystem for EVERYTHING** - Code artifacts AND result status written to disk, not passed through context
 - **Backend messaging for signals only** - Short coordination signals (under 100 tokens), never work details
 
-Ralph alignment source: `skills/shared/references/ralph-loop-contract.md`.
+Ralph alignment source: `../shared/references/ralph-loop-contract.md`.
 
 ## Integration with Crank
 
@@ -478,3 +478,14 @@ Solution: Install Olympus CLI or run swarm without `--from-wave` flag.
 ### Tasks assigned but workers never spawn
 Cause: Backend selection failed or spawning API unavailable.
 Solution: Check which spawn backend was selected (look for "Using: <backend>" message). Verify Codex CLI (`which codex`) or native team API availability.
+
+## Reference Documents
+
+- [references/backend-background-tasks.md](references/backend-background-tasks.md)
+- [references/backend-claude-teams.md](references/backend-claude-teams.md)
+- [references/backend-codex-subagents.md](references/backend-codex-subagents.md)
+- [references/backend-inline.md](references/backend-inline.md)
+- [references/claude-code-latest-features.md](references/claude-code-latest-features.md)
+- [references/local-mode.md](references/local-mode.md)
+- [references/ralph-loop-contract.md](references/ralph-loop-contract.md)
+- [references/validation-contract.md](references/validation-contract.md)

@@ -126,3 +126,7 @@ To add a new target platform:
 ## References
 
 - `references/skill-bundle-schema.md` -- SkillBundle interchange format specification
+
+## Reference Documents
+
+- [references/skill-bundle-schema.md](references/skill-bundle-schema.md)

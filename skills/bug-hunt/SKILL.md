@@ -236,3 +236,8 @@ Common bug patterns to check:
 | Git archaeology returns too many commits | Broad search or high-churn file | Narrow timeframe with `--since` flag, focus on specific function with `git blame`, search commit messages for related keywords. |
 | Hit 3-failure limit during hypothesis testing | Multiple incorrect hypotheses or complex root cause | Escalate to architecture review. Read `failure-categories.md` to determine if failures are countable. Consider asking for domain expert input. |
 | Bug report missing key information | Incomplete investigation or skipped steps | Verify all 4 phases completed. Ensure root cause identified with file:line. Check git blame ran for responsible commit. |
+
+## Reference Documents
+
+- [references/bug-report-template.md](references/bug-report-template.md)
+- [references/failure-categories.md](references/failure-categories.md)

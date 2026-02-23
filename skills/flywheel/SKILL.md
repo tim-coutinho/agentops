@@ -238,3 +238,8 @@ Read `references/cache-eviction.md` for the full eviction pipeline (passive trac
 | Velocity always zero | No recent extractions (last 7 days) | Run `/forge` + `/extract` to process pending sessions |
 | "ao CLI not available" | ao command not installed or not in PATH | Install ao CLI or use manual pool counting fallback |
 | Stale artifacts >50% | Long time since last session or inactive repo | Run `/provenance --stale` to audit and archive old artifacts |
+
+## Reference Documents
+
+- [references/artifact-consistency.md](references/artifact-consistency.md)
+- [references/promotion-tiers.md](references/promotion-tiers.md)

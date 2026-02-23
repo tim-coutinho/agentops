@@ -535,3 +535,9 @@ Ship it
 - `skills/vibe/SKILL.md` — Council validates code (`/vibe` after coding)
 - `skills/pre-mortem/SKILL.md` — Council validates plans (before implementation)
 
+
+## Reference Documents
+
+- [references/learning-templates.md](references/learning-templates.md)
+- [references/plan-compliance-checklist.md](references/plan-compliance-checklist.md)
+- [references/security-patterns.md](references/security-patterns.md)

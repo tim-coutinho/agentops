@@ -108,3 +108,17 @@ Skills that use standards:
 | Wrong standard loaded | File type misidentified (e.g., .sh as .bash) | Manually specify standard; update file type detection logic |
 | Deep standards missing | Vibe needs extended catalog, not found | Check `vibe/references/*-standards.md` exists; use `--deep` flag |
 | Standard conflicts | Multiple languages in same changeset | Load all relevant standards; prioritize by primary language |
+
+## Reference Documents
+
+- [references/common-standards.md](references/common-standards.md)
+- [references/examples-troubleshooting-template.md](references/examples-troubleshooting-template.md)
+- [references/go.md](references/go.md)
+- [references/json.md](references/json.md)
+- [references/markdown.md](references/markdown.md)
+- [references/python.md](references/python.md)
+- [references/rust.md](references/rust.md)
+- [references/shell.md](references/shell.md)
+- [references/skill-structure.md](references/skill-structure.md)
+- [references/typescript.md](references/typescript.md)
+- [references/yaml.md](references/yaml.md)

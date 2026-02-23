@@ -246,3 +246,9 @@ Tell the user:
 | Generated docs lack examples | Missing context about typical usage | Read existing tests to find usage patterns. Check README for code samples. Ask user for typical use case if unclear. |
 | Discover command finds too many items | Low existing documentation coverage | Prioritize by running `discover` on specific subdirectories. Focus on public API first, internal utilities later. Use `--limit` to process in batches. |
 | Validation shows docs out of sync | Code changed after docs written | Re-run `gen` command for affected features. Consider adding git hook to flag doc updates needed when code changes. |
+
+## Reference Documents
+
+- [references/generation-templates.md](references/generation-templates.md)
+- [references/project-types.md](references/project-types.md)
+- [references/validation-rules.md](references/validation-rules.md)

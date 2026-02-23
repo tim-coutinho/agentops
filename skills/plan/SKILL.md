@@ -527,3 +527,9 @@ Tell the user:
 | Wave structure incorrect | False dependencies declared (logical ordering, not file conflicts) | Review dependency necessity: does blocked issue modify blocker's files? |
 | Conformance checks missing | Acceptance criteria not mechanically verifiable | Add `files_exist`, `content_check`, `tests`, or `command` checks per validation-contract.md |
 | Epic has no children | Plan created but bd commands failed silently | Check `bd list --type epic` output; re-run plan with bd CLI available |
+
+## Reference Documents
+
+- [references/examples.md](references/examples.md)
+- [references/sdd-patterns.md](references/sdd-patterns.md)
+- [references/templates.md](references/templates.md)

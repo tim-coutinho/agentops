@@ -204,3 +204,9 @@ This project uses **<tool>** for <purpose>. Run `<onboard-cmd>` to get started.
 | Existing docs conflict | Legacy text diverges from current behavior | Reconcile with current code/process and mark obsolete sections |
 | Contributor path unclear | Missing setup/testing guidance | Add explicit quickstart and validation commands |
 | Open-source handoff incomplete | Session-end workflow not reflected | Add landing-the-plane and release hygiene steps |
+
+## Reference Documents
+
+- [references/beads-patterns.md](references/beads-patterns.md)
+- [references/documentation-tiers.md](references/documentation-tiers.md)
+- [references/project-types.md](references/project-types.md)
