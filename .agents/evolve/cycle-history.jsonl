@@ -25,7 +25,8 @@
 {"cycle":25,"goal_id":"idle-no-work","result":"idle","sha":"b53908d","timestamp":"2026-02-23T04:44:13-05:00"}
 {"cycle":26,"goal_id":"idle-no-work","result":"idle","sha":"23424c1","timestamp":"2026-02-23T04:44:21-05:00"}
 {"cycle":27,"goal_id":"idle-no-work","result":"idle","sha":"c071afa","timestamp":"2026-02-23T04:44:26-05:00"}
-{"cycle":28,"target":"idle-no-work","result":"idle","sha":"101c0b1","timestamp":"2026-02-23T04:45:07-05:00"}
-{"cycle":29,"target":"evolve-cycle-logging","result":"pending-rpi","sha":"e5d7f8d","timestamp":"2026-02-23T04:45:32-05:00"}
-{"cycle":30,"target":"evolve-cycle-logging","result":"pending-rpi","sha":"ff9ca28","timestamp":"2026-02-23T04:45:54-05:00"}
-{"cycle":31,"target":"evolve-cycle-logging","result":"pending-rpi","sha":"e904071","timestamp":"2026-02-23T04:46:18-05:00"}
+{"cycle":28,"target":"idle-no-work","result":"idle","sha":"101c0b1","timestamp":"2026-02-23T04:45:07-05:00","goal_id":"idle-no-work"}
+{"cycle":29,"target":"evolve-cycle-logging","result":"pending-rpi","sha":"e5d7f8d","timestamp":"2026-02-23T04:45:32-05:00","goal_id":"evolve-cycle-logging"}
+{"cycle":30,"target":"evolve-cycle-logging","result":"pending-rpi","sha":"ff9ca28","timestamp":"2026-02-23T04:45:54-05:00","goal_id":"evolve-cycle-logging"}
+{"cycle":31,"target":"evolve-cycle-logging","result":"pending-rpi","sha":"e904071","timestamp":"2026-02-23T04:46:18-05:00","goal_id":"evolve-cycle-logging"}
+{"cycle":32,"goal_id":"evolve-cycle-logging","result":"improved","sha":"e0e414f","timestamp":"2026-02-23T05:15:40-05:00"}
