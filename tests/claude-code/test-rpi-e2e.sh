@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test: RPI E2E Workflow
-# Comprehensive test for full Research -> Plan -> Implement -> Vibe -> Post-Mortem pipeline
+# Comprehensive test for full Research -> Plan -> Pre-mortem -> Crank -> Vibe -> Post-Mortem pipeline
 # Verifies artifacts created at each phase and gates enforced
 #
 # This test validates:
@@ -93,6 +93,7 @@ setup_test_project() {
     # Create .agents directory structure (RPI artifact directories)
     mkdir -p .agents/research
     mkdir -p .agents/plans
+    mkdir -p .agents/council
     mkdir -p .agents/vibe
     mkdir -p .agents/retros
     mkdir -p .agents/learnings
@@ -370,11 +371,91 @@ ISSUE2
 }
 
 # ============================================================================
-# Phase 3: Implement Skill Tests
+# Phase 3: Pre-mortem Skill Tests
 # ============================================================================
 
-test_implement_artifacts() {
-    log "Testing Implement Phase artifacts..."
+test_premortem_artifacts() {
+    log "Testing Pre-mortem Phase artifacts..."
+
+    cd "$TEST_PROJECT"
+
+    # Simulate pre-mortem council output
+    mkdir -p .agents/council
+    cat > .agents/council/$(date +%Y-%m-%d)-pre-mortem-calculator.md << 'PREMORTEM'
+---
+schema_version: 1
+type: pre-mortem
+---
+
+# Pre-mortem: Calculator Improvements
+
+**Date:** $(date +%Y-%m-%d)
+**Plan:** .agents/plans/*-calculator-improvements.md
+
+## Council Verdict
+
+**Result:** PASS (0 critical, 1 advisory)
+
+## Judge Verdicts
+
+| Judge | Verdict | Confidence |
+|-------|---------|------------|
+| Correctness | PASS | high |
+| Architecture | PASS | high |
+| Error-Paths | PASS | medium |
+
+## Findings
+
+### CRITICAL
+(none)
+
+### ADVISORY
+1. Consider edge cases for very large numbers (overflow)
+
+## Recommendation
+
+Plan is ready to implement. No blocking issues found.
+PREMORTEM
+
+    git add . && git commit -q -m "Pre-mortem validation of calculator improvements"
+
+    # Check pre-mortem artifact exists
+    local premortem_count
+    premortem_count=$(find .agents/council -name "*pre-mortem*" -type f 2>/dev/null | wc -l | tr -d ' ')
+
+    if [[ "$premortem_count" -ge 1 ]]; then
+        log_pass "Pre-mortem artifact created (.agents/council/*pre-mortem*.md)"
+    else
+        log_fail "No pre-mortem artifact found"
+    fi
+
+    # Check pre-mortem has council verdict
+    local premortem_file
+    premortem_file=$(find .agents/council -name "*pre-mortem*" -type f | head -1)
+
+    if [[ -n "$premortem_file" ]]; then
+        if grep -q "Council Verdict" "$premortem_file"; then
+            log_pass "Pre-mortem has council verdict"
+        else
+            log_fail "Pre-mortem missing council verdict"
+        fi
+
+        if grep -q "Judge Verdicts" "$premortem_file"; then
+            log_pass "Pre-mortem has judge verdicts table"
+        else
+            log_fail "Pre-mortem missing judge verdicts"
+        fi
+    fi
+
+    cd "$SCRIPT_DIR"
+}
+
+# ============================================================================
+# Phase 4: Crank Skill Tests
+# ============================================================================
+
+test_crank_artifacts() {
+    log "Testing Crank Phase artifacts..."
 
     cd "$TEST_PROJECT"
 
@@ -770,7 +851,8 @@ test_ratchet_tracking() {
     cat > .agents/ao/chain.jsonl << 'CHAIN'
 {"step":"research","status":"completed","output":".agents/research/2026-02-03-calculator-api.md","time":"2026-02-03T10:00:00Z"}
 {"step":"plan","status":"completed","output":".agents/plans/2026-02-03-calculator-improvements.md","time":"2026-02-03T10:30:00Z"}
-{"step":"implement","status":"completed","output":"abc1234","time":"2026-02-03T11:00:00Z"}
+{"step":"pre-mortem","status":"completed","output":".agents/council/2026-02-03-pre-mortem-calculator.md","time":"2026-02-03T10:45:00Z"}
+{"step":"crank","status":"completed","output":"abc1234","time":"2026-02-03T11:00:00Z"}
 {"step":"vibe","status":"completed","output":".agents/vibe/2026-02-03-calculator-validation.md","time":"2026-02-03T11:30:00Z"}
 {"step":"post-mortem","status":"completed","output":".agents/retros/2026-02-03-post-mortem-calculator.md","time":"2026-02-03T12:00:00Z"}
 CHAIN
@@ -783,7 +865,7 @@ CHAIN
     fi
 
     # Check all phases recorded
-    local phases=("research" "plan" "implement" "vibe" "post-mortem")
+    local phases=("research" "plan" "pre-mortem" "crank" "vibe" "post-mortem")
     local all_recorded=true
 
     for phase in "${phases[@]}"; do
@@ -794,7 +876,7 @@ CHAIN
     done
 
     if [[ "$all_recorded" == "true" ]]; then
-        log_pass "All 5 RPI phases recorded in ratchet chain"
+        log_pass "All 6 RPI phases recorded in ratchet chain"
     fi
 
     # Verify chain is valid JSONL
@@ -816,7 +898,7 @@ CHAIN
     local completed_count
     completed_count=$(grep -c '"status":"completed"' .agents/ao/chain.jsonl 2>/dev/null || echo "0")
 
-    if [[ "$completed_count" -ge 5 ]]; then
+    if [[ "$completed_count" -ge 6 ]]; then
         log_pass "All phases have completed status ($completed_count entries)"
     else
         log_fail "Not all phases completed ($completed_count entries)"
@@ -963,6 +1045,7 @@ test_full_pipeline_integration() {
     local expected_dirs=(
         ".agents/research"
         ".agents/plans"
+        ".agents/council"
         ".agents/vibe"
         ".agents/retros"
         ".agents/learnings"
@@ -1022,7 +1105,7 @@ main() {
     echo ""
     echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
     echo -e "${BLUE}  RPI E2E Test Suite${NC}"
-    echo -e "${BLUE}  Research -> Plan -> Implement -> Vibe -> Post-Mortem${NC}"
+    echo -e "${BLUE}  Research -> Plan -> Pre-mortem -> Crank -> Vibe -> Post-Mortem${NC}"
     echo -e "${BLUE}════════════════════════════════════════════════════════${NC}"
     echo ""
 
@@ -1039,17 +1122,22 @@ main() {
     test_plan_artifacts
 
     echo ""
-    echo "Phase 3: Implement"
-    echo "──────────────────"
-    test_implement_artifacts
+    echo "Phase 3: Pre-mortem"
+    echo "───────────────────"
+    test_premortem_artifacts
 
     echo ""
-    echo "Phase 4: Vibe"
+    echo "Phase 4: Crank"
+    echo "──────────────"
+    test_crank_artifacts
+
+    echo ""
+    echo "Phase 5: Vibe"
     echo "─────────────"
     test_vibe_artifacts
 
     echo ""
-    echo "Phase 5: Post-Mortem"
+    echo "Phase 6: Post-Mortem"
     echo "────────────────────"
     test_postmortem_artifacts
 
@@ -1090,7 +1178,8 @@ main() {
         echo "The RPI workflow E2E test validates:"
         echo "  - Research phase creates .agents/research/*.md"
         echo "  - Plan phase creates .agents/plans/*.md + beads issues"
-        echo "  - Implement phase creates code changes + closes issues"
+        echo "  - Pre-mortem phase creates .agents/council/*pre-mortem*.md"
+        echo "  - Crank phase creates code changes + closes issues"
         echo "  - Vibe phase creates .agents/vibe/*.md with gate decision"
         echo "  - Post-mortem creates .agents/retros/*.md + learnings"
         echo "  - Ratchet tracks progress in .agents/ao/chain.jsonl"
