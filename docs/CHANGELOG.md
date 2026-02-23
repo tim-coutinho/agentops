@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.15.3] - 2026-02-22
+
+### Fixed
+
+- Remove stale `ao feedback-loop` and `ao session-outcome` calls from `/post-mortem` skill
+- Remove stale `feedback-loop` reference from `/learn` skill flywheel diagram
+- Fix `PostToolUse(Read)` reference in cache-eviction doc (now `ao maturity --scan`)
+- Remove dead env vars from docs (PRECOMPACT_DISABLED, TASK_VALIDATION_DISABLED, WORKER)
+- Remove dead `batch-feedback` check from hook preflight script
+- Sync skill counts (52 total, 42 user-facing, 10 internal)
+
 ## [2.15.2] - 2026-02-22
 
 ### Changed
