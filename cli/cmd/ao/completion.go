@@ -32,5 +32,6 @@ Usage:
 }
 
 func init() {
+	completionCmd.GroupID = "config"
 	rootCmd.AddCommand(completionCmd)
 }

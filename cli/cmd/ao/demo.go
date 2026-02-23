@@ -35,6 +35,7 @@ var (
 )
 
 func init() {
+	demoCmd.GroupID = "start"
 	rootCmd.AddCommand(demoCmd)
 	demoCmd.Flags().BoolVar(&demoQuick, "quick", false, "2-minute quick overview")
 	demoCmd.Flags().BoolVar(&demoConcepts, "concepts", false, "Just explain core concepts")

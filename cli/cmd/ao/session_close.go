@@ -56,6 +56,7 @@ Examples:
 }
 
 func init() {
+	sessionCmd.GroupID = "workflow"
 	rootCmd.AddCommand(sessionCmd)
 	sessionCmd.AddCommand(sessionCloseCmd)
 

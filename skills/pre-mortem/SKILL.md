@@ -1,6 +1,7 @@
 ---
 name: pre-mortem
 description: 'Validate a plan or spec before implementation using multi-model council. Answer: Is this good enough to implement? Triggers: "pre-mortem", "validate plan", "validate spec", "is this ready".'
+skill_api_version: 1
 metadata:
   tier: judgment
   dependencies:

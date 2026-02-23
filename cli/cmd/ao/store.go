@@ -97,6 +97,7 @@ Commands:
 }
 
 func init() {
+	storeCmd.Hidden = true
 	rootCmd.AddCommand(storeCmd)
 
 	// index subcommand

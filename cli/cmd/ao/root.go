@@ -25,21 +25,11 @@ var rootCmd = &cobra.Command{
 
 "Problem in. Value out. Intelligence compounds."
 
-Get Started:
-  demo         Interactive demo (see value in 5 minutes)
-  quick-start  Set up AgentOps in your project
-
-Core Commands:
-  forge        Extract knowledge from transcripts
-  pool         Manage quality pools
-  gate         Human review gates
-  trace        Track knowledge provenance
-  status       Show current state
-  version      Show version information
-
 The Knowledge Flywheel:
   Sessions compound via .agents/ + Smart Connections.
-  Others start fresh. You get smarter every session.`,
+  Others start fresh. You get smarter every session.
+
+Use "ao <command> --help" for more information about a command.`,
 	SilenceUsage: true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		syncConfigFlagToEnv()
@@ -54,6 +44,16 @@ func Execute() {
 }
 
 func init() {
+	// Command groups for organized help output
+	rootCmd.AddGroup(
+		&cobra.Group{ID: "start", Title: "Getting Started:"},
+		&cobra.Group{ID: "core", Title: "Core Commands:"},
+		&cobra.Group{ID: "workflow", Title: "Workflow:"},
+		&cobra.Group{ID: "config", Title: "Configuration:"},
+		&cobra.Group{ID: "comms", Title: "Communication:"},
+		&cobra.Group{ID: "knowledge", Title: "Knowledge:"},
+	)
+
 	// Global flags available to all commands
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Show what would happen without executing")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")

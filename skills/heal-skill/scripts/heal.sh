@@ -316,6 +316,30 @@ if [[ -f "$SKILLS_ROOT/using-agentops/SKILL.md" ]]; then
   done
 fi
 
+# Check 11: skill_api_version presence (global, not per-skill)
+for skill_check in "$SKILLS_ROOT"/*/SKILL.md; do
+  [[ -f "$skill_check" ]] || continue
+  check_dir="$(dirname "$skill_check")"
+  check_name="$(basename "$check_dir")"
+  if ! get_frontmatter "$skill_check" "skill_api_version" >/dev/null 2>&1; then
+    report "MISSING_API_VERSION" "$check_dir" "No skill_api_version field in frontmatter"
+    if [[ "$MODE" == "fix" ]]; then
+      # Insert skill_api_version: 1 after description: line
+      tmp="$(mktemp)"
+      inserted=0
+      while IFS= read -r line; do
+        echo "$line" >> "$tmp"
+        if [[ $inserted -eq 0 && "$line" =~ ^description: ]]; then
+          echo "skill_api_version: 1" >> "$tmp"
+          inserted=1
+        fi
+      done < "$skill_check"
+      /bin/cp "$tmp" "$skill_check"
+      rm -f "$tmp"
+    fi
+  fi
+done
+
 if [[ $FINDINGS -gt 0 ]]; then
   echo ""
   echo "$FINDINGS finding(s) detected."

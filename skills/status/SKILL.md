@@ -1,6 +1,7 @@
 ---
 name: status
 description: 'Single-screen dashboard showing current work, recent validations, flywheel health, and suggested next action. Triggers: "status", "dashboard", "what am I working on", "where was I".'
+skill_api_version: 1
 allowed-tools: Read, Grep, Glob, Bash
 model: haiku
 metadata:

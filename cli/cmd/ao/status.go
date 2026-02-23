@@ -33,6 +33,7 @@ Examples:
 }
 
 func init() {
+	statusCmd.GroupID = "core"
 	rootCmd.AddCommand(statusCmd)
 }
 

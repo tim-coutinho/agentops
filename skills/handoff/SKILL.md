@@ -1,6 +1,7 @@
 ---
 name: handoff
 description: 'Create structured handoff for session continuation. Triggers: handoff, pause, save context, end session, pick up later, continue later.'
+skill_api_version: 1
 metadata:
   tier: session
   dependencies:

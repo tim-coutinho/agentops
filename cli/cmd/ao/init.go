@@ -68,6 +68,7 @@ func init() {
 	initCmd.Flags().BoolVar(&initHooks, "hooks", false, "Also register hooks (full 12-event coverage by default; equivalent to ao hooks install --full)")
 	initCmd.Flags().BoolVar(&initFull, "full", false, "With --hooks, explicitly request full coverage (legacy explicit flag)")
 	initCmd.Flags().BoolVar(&initMinimalHooks, "minimal-hooks", false, "With --hooks, install only SessionStart + Stop hooks")
+	initCmd.GroupID = "start"
 	rootCmd.AddCommand(initCmd)
 }
 

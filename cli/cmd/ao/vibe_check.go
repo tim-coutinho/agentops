@@ -46,6 +46,7 @@ Examples:
 }
 
 func init() {
+	vibeCheckCmd.GroupID = "core"
 	rootCmd.AddCommand(vibeCheckCmd)
 	vibeCheckCmd.Flags().BoolVar(&vibeCheckMarkdown, "markdown", false, "Output as markdown report")
 	vibeCheckCmd.Flags().StringVar(&vibeCheckSince, "since", "7d", "Time window for analysis (e.g., 7d, 30d, 90d)")

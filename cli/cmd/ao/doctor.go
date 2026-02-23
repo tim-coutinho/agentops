@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,6 +34,7 @@ Examples:
 }
 
 func init() {
+	doctorCmd.GroupID = "core"
 	doctorCmd.Flags().BoolVar(&doctorJSON, "json", false, "Output results as JSON")
 	rootCmd.AddCommand(doctorCmd)
 }
@@ -61,6 +63,7 @@ func gatherDoctorChecks() []doctorCheck {
 		checkSearchIndex(),
 		checkFlywheelHealth(),
 		checkSkills(),
+		checkSkillIntegrity(),
 		checkOptionalCLI("codex", "needed for --mixed council"),
 	}
 }
@@ -568,6 +571,106 @@ func checkSkills() doctorCheck {
 		Detail:   fmt.Sprintf("%d skills found", count),
 		Required: false,
 	}
+}
+
+// findHealScript searches for heal.sh in known locations and returns the path if found.
+func findHealScript() string {
+	// 1. In-repo (when running from agentops checkout)
+	if p := "skills/heal-skill/scripts/heal.sh"; fileExists(p) {
+		abs, err := filepath.Abs(p)
+		if err == nil {
+			return abs
+		}
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	// 2. Installed via npx skills
+	if p := filepath.Join(home, ".claude", "skills", "heal-skill", "scripts", "heal.sh"); fileExists(p) {
+		return p
+	}
+
+	// 3. Alt install location
+	if p := filepath.Join(home, ".agents", "skills", "heal-skill", "scripts", "heal.sh"); fileExists(p) {
+		return p
+	}
+
+	return ""
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// checkSkillIntegrity runs heal.sh --strict to validate skill hygiene.
+func checkSkillIntegrity() doctorCheck {
+	healPath := findHealScript()
+	if healPath == "" {
+		return doctorCheck{
+			Name:     "Skill Integrity",
+			Status:   "warn",
+			Detail:   "heal-skill not installed, skipping integrity check",
+			Required: false,
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "bash", healPath, "--strict")
+	output, err := cmd.CombinedOutput()
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return doctorCheck{
+			Name:     "Skill Integrity",
+			Status:   "warn",
+			Detail:   "heal.sh timed out after 30s",
+			Required: false,
+		}
+	}
+
+	if err == nil {
+		return doctorCheck{
+			Name:     "Skill Integrity",
+			Status:   "pass",
+			Detail:   "All skill integrity checks passed",
+			Required: false,
+		}
+	}
+
+	// --strict exits 1 when findings exist — count them
+	findings := countHealFindings(string(output))
+	return doctorCheck{
+		Name:     "Skill Integrity",
+		Status:   "warn",
+		Detail:   fmt.Sprintf("%d skill hygiene finding(s) \u2014 run 'heal.sh --check' for details", findings),
+		Required: false,
+	}
+}
+
+// countHealFindings counts lines matching the heal.sh report format: [CODE] path: message
+func countHealFindings(output string) int {
+	count := 0
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if len(trimmed) > 0 && strings.HasPrefix(trimmed, "[") && strings.Contains(trimmed, "]") {
+			count++
+		}
+	}
+	if count == 0 {
+		// Fallback: count from the summary line "N finding(s) detected."
+		for _, line := range strings.Split(output, "\n") {
+			if strings.Contains(line, "finding(s) detected") {
+				fmt.Sscanf(strings.TrimSpace(line), "%d", &count)
+				break
+			}
+		}
+	}
+	return count
 }
 
 func checkOptionalCLI(name string, reason string) doctorCheck {

@@ -37,5 +37,6 @@ func init() {
 	goalsCmd.PersistentFlags().StringVar(&goalsFile, "file", "GOALS.yaml", "Path to goals file")
 	goalsCmd.PersistentFlags().BoolVar(&goalsJSON, "json", false, "Output as JSON")
 	goalsCmd.PersistentFlags().IntVar(&goalsTimeout, "timeout", 30, "Check timeout in seconds")
+	goalsCmd.GroupID = "workflow"
 	rootCmd.AddCommand(goalsCmd)
 }

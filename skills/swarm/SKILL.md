@@ -1,6 +1,7 @@
 ---
 name: swarm
 description: 'Spawn isolated agents for parallel task execution. Auto-selects runtime-native teams (Claude Native Teams in Claude sessions, Codex sub-agents in Codex sessions). Triggers: "swarm", "spawn agents", "parallel work", "run in parallel", "parallel execution".'
+skill_api_version: 1
 metadata:
   tier: execution
   dependencies:

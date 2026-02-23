@@ -1,6 +1,7 @@
 ---
 name: flywheel
 description: 'Knowledge flywheel health monitoring. Checks velocity, pool depths, staleness. Triggers: "flywheel status", "knowledge health", "is knowledge compounding".'
+skill_api_version: 1
 allowed-tools: Read, Grep, Glob, Bash
 model: haiku
 metadata:

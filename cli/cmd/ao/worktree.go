@@ -63,6 +63,7 @@ Safety defaults:
 	worktreeGCCmd.Flags().BoolVar(&worktreeGCIncludeDirty, "include-dirty", false, "Also clean worktrees with uncommitted changes (unsafe)")
 
 	worktreeCmd.AddCommand(worktreeGCCmd)
+	worktreeCmd.Hidden = true
 	rootCmd.AddCommand(worktreeCmd)
 }
 

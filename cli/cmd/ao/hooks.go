@@ -196,6 +196,7 @@ This command:
 }
 
 func init() {
+	hooksCmd.GroupID = "config"
 	rootCmd.AddCommand(hooksCmd)
 	hooksCmd.AddCommand(hooksInitCmd)
 	hooksCmd.AddCommand(hooksInstallCmd)
@@ -1087,6 +1088,62 @@ func runSettingsCoverageTest(testNum int, homeDir string, allPassed *bool) {
 	}
 }
 
+// collectScriptNames returns a set of .sh filenames in the given directory.
+func collectScriptNames(dir string) map[string]bool {
+	names := make(map[string]bool)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return names
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".sh") {
+			names[e.Name()] = true
+		}
+	}
+	return names
+}
+
+// collectWiredScripts extracts script filenames referenced by hook commands in settings.
+func collectWiredScripts(hooksMap map[string]any) (eventScriptCount map[string]int, wiredScripts map[string]bool) {
+	eventScriptCount = make(map[string]int)
+	wiredScripts = make(map[string]bool)
+	for _, event := range AllEventNames() {
+		groups, ok := hooksMap[event].([]any)
+		if !ok {
+			continue
+		}
+		for _, g := range groups {
+			gm, ok := g.(map[string]any)
+			if !ok {
+				continue
+			}
+			hooks, ok := gm["hooks"].([]any)
+			if !ok {
+				continue
+			}
+			for _, h := range hooks {
+				hm, ok := h.(map[string]any)
+				if !ok {
+					continue
+				}
+				cmd, ok := hm["command"].(string)
+				if !ok {
+					continue
+				}
+				// Extract script filenames from command string
+				for _, part := range strings.Fields(cmd) {
+					base := filepath.Base(part)
+					if strings.HasSuffix(base, ".sh") {
+						eventScriptCount[event]++
+						wiredScripts[base] = true
+					}
+				}
+			}
+		}
+	}
+	return eventScriptCount, wiredScripts
+}
+
 func runHookScriptsAccessTest(testNum int, homeDir string) {
 	fmt.Printf("%d. Checking hook scripts... ", testNum)
 	agentopsDir := filepath.Join(homeDir, ".agentops", "hooks")
@@ -1095,7 +1152,7 @@ func runHookScriptsAccessTest(testNum int, homeDir string) {
 		return
 	}
 
-	// Scripts were installed via --full
+	// Count installed scripts and check executability
 	entries, _ := os.ReadDir(agentopsDir)
 	scriptCount := 0
 	missingExec := []string{}
@@ -1112,7 +1169,42 @@ func runHookScriptsAccessTest(testNum int, homeDir string) {
 		fmt.Printf("⚠ %d scripts, %d not executable\n", scriptCount, len(missingExec))
 		return
 	}
-	fmt.Printf("✓ %d scripts installed\n", scriptCount)
+
+	// Cross-reference scripts against wired hook events
+	settingsPath := filepath.Join(homeDir, ".claude", "settings.json")
+	hooksMap, err := readSettingsHooksMap(settingsPath)
+	if err != nil || hooksMap == nil {
+		fmt.Printf("✓ %d scripts installed\n", scriptCount)
+		return
+	}
+
+	eventScriptCount, wiredScripts := collectWiredScripts(hooksMap)
+	wiredEventCount := len(eventScriptCount)
+
+	// Count unwired scripts
+	installedScripts := collectScriptNames(agentopsDir)
+	unwired := 0
+	for name := range installedScripts {
+		if !wiredScripts[name] {
+			unwired++
+		}
+	}
+
+	// Build event summary
+	var eventParts []string
+	for _, event := range AllEventNames() {
+		if n, ok := eventScriptCount[event]; ok {
+			eventParts = append(eventParts, fmt.Sprintf("%s (%d)", event, n))
+		}
+	}
+
+	fmt.Printf("✓ %d scripts installed across %d hook events\n", scriptCount, wiredEventCount)
+	if len(eventParts) > 0 {
+		fmt.Printf("   Events: %s\n", strings.Join(eventParts, ", "))
+	}
+	if unwired > 0 {
+		fmt.Printf("   Unwired: %d scripts not referenced by any hook event\n", unwired)
+	}
 }
 
 func runInjectCommandTest(testNum int, allPassed *bool) {

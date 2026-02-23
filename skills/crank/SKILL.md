@@ -1,6 +1,7 @@
 ---
 name: crank
 description: 'Hands-free epic execution. Runs until ALL children are CLOSED. Uses /swarm with runtime-native spawning (Codex sub-agents or Claude teams). NO human prompts, NO stopping. Triggers: "crank", "run epic", "execute epic", "run all tasks", "hands-free execution", "crank it".'
+skill_api_version: 1
 user-invocable: true
 metadata:
   tier: execution

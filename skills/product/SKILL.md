@@ -1,6 +1,7 @@
 ---
 name: product
 description: 'Interactive PRODUCT.md generation. Interviews you about mission, personas, value props, and competitive landscape, then generates a filled-in PRODUCT.md. Triggers: "product", "create product doc", "product definition", "who is this for".'
+skill_api_version: 1
 metadata:
   tier: product
   dependencies: []

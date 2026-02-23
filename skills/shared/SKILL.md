@@ -1,6 +1,7 @@
 ---
 name: shared
 description: Shared reference documents for multi-agent skills (not directly invocable)
+skill_api_version: 1
 user-invocable: false
 metadata:
   tier: library

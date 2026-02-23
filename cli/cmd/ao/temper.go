@@ -69,6 +69,7 @@ type TemperStatus struct {
 }
 
 func init() {
+	temperCmd.Hidden = true
 	rootCmd.AddCommand(temperCmd)
 
 	// validate subcommand

@@ -90,6 +90,8 @@ Examples:
 }
 
 func init() {
+	inboxCmd.GroupID = "comms"
+	mailCmd.GroupID = "comms"
 	rootCmd.AddCommand(inboxCmd)
 	rootCmd.AddCommand(mailCmd)
 

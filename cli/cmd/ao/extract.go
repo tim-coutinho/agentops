@@ -68,6 +68,7 @@ Examples:
 }
 
 func init() {
+	extractCmd.Hidden = true
 	rootCmd.AddCommand(extractCmd)
 	extractCmd.Flags().IntVar(&extractMaxContent, "max-content", 3000, "Maximum characters of session content to include")
 	extractCmd.Flags().BoolVar(&extractClear, "clear", false, "Clear pending queue without processing")

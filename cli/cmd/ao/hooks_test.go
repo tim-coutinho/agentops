@@ -519,3 +519,128 @@ func TestMatcherJSONRoundTrip(t *testing.T) {
 		t.Errorf("timeout lost in round-trip: got %d", roundTripped.Hooks[0].Timeout)
 	}
 }
+
+func TestCollectScriptNames(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Create some scripts
+	for _, name := range []string{"session-start.sh", "stop.sh", "readme.txt"} {
+		if err := os.WriteFile(filepath.Join(tmp, name), []byte("#!/bin/bash"), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	names := collectScriptNames(tmp)
+	if len(names) != 2 {
+		t.Errorf("expected 2 scripts, got %d", len(names))
+	}
+	if !names["session-start.sh"] {
+		t.Error("expected session-start.sh in script names")
+	}
+	if !names["stop.sh"] {
+		t.Error("expected stop.sh in script names")
+	}
+	if names["readme.txt"] {
+		t.Error("did not expect readme.txt in script names")
+	}
+}
+
+func TestCollectScriptNamesEmptyDir(t *testing.T) {
+	tmp := t.TempDir()
+	names := collectScriptNames(tmp)
+	if len(names) != 0 {
+		t.Errorf("expected 0 scripts, got %d", len(names))
+	}
+}
+
+func TestCollectScriptNamesNonexistent(t *testing.T) {
+	names := collectScriptNames("/nonexistent/path")
+	if len(names) != 0 {
+		t.Errorf("expected 0 scripts for nonexistent path, got %d", len(names))
+	}
+}
+
+func TestCollectWiredScripts(t *testing.T) {
+	hooksMap := map[string]any{
+		"SessionStart": []any{
+			map[string]any{
+				"hooks": []any{
+					map[string]any{"type": "command", "command": "/home/user/.agentops/hooks/session-start.sh"},
+				},
+			},
+		},
+		"Stop": []any{
+			map[string]any{
+				"hooks": []any{
+					map[string]any{"type": "command", "command": "/home/user/.agentops/hooks/stop-team-guard.sh"},
+					map[string]any{"type": "command", "command": "/home/user/.agentops/hooks/session-close.sh"},
+				},
+			},
+		},
+		"PreToolUse": []any{
+			map[string]any{
+				"matcher": "Write|Edit",
+				"hooks": []any{
+					map[string]any{"type": "command", "command": "/home/user/.agentops/hooks/standards-injector.sh"},
+				},
+			},
+		},
+	}
+
+	eventScriptCount, wiredScripts := collectWiredScripts(hooksMap)
+
+	if len(eventScriptCount) != 3 {
+		t.Errorf("expected 3 events with scripts, got %d", len(eventScriptCount))
+	}
+	if eventScriptCount["SessionStart"] != 1 {
+		t.Errorf("SessionStart: expected 1, got %d", eventScriptCount["SessionStart"])
+	}
+	if eventScriptCount["Stop"] != 2 {
+		t.Errorf("Stop: expected 2, got %d", eventScriptCount["Stop"])
+	}
+	if eventScriptCount["PreToolUse"] != 1 {
+		t.Errorf("PreToolUse: expected 1, got %d", eventScriptCount["PreToolUse"])
+	}
+
+	if len(wiredScripts) != 4 {
+		t.Errorf("expected 4 unique wired scripts, got %d", len(wiredScripts))
+	}
+	for _, name := range []string{"session-start.sh", "stop-team-guard.sh", "session-close.sh", "standards-injector.sh"} {
+		if !wiredScripts[name] {
+			t.Errorf("expected %s in wired scripts", name)
+		}
+	}
+}
+
+func TestCollectWiredScriptsEmpty(t *testing.T) {
+	hooksMap := map[string]any{}
+	eventScriptCount, wiredScripts := collectWiredScripts(hooksMap)
+	if len(eventScriptCount) != 0 {
+		t.Errorf("expected 0 events, got %d", len(eventScriptCount))
+	}
+	if len(wiredScripts) != 0 {
+		t.Errorf("expected 0 wired scripts, got %d", len(wiredScripts))
+	}
+}
+
+func TestCollectWiredScriptsInlineCommands(t *testing.T) {
+	// Hooks with inline ao commands (no .sh scripts)
+	hooksMap := map[string]any{
+		"SessionStart": []any{
+			map[string]any{
+				"hooks": []any{
+					map[string]any{"type": "command", "command": "ao inject --max-tokens 1500 2>/dev/null || true"},
+				},
+			},
+		},
+	}
+
+	eventScriptCount, wiredScripts := collectWiredScripts(hooksMap)
+	// Inline ao commands don't reference .sh files
+	if len(eventScriptCount) != 0 {
+		t.Errorf("expected 0 events with scripts, got %d", len(eventScriptCount))
+	}
+	if len(wiredScripts) != 0 {
+		t.Errorf("expected 0 wired scripts, got %d", len(wiredScripts))
+	}
+}

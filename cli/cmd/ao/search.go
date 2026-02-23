@@ -58,6 +58,7 @@ Examples:
 }
 
 func init() {
+	searchCmd.GroupID = "core"
 	rootCmd.AddCommand(searchCmd)
 	searchCmd.Flags().IntVar(&searchLimit, "limit", 10, "Maximum results to return")
 	searchCmd.Flags().StringVar(&searchType, "type", "", "Filter by type: decisions, knowledge, sessions")

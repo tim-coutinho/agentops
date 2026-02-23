@@ -105,6 +105,7 @@ Examples:
 }
 
 func init() {
+	forgeCmd.GroupID = "core"
 	rootCmd.AddCommand(forgeCmd)
 	forgeCmd.AddCommand(forgeTranscriptCmd)
 	forgeCmd.AddCommand(forgeMarkdownCmd)

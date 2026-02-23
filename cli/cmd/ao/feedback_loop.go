@@ -63,6 +63,7 @@ var (
 )
 
 func init() {
+	feedbackLoopCmd.Hidden = true
 	rootCmd.AddCommand(feedbackLoopCmd)
 	feedbackLoopCmd.Flags().StringVar(&feedbackLoopSessionID, "session", "", "Session ID to process")
 	feedbackLoopCmd.Flags().Float64Var(&feedbackLoopReward, "reward", -1, "Override reward value (0.0-1.0); -1 = compute from transcript")
@@ -403,6 +404,7 @@ var batchFeedbackReward float64
 var batchFeedbackMaxRuntime time.Duration
 
 func init() {
+	batchFeedbackCmd.Hidden = true
 	rootCmd.AddCommand(batchFeedbackCmd)
 	batchFeedbackCmd.Flags().IntVar(&batchFeedbackDays, "days", 7, "Process sessions from the last N days")
 	batchFeedbackCmd.Flags().IntVar(&batchFeedbackMaxSessions, "max-sessions", 0, "Process at most N sessions per run (0 = no limit)")

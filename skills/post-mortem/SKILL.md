@@ -1,6 +1,7 @@
 ---
 name: post-mortem
 description: 'Wrap up completed work. Council validates the implementation, then extract learnings. Triggers: "post-mortem", "wrap up", "close epic", "what did we learn".'
+skill_api_version: 1
 metadata:
   tier: judgment
   dependencies:

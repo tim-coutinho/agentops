@@ -1,6 +1,7 @@
 ---
 name: pr-retro
 description: 'Learn from PR outcomes. Analyzes accept/reject patterns and updates contribution lessons. Triggers: "pr retro", "learn from PR", "PR outcome", "why was PR rejected", "analyze PR feedback".'
+skill_api_version: 1
 license: MIT
 compatibility: Requires git, gh CLI
 metadata:

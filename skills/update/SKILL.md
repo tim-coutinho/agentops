@@ -1,6 +1,7 @@
 ---
 name: update
 description: 'Reinstall all AgentOps skills globally from the latest source. Triggers: "update skills", "reinstall skills", "sync skills".'
+skill_api_version: 1
 user-invocable: true
 metadata:
   tier: meta

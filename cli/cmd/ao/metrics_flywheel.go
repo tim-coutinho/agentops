@@ -32,6 +32,7 @@ Examples:
 }
 
 func init() {
+	flywheelCmd.GroupID = "knowledge"
 	rootCmd.AddCommand(flywheelCmd)
 
 	// flywheel status subcommand

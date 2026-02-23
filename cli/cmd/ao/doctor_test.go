@@ -417,3 +417,109 @@ func TestFormatDuration(t *testing.T) {
 		})
 	}
 }
+
+func TestCountHealFindings(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   int
+	}{
+		{
+			name:   "no findings",
+			output: "All clean. No findings.",
+			want:   0,
+		},
+		{
+			name:   "report format findings",
+			output: "[MISSING_NAME] skills/foo: No name field in frontmatter\n[DEAD_REF] skills/bar: SKILL.md references non-existent references/old.md\n\n2 finding(s) detected.\n",
+			want:   2,
+		},
+		{
+			name:   "summary only fallback",
+			output: "some noise\n5 finding(s) detected.\n",
+			want:   5,
+		},
+		{
+			name:   "empty output",
+			output: "",
+			want:   0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := countHealFindings(tt.output)
+			if got != tt.want {
+				t.Errorf("countHealFindings() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckSkillIntegrity_NoHealScript(t *testing.T) {
+	// When run from a temp dir with no heal.sh, should warn gracefully
+	chdirTemp(t)
+	result := checkSkillIntegrity()
+	if result.Status != "warn" {
+		t.Errorf("status=%q, want warn (detail: %s)", result.Status, result.Detail)
+	}
+	if result.Required {
+		t.Error("Skill Integrity should not be required")
+	}
+}
+
+func TestCheckSkillIntegrity_WithHealScript(t *testing.T) {
+	// Create a minimal heal.sh that exits 0 (all clean)
+	tmp := chdirTemp(t)
+	skillDir := filepath.Join(tmp, "skills", "heal-skill", "scripts")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	healScript := filepath.Join(skillDir, "heal.sh")
+	if err := os.WriteFile(healScript, []byte("#!/usr/bin/env bash\necho 'All clean. No findings.'\nexit 0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	result := checkSkillIntegrity()
+	if result.Status != "pass" {
+		t.Errorf("status=%q, want pass (detail: %s)", result.Status, result.Detail)
+	}
+}
+
+func TestCheckSkillIntegrity_WithFindings(t *testing.T) {
+	// Create a heal.sh that reports findings and exits 1
+	tmp := chdirTemp(t)
+	skillDir := filepath.Join(tmp, "skills", "heal-skill", "scripts")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	healScript := filepath.Join(skillDir, "heal.sh")
+	script := `#!/usr/bin/env bash
+echo "[MISSING_NAME] skills/foo: No name field"
+echo "[DEAD_REF] skills/bar: references non-existent file"
+echo ""
+echo "2 finding(s) detected."
+exit 1
+`
+	if err := os.WriteFile(healScript, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	result := checkSkillIntegrity()
+	if result.Status != "warn" {
+		t.Errorf("status=%q, want warn (detail: %s)", result.Status, result.Detail)
+	}
+}
+
+func TestFileExists(t *testing.T) {
+	tmp := t.TempDir()
+	f := filepath.Join(tmp, "exists.txt")
+	if err := os.WriteFile(f, []byte("hi"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if !fileExists(f) {
+		t.Error("expected fileExists to return true for existing file")
+	}
+	if fileExists(filepath.Join(tmp, "nope.txt")) {
+		t.Error("expected fileExists to return false for non-existent file")
+	}
+}

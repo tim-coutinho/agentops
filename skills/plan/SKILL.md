@@ -1,6 +1,7 @@
 ---
 name: plan
 description: 'Epic decomposition into trackable issues. Triggers: "create a plan", "plan implementation", "break down into tasks", "decompose into features", "create beads issues from research", "what issues should we create", "plan out the work".'
+skill_api_version: 1
 metadata:
   tier: execution
   dependencies:

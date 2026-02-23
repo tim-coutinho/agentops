@@ -96,6 +96,7 @@ var (
 )
 
 func init() {
+	taskSyncCmd.Hidden = true
 	rootCmd.AddCommand(taskSyncCmd)
 	taskSyncCmd.Flags().StringVar(&taskSyncTranscript, "transcript", "", "Path to Claude Code transcript")
 	taskSyncCmd.Flags().StringVar(&taskSyncSessionID, "session", "", "Filter tasks by session ID")
@@ -527,6 +528,7 @@ var (
 )
 
 func init() {
+	taskFeedbackCmd.Hidden = true
 	rootCmd.AddCommand(taskFeedbackCmd)
 	taskFeedbackCmd.Flags().StringVar(&taskFeedbackSessionID, "session", "", "Session ID to process")
 	taskFeedbackCmd.Flags().BoolVar(&taskFeedbackAll, "all", false, "Process all tasks without feedback")
@@ -635,6 +637,7 @@ Examples:
 var taskStatusSessionID string
 
 func init() {
+	taskStatusCmd.Hidden = true
 	rootCmd.AddCommand(taskStatusCmd)
 	taskStatusCmd.Flags().StringVar(&taskStatusSessionID, "session", "", "Filter by session ID")
 }

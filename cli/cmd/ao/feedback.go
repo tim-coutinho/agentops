@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/boshu2/agentops/cli/internal/resolver"
 	"github.com/boshu2/agentops/cli/internal/types"
 )
 
@@ -59,6 +60,7 @@ Examples:
 }
 
 func init() {
+	feedbackCmd.Hidden = true
 	rootCmd.AddCommand(feedbackCmd)
 	feedbackCmd.Flags().Float64Var(&feedbackReward, "reward", -1, "Reward value (0.0 to 1.0)")
 	feedbackCmd.Flags().Float64Var(&feedbackAlpha, "alpha", types.DefaultAlpha, "EMA learning rate")
@@ -161,149 +163,10 @@ func runFeedback(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// learningExtensions lists the file extensions to probe when searching for learnings.
-var learningExtensions = []string{".jsonl", ".md", ".json"}
-
-// learningSubdirs lists the subdirectories under .agents that contain learnings.
-var learningSubdirs = []string{"learnings", "patterns"}
-
-// probeWithExtensions checks for learningID + each extension inside dirPath.
-func probeWithExtensions(dirPath, learningID string) string {
-	for _, ext := range learningExtensions {
-		path := filepath.Join(dirPath, learningID+ext)
-		if _, err := os.Stat(path); err == nil {
-			return path
-		}
-	}
-	return ""
-}
-
-// probeDirect checks if learningID exists as-is inside dirPath (for IDs that already include an extension).
-func probeDirect(dirPath, learningID string) string {
-	path := filepath.Join(dirPath, learningID)
-	if _, err := os.Stat(path); err == nil {
-		return path
-	}
-	return ""
-}
-
-// probeGlob searches for files whose names contain learningID inside dirPath.
-func probeGlob(dirPath, learningID string) (string, error) {
-	files, err := filepath.Glob(filepath.Join(dirPath, "*"+learningID+"*"))
-	if err != nil {
-		return "", err
-	}
-	if len(files) > 0 {
-		return files[0], nil
-	}
-	return "", nil
-}
-
-// probeFrontmatterID scans .md files in dirPath for a frontmatter "id" field matching learningID.
-func probeFrontmatterID(dirPath, learningID string) string {
-	entries, err := os.ReadDir(dirPath)
-	if err != nil {
-		return ""
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		path := filepath.Join(dirPath, e.Name())
-		fields, err := parseFrontmatterFields(path, "id")
-		if err != nil {
-			continue
-		}
-		if fields["id"] == learningID {
-			return path
-		}
-	}
-	return ""
-}
-
-// searchDirsForLearning tries extension-probing, direct-probing, glob-probing,
-// and frontmatter ID scanning across dirs.
-func searchDirsForLearning(dirs []string, learningID string) (string, error) {
-	for _, d := range dirs {
-		if p := probeWithExtensions(d, learningID); p != "" {
-			return p, nil
-		}
-	}
-	for _, d := range dirs {
-		if p := probeDirect(d, learningID); p != "" {
-			return p, nil
-		}
-	}
-	for _, d := range dirs {
-		p, err := probeGlob(d, learningID)
-		if err != nil {
-			return "", err
-		}
-		if p != "" {
-			return p, nil
-		}
-	}
-	// Scan frontmatter id fields (handles learn-2026-... IDs in .md files)
-	for _, d := range dirs {
-		if p := probeFrontmatterID(d, learningID); p != "" {
-			return p, nil
-		}
-	}
-	return "", nil
-}
-
-// buildAgentsDirs returns the .agents/learnings and .agents/patterns paths for a given root.
-func buildAgentsDirs(root string) []string {
-	dirs := make([]string, 0, len(learningSubdirs))
-	for _, sub := range learningSubdirs {
-		dirs = append(dirs, filepath.Join(root, ".agents", sub))
-	}
-	return dirs
-}
-
-// isInSet returns true if needle is present in the set.
-func isInSet(needle string, set []string) bool {
-	for _, s := range set {
-		if needle == s {
-			return true
-		}
-	}
-	return false
-}
-
 // findLearningFile locates a learning file by ID.
+// Delegates to the shared resolver package.
 func findLearningFile(baseDir, learningID string) (string, error) {
-	baseDirs := buildAgentsDirs(baseDir)
-
-	if p, err := searchDirsForLearning(baseDirs, learningID); err != nil || p != "" {
-		return p, err
-	}
-
-	// Walk up to rig root looking for .agents/learnings and .agents/patterns
-	dir := baseDir
-	for {
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-
-		candidates := buildAgentsDirs(dir)
-		// Skip directories already searched at baseDir level
-		var novel []string
-		for _, c := range candidates {
-			if !isInSet(c, baseDirs) {
-				novel = append(novel, c)
-			}
-		}
-		for _, c := range novel {
-			if p := probeWithExtensions(c, learningID); p != "" {
-				return p, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("learning not found: %s", learningID)
+	return resolver.NewFileResolver(baseDir).Resolve(learningID)
 }
 
 // updateLearningUtility applies the EMA update rule and writes back.
@@ -547,6 +410,7 @@ Examples:
 }
 
 func init() {
+	migrateCmd.Hidden = true
 	rootCmd.AddCommand(migrateCmd)
 }
 

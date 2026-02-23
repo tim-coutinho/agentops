@@ -33,6 +33,7 @@ Examples:
 }
 
 func init() {
+	traceCmd.GroupID = "knowledge"
 	rootCmd.AddCommand(traceCmd)
 	traceCmd.Flags().BoolVar(&traceGraph, "graph", false, "Show ASCII provenance graph")
 }

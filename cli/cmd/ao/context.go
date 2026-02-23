@@ -176,6 +176,7 @@ Examples:
 	guardCmd.Flags().IntVar(&contextWatchdogMinute, "watchdog-minutes", defaultWatchdogMinutes, "Mark session stale after N minutes without telemetry updates")
 
 	contextCmd.AddCommand(statusCmd, guardCmd)
+	contextCmd.Hidden = true
 	rootCmd.AddCommand(contextCmd)
 }
 

@@ -1,6 +1,7 @@
 ---
 name: brainstorm
 description: 'Separate WHAT from HOW before planning. Clarify goals, explore approaches, capture structured design decisions. Triggers: brainstorm, explore idea, clarify goal, idea phase.'
+skill_api_version: 1
 metadata:
   tier: execution
   dependencies: []

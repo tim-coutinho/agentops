@@ -1,6 +1,7 @@
 ---
 name: implement
 description: 'Execute a single issue with full lifecycle. Triggers: "implement", "work on task", "build this", "start feature", "pick up next issue", "work on issue".'
+skill_api_version: 1
 metadata:
   tier: execution
   dependencies:

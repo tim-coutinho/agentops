@@ -45,6 +45,7 @@ Commands:
 }
 
 func init() {
+	metricsCmd.GroupID = "knowledge"
 	rootCmd.AddCommand(metricsCmd)
 
 	// baseline subcommand

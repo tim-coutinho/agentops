@@ -1,6 +1,7 @@
 ---
 name: security-suite
 description: 'Composable binary security suite for static analysis, dynamic tracing, contract capture, baseline drift, and policy gating. Triggers: "binary security", "reverse engineer binary", "black-box binary test", "behavioral trace", "baseline diff", "security suite".'
+skill_api_version: 1
 metadata:
   tier: execution
   dependencies: []

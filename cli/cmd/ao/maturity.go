@@ -50,6 +50,7 @@ Examples:
 }
 
 func init() {
+	maturityCmd.GroupID = "knowledge"
 	rootCmd.AddCommand(maturityCmd)
 	maturityCmd.Flags().BoolVar(&maturityApply, "apply", false, "Apply maturity transitions")
 	maturityCmd.Flags().BoolVar(&maturityScan, "scan", false, "Scan all learnings for pending transitions")
@@ -610,6 +611,7 @@ Examples:
 }
 
 func init() {
+	antiPatternCmd.GroupID = "knowledge"
 	rootCmd.AddCommand(antiPatternCmd)
 }
 
@@ -681,6 +683,7 @@ Examples:
 }
 
 func init() {
+	promoteAntiPatternsCmd.Hidden = true
 	rootCmd.AddCommand(promoteAntiPatternsCmd)
 }
 

@@ -68,6 +68,7 @@ Example:
 }
 
 func init() {
+	indexCmd.Hidden = true
 	rootCmd.AddCommand(indexCmd)
 	indexCmd.Flags().Bool("check", false, "Verify INDEX.md is current, exit 1 if stale")
 	indexCmd.Flags().Bool("json", false, "Machine-readable output")

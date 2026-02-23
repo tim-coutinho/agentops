@@ -1,6 +1,7 @@
 ---
 name: goals
 description: 'Maintain GOALS.yaml fitness specification. Generate new goals from repo state, prune stale goals, update drifted checks. Triggers: "goals", "goal status", "show goals", "generate goals", "add goals", "prune goals", "update goals", "clean goals".'
+skill_api_version: 1
 metadata:
   tier: product
   dependencies: []

@@ -34,6 +34,7 @@ Example:
 }
 
 func init() {
+	badgeCmd.GroupID = "core"
 	rootCmd.AddCommand(badgeCmd)
 }
 
