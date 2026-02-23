@@ -2,7 +2,7 @@
 # check-product-freshness.sh
 # Checks PRODUCT.md for:
 #   1. Line count <= 200
-#   2. last_reviewed date within 30 days of today (macOS BSD date)
+#   2. last_reviewed date within 30 days of today (BSD/GNU date)
 #   3. No section (## heading) longer than 30 lines
 
 set -euo pipefail
@@ -12,6 +12,21 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PRODUCT_FILE="${REPO_ROOT}/PRODUCT.md"
 
 FAILED=0
+
+date_30_days_ago() {
+  if date -v-30d +%Y-%m-%d >/dev/null 2>&1; then
+    date -v-30d +%Y-%m-%d
+    return
+  fi
+
+  if date -d '30 days ago' +%Y-%m-%d >/dev/null 2>&1; then
+    date -d '30 days ago' +%Y-%m-%d
+    return
+  fi
+
+  echo "ERROR: Unable to compute 30-day threshold (unsupported date implementation)" >&2
+  exit 1
+}
 
 # ---------------------------------------------------------------------------
 # Check: file exists
@@ -46,8 +61,8 @@ else
     echo "FAIL [freshness]: No 'last_reviewed' field found in frontmatter" >&2
     FAILED=1
   else
-    # macOS BSD date: compute the threshold (30 days ago)
-    THRESHOLD=$(date -v-30d +%Y-%m-%d)
+    # Compute the threshold (30 days ago) across BSD/GNU date implementations.
+    THRESHOLD=$(date_30_days_ago)
 
     # Compare dates lexicographically (YYYY-MM-DD format supports this)
     if [[ "${LAST_REVIEWED}" < "${THRESHOLD}" ]]; then

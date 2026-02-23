@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-02-23T03:10:04Z",
+  "git_sha": "bceb87e",
+  "goals": [
+    {
+      "goal_id": "product-freshness",
+      "result": "pass",
+      "duration_s": 0.016512712,
+      "weight": 7
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "passing": 1,
+    "failing": 0,
+    "skipped": 0,
+    "score": 100
+  }
+}
