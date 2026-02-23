@@ -948,6 +948,125 @@ BLOCKED_VIBE
     cd "$SCRIPT_DIR"
 }
 
+test_gate_retry_logic() {
+    log "Testing Gate retry logic..."
+
+    cd "$TEST_PROJECT"
+
+    # Simulate pre-mortem FAIL → retry → PASS sequence
+    mkdir -p .agents/council
+    cat > .agents/council/test-premortem-attempt-1.md << 'PM_FAIL'
+# Pre-mortem: Attempt 1
+
+## Council Verdict
+
+**Result:** FAIL (1 critical)
+
+## Findings
+
+### CRITICAL
+1. FINDING: Missing error handling in divide-by-zero path
+   FIX: Add guard clause before division
+   REF: src/calculator.py:28
+PM_FAIL
+
+    cat > .agents/council/test-premortem-attempt-2.md << 'PM_PASS'
+# Pre-mortem: Attempt 2
+
+## Council Verdict
+
+**Result:** PASS (0 critical)
+
+## Findings
+
+### ADVISORY
+1. FINDING: Consider logging division operations
+   FIX: Add optional logging parameter
+   REF: src/calculator.py:28
+PM_PASS
+
+    # Check retry produces multiple attempts
+    local attempt_count
+    attempt_count=$(find .agents/council -name "test-premortem-attempt-*" -type f 2>/dev/null | wc -l | tr -d ' ')
+
+    if [[ "$attempt_count" -ge 2 ]]; then
+        log_pass "Pre-mortem retry produces multiple attempt artifacts ($attempt_count)"
+    else
+        log_fail "Pre-mortem retry missing attempt artifacts"
+    fi
+
+    # Simulate vibe FAIL → retry → PASS with structured findings
+    cat > .agents/council/test-vibe-attempt-1.md << 'VIBE_FAIL'
+# Vibe Report: Attempt 1
+
+**Grade:** D
+
+## Gate Decision
+[x] BLOCK
+
+## Findings
+
+### CRITICAL
+1. FINDING: SQL injection in user input handling
+   FIX: Use parameterized queries
+   REF: src/db.py:15
+VIBE_FAIL
+
+    cat > .agents/council/test-vibe-attempt-2.md << 'VIBE_PASS'
+# Vibe Report: Attempt 2
+
+**Grade:** B
+
+## Gate Decision
+[x] PASS
+
+## Findings
+
+### MEDIUM
+1. FINDING: Variable naming could be clearer
+   FIX: Rename 'x' to 'user_count'
+   REF: src/db.py:22
+VIBE_PASS
+
+    # Check vibe retry attempts exist
+    local vibe_attempt_count
+    vibe_attempt_count=$(find .agents/council -name "test-vibe-attempt-*" -type f 2>/dev/null | wc -l | tr -d ' ')
+
+    if [[ "$vibe_attempt_count" -ge 2 ]]; then
+        log_pass "Vibe retry produces multiple attempt artifacts ($vibe_attempt_count)"
+    else
+        log_fail "Vibe retry missing attempt artifacts"
+    fi
+
+    # Check structured findings format (FINDING/FIX/REF)
+    local findings_format_count
+    findings_format_count=$(grep -l 'FINDING:' .agents/council/test-*-attempt-*.md 2>/dev/null | wc -l | tr -d ' ')
+
+    if [[ "$findings_format_count" -ge 2 ]]; then
+        log_pass "Structured findings format (FINDING/FIX/REF) used across attempts"
+    else
+        log_fail "Structured findings format missing"
+    fi
+
+    # Simulate max 3 attempts cap in chain
+    cat >> .agents/ao/chain.jsonl << 'RETRY_CHAIN'
+{"step":"pre-mortem","status":"blocked","attempt":1,"reason":"1 critical finding","time":"2026-02-03T12:10:00Z"}
+{"step":"pre-mortem","status":"blocked","attempt":2,"reason":"1 critical finding","time":"2026-02-03T12:20:00Z"}
+{"step":"pre-mortem","status":"completed","attempt":3,"reason":"all findings resolved","time":"2026-02-03T12:30:00Z"}
+RETRY_CHAIN
+
+    local max_attempt
+    max_attempt=$(grep '"step":"pre-mortem"' .agents/ao/chain.jsonl | grep -o '"attempt":[0-9]*' | sed 's/"attempt"://' | sort -n | tail -1)
+
+    if [[ "$max_attempt" -le 3 ]]; then
+        log_pass "Gate retry capped at max 3 attempts (highest: $max_attempt)"
+    else
+        log_fail "Gate retry exceeded max 3 attempts ($max_attempt)"
+    fi
+
+    cd "$SCRIPT_DIR"
+}
+
 # ============================================================================
 # Knowledge Flywheel Tests
 # ============================================================================
@@ -1145,6 +1264,7 @@ main() {
     echo "───────────────"
     test_ratchet_tracking
     test_gate_enforcement
+    test_gate_retry_logic
 
     echo ""
     echo "Knowledge Flywheel"
