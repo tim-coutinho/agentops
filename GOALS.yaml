@@ -202,6 +202,13 @@ goals:
     weight: 3
     added: "2026-02-19"
 
+  - id: contract-compatibility
+    description: "Contract schemas and examples referenced by docs exist on disk"
+    check: "timeout 60 bash scripts/check-contract-compatibility.sh"
+    weight: 3
+    pillar: validated-acceleration
+    added: "2026-02-23"
+
   - id: wiring-closure
     description: "All scripts, skills, and hooks are referenced by their parent registries"
     check: "timeout 60 bash scripts/check-wiring-closure.sh"
