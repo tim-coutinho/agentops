@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-02-23T09:20:06Z",
+  "git_sha": "2b890cf",
+  "goals": [
+    {
+      "goal_id": "evolve-cycle-logging",
+      "result": "pass",
+      "duration_s": 0.160599861,
+      "output": "cycle-history.jsonl OK: 7 entries, cycles 1-7, no gaps, all fields present.",
+      "weight": 6
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "passing": 1,
+    "failing": 0,
+    "skipped": 0,
+    "score": 100
+  }
+}
