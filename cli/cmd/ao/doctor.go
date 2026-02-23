@@ -524,25 +524,36 @@ func countEstablished(dir string) int {
 
 func checkSkills() doctorCheck {
 	// Skills are installed globally at ~/.claude/skills/, not in the local repo.
+	// They may be symlinks pointing to ~/.agents/skills/.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return doctorCheck{Name: "Plugin", Status: "warn", Detail: "cannot determine home directory", Required: false}
 	}
 
-	skillsDir := filepath.Join(home, ".claude", "skills")
-	entries, err := os.ReadDir(skillsDir)
-	if err != nil {
-		return doctorCheck{Name: "Plugin", Status: "warn", Detail: "no skills installed — run 'npx skills@latest add <package> --all -g'", Required: false}
+	skillsDirs := []string{
+		filepath.Join(home, ".claude", "skills"),
+		filepath.Join(home, ".agents", "skills"),
 	}
 
 	count := 0
-	for _, e := range entries {
-		if !e.IsDir() {
+	for _, skillsDir := range skillsDirs {
+		entries, err := os.ReadDir(skillsDir)
+		if err != nil {
 			continue
 		}
-		skillFile := filepath.Join(skillsDir, e.Name(), "SKILL.md")
-		if _, err := os.Stat(skillFile); err == nil {
-			count++
+		for _, e := range entries {
+			// Use os.Stat to follow symlinks (e.IsDir() doesn't follow symlinks)
+			info, err := os.Stat(filepath.Join(skillsDir, e.Name()))
+			if err != nil || !info.IsDir() {
+				continue
+			}
+			skillFile := filepath.Join(skillsDir, e.Name(), "SKILL.md")
+			if _, err := os.Stat(skillFile); err == nil {
+				count++
+			}
+		}
+		if count > 0 {
+			break // Found skills in this directory, don't double-count
 		}
 	}
 
@@ -553,7 +564,7 @@ func checkSkills() doctorCheck {
 	return doctorCheck{
 		Name:     "Plugin",
 		Status:   "pass",
-		Detail:   fmt.Sprintf("%d skills found in ~/.claude/skills/", count),
+		Detail:   fmt.Sprintf("%d skills found", count),
 		Required: false,
 	}
 }
