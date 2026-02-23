@@ -94,7 +94,6 @@ setup_test_project() {
     mkdir -p .agents/research
     mkdir -p .agents/plans
     mkdir -p .agents/council
-    mkdir -p .agents/vibe
     mkdir -p .agents/retros
     mkdir -p .agents/learnings
     mkdir -p .agents/patterns
@@ -592,8 +591,8 @@ test_vibe_artifacts() {
     cd "$TEST_PROJECT"
 
     # Simulate vibe output
-    mkdir -p .agents/vibe
-    cat > .agents/vibe/$(date +%Y-%m-%d)-calculator-validation.md << 'VIBE'
+    mkdir -p .agents/council
+    cat > .agents/council/$(date +%Y-%m-%d)-calculator-validation.md << 'VIBE'
 ---
 schema_version: 1
 ---
@@ -651,19 +650,19 @@ VIBE
 }
 TOOLSUMMARY
 
-    # Check vibe artifact exists
+    # Check vibe artifact exists (match validation pattern, not pre-mortem)
     local vibe_count
-    vibe_count=$(find .agents/vibe -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+    vibe_count=$(find .agents/council -name "*validation*" -type f 2>/dev/null | wc -l | tr -d ' ')
 
     if [[ "$vibe_count" -ge 1 ]]; then
-        log_pass "Vibe artifact created (.agents/vibe/*.md)"
+        log_pass "Vibe artifact created (.agents/council/*validation*.md)"
     else
         log_fail "No vibe artifact found"
     fi
 
     # Check vibe has grade
     local vibe_file
-    vibe_file=$(find .agents/vibe -name "*.md" -type f | head -1)
+    vibe_file=$(find .agents/council -name "*validation*" -type f | head -1)
 
     if [[ -n "$vibe_file" ]]; then
         if grep -q "Grade:" "$vibe_file"; then
@@ -853,7 +852,7 @@ test_ratchet_tracking() {
 {"step":"plan","status":"completed","output":".agents/plans/2026-02-03-calculator-improvements.md","time":"2026-02-03T10:30:00Z"}
 {"step":"pre-mortem","status":"completed","output":".agents/council/2026-02-03-pre-mortem-calculator.md","time":"2026-02-03T10:45:00Z"}
 {"step":"crank","status":"completed","output":"abc1234","time":"2026-02-03T11:00:00Z"}
-{"step":"vibe","status":"completed","output":".agents/vibe/2026-02-03-calculator-validation.md","time":"2026-02-03T11:30:00Z"}
+{"step":"vibe","status":"completed","output":".agents/council/2026-02-03-calculator-validation.md","time":"2026-02-03T11:30:00Z"}
 {"step":"post-mortem","status":"completed","output":".agents/retros/2026-02-03-post-mortem-calculator.md","time":"2026-02-03T12:00:00Z"}
 CHAIN
 
@@ -913,8 +912,8 @@ test_gate_enforcement() {
     cd "$TEST_PROJECT"
 
     # Test: vibe gate blocks on critical findings
-    mkdir -p .agents/vibe
-    cat > .agents/vibe/test-blocked.md << 'BLOCKED_VIBE'
+    mkdir -p .agents/council
+    cat > .agents/council/test-blocked.md << 'BLOCKED_VIBE'
 # Vibe Report: Test
 
 **Grade:** D
@@ -931,7 +930,7 @@ test_gate_enforcement() {
 BLOCKED_VIBE
 
     # Check block detection
-    if grep -q "BLOCK" .agents/vibe/test-blocked.md; then
+    if grep -q "BLOCK" .agents/council/test-blocked.md; then
         log_pass "Gate can detect blocking conditions"
     else
         log_fail "Gate block detection failed"
@@ -1046,7 +1045,7 @@ test_full_pipeline_integration() {
         ".agents/research"
         ".agents/plans"
         ".agents/council"
-        ".agents/vibe"
+        ".agents/council"
         ".agents/retros"
         ".agents/learnings"
         ".agents/ao"
@@ -1068,7 +1067,7 @@ test_full_pipeline_integration() {
     # Verify artifact count matches workflow progression
     local research_arts=$(find .agents/research -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
     local plan_arts=$(find .agents/plans -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
-    local vibe_arts=$(find .agents/vibe -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+    local vibe_arts=$(find .agents/council -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
     local retro_arts=$(find .agents/retros -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
     local learning_arts=$(find .agents/learnings -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
 
@@ -1180,7 +1179,7 @@ main() {
         echo "  - Plan phase creates .agents/plans/*.md + beads issues"
         echo "  - Pre-mortem phase creates .agents/council/*pre-mortem*.md"
         echo "  - Crank phase creates code changes + closes issues"
-        echo "  - Vibe phase creates .agents/vibe/*.md with gate decision"
+        echo "  - Vibe phase creates .agents/council/*.md with gate decision"
         echo "  - Post-mortem creates .agents/retros/*.md + learnings"
         echo "  - Ratchet tracks progress in .agents/ao/chain.jsonl"
         echo "  - Gates can block on critical findings"
