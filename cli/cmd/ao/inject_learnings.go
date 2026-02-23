@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/boshu2/agentops/cli/internal/resolver"
 	"github.com/boshu2/agentops/cli/internal/types"
 )
 
@@ -48,21 +49,9 @@ func collectLearnings(cwd, query string, limit int) ([]learning, error) {
 }
 
 // findLearningFiles discovers .md and .jsonl files in the learnings directory.
+// Delegates to the shared LearningResolver for consistent file discovery.
 func findLearningFiles(cwd string) ([]string, error) {
-	learningsDir := filepath.Join(cwd, ".agents", "learnings")
-	if _, err := os.Stat(learningsDir); os.IsNotExist(err) {
-		learningsDir = findAgentsSubdir(cwd, "learnings")
-		if learningsDir == "" {
-			return nil, nil
-		}
-	}
-
-	files, err := filepath.Glob(filepath.Join(learningsDir, "*.md"))
-	if err != nil {
-		return nil, err
-	}
-	jsonlFiles, _ := filepath.Glob(filepath.Join(learningsDir, "*.jsonl"))
-	return append(files, jsonlFiles...), nil
+	return resolver.NewFileResolver(cwd).DiscoverAll()
 }
 
 // processLearningFile parses, filters, and scores a single learning file.

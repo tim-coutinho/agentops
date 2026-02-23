@@ -11,6 +11,7 @@ import (
 // LearningResolver resolves learning IDs to filesystem paths.
 type LearningResolver interface {
 	Resolve(id string) (path string, err error)
+	DiscoverAll() ([]string, error)
 }
 
 // FileResolver resolves learnings by searching the filesystem.
@@ -91,6 +92,48 @@ func (r *FileResolver) Resolve(id string) (string, error) {
 	}
 
 	return "", fmt.Errorf("learning not found: %s", id)
+}
+
+// DiscoverAll returns all learning files (.md and .jsonl) under the resolver root.
+// It searches .agents/learnings/ and .agents/patterns/ and walks up to the rig root.
+func (r *FileResolver) DiscoverAll() ([]string, error) {
+	var allFiles []string
+	seen := make(map[string]bool)
+
+	collect := func(dir string) {
+		for _, ext := range []string{"*.md", "*.jsonl"} {
+			matches, err := filepath.Glob(filepath.Join(dir, ext))
+			if err != nil {
+				continue
+			}
+			for _, m := range matches {
+				if !seen[m] {
+					seen[m] = true
+					allFiles = append(allFiles, m)
+				}
+			}
+		}
+	}
+
+	// Search at root level
+	for _, dir := range buildAgentsDirs(r.Root) {
+		collect(dir)
+	}
+
+	// Walk up to rig root
+	dir := r.Root
+	for {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+		for _, d := range buildAgentsDirs(dir) {
+			collect(d)
+		}
+	}
+
+	return allFiles, nil
 }
 
 // buildAgentsDirs returns .agents/<subdir> paths for a given root.

@@ -24,7 +24,8 @@
     "context": { "type": "string" },
     "allowed-tools": { "type": "array", "items": { "type": "string" } },
     "license": { "type": "string" },
-    "compatibility": { "type": "string" }
+    "compatibility": { "type": "string" },
+    "model": { "type": "string", "description": "Preferred model for skill execution (e.g., haiku, sonnet)" }
   },
   "additionalProperties": false
 }

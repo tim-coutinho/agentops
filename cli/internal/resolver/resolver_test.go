@@ -188,3 +188,46 @@ func TestFileResolver_Resolve_NotFoundError(t *testing.T) {
 func TestFileResolver_ImplementsInterface(t *testing.T) {
 	var _ LearningResolver = &FileResolver{}
 }
+
+func TestFileResolver_DiscoverAll(t *testing.T) {
+	root := setupTestLearnings(t)
+	r := NewFileResolver(root)
+
+	files, err := r.DiscoverAll()
+	if err != nil {
+		t.Fatalf("DiscoverAll() error = %v", err)
+	}
+
+	// setupTestLearnings creates: L001.jsonl, L002.md, learning-003.jsonl, some-file.md in learnings/
+	// and retry-backoff.md in patterns/
+	if len(files) != 5 {
+		t.Errorf("DiscoverAll() returned %d files, want 5", len(files))
+		for _, f := range files {
+			t.Logf("  %s", f)
+		}
+	}
+
+	// Verify known files are present
+	bases := make(map[string]bool)
+	for _, f := range files {
+		bases[filepath.Base(f)] = true
+	}
+	for _, want := range []string{"L001.jsonl", "L002.md", "learning-003.jsonl", "some-file.md", "retry-backoff.md"} {
+		if !bases[want] {
+			t.Errorf("DiscoverAll() missing %s", want)
+		}
+	}
+}
+
+func TestFileResolver_DiscoverAll_Empty(t *testing.T) {
+	root := t.TempDir()
+	r := NewFileResolver(root)
+
+	files, err := r.DiscoverAll()
+	if err != nil {
+		t.Fatalf("DiscoverAll() error = %v", err)
+	}
+	if len(files) != 0 {
+		t.Errorf("DiscoverAll() on empty dir returned %d files, want 0", len(files))
+	}
+}
