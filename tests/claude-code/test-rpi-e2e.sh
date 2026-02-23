@@ -948,6 +948,68 @@ BLOCKED_VIBE
     cd "$SCRIPT_DIR"
 }
 
+test_complexity_scaling() {
+    log "Testing Complexity scaling flag selection..."
+
+    cd "$TEST_PROJECT"
+
+    # Simulate complexity config that maps issue count to vibe depth
+    mkdir -p .agents/ao
+    cat > .agents/ao/complexity-config.json << 'COMPLEXITY'
+{
+  "rules": [
+    {"min_issues": 1, "max_issues": 2, "vibe_flag": "--quick"},
+    {"min_issues": 3, "max_issues": 7, "vibe_flag": ""},
+    {"min_issues": 8, "max_issues": 999, "vibe_flag": "--deep"}
+  ],
+  "mutex": ["--fast-path", "--deep"]
+}
+COMPLEXITY
+
+    # Test: 1-2 issues → --quick
+    local issue_count=2
+    local expected_flag
+    expected_flag=$(jq -r --argjson n "$issue_count" '.rules[] | select(.min_issues <= $n and .max_issues >= $n) | .vibe_flag' .agents/ao/complexity-config.json)
+
+    if [[ "$expected_flag" == "--quick" ]]; then
+        log_pass "1-2 issues selects --quick flag (count=$issue_count)"
+    else
+        log_fail "1-2 issues should select --quick, got: '$expected_flag'"
+    fi
+
+    # Test: 3-7 issues → default (empty)
+    issue_count=5
+    expected_flag=$(jq -r --argjson n "$issue_count" '.rules[] | select(.min_issues <= $n and .max_issues >= $n) | .vibe_flag' .agents/ao/complexity-config.json)
+
+    if [[ -z "$expected_flag" ]]; then
+        log_pass "3-7 issues selects default flag (count=$issue_count)"
+    else
+        log_fail "3-7 issues should select default (empty), got: '$expected_flag'"
+    fi
+
+    # Test: 8+ issues → --deep
+    issue_count=12
+    expected_flag=$(jq -r --argjson n "$issue_count" '.rules[] | select(.min_issues <= $n and .max_issues >= $n) | .vibe_flag' .agents/ao/complexity-config.json)
+
+    if [[ "$expected_flag" == "--deep" ]]; then
+        log_pass "8+ issues selects --deep flag (count=$issue_count)"
+    else
+        log_fail "8+ issues should select --deep, got: '$expected_flag'"
+    fi
+
+    # Test: --fast-path and --deep are mutex
+    local mutex_flags
+    mutex_flags=$(jq -r '.mutex | join(" ")' .agents/ao/complexity-config.json)
+
+    if echo "$mutex_flags" | grep -q "fast-path" && echo "$mutex_flags" | grep -q "deep"; then
+        log_pass "Mutex constraint: --fast-path and --deep are mutually exclusive"
+    else
+        log_fail "Mutex constraint not defined for --fast-path/--deep"
+    fi
+
+    cd "$SCRIPT_DIR"
+}
+
 test_promise_tag_parsing() {
     log "Testing Promise tag parsing..."
 
@@ -1350,6 +1412,7 @@ main() {
     echo "───────────────"
     test_ratchet_tracking
     test_gate_enforcement
+    test_complexity_scaling
     test_promise_tag_parsing
     test_gate_retry_logic
 
