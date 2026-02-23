@@ -65,7 +65,65 @@ cd cli && make sync-hooks   # Sync embedded hooks/skills into cli/embedded/
 | `scripts/extract-release-notes.sh` | Extract notes from CHANGELOG.md for GitHub release |
 | `scripts/security-gate.sh` | Security scanning (semgrep, gosec, gitleaks) |
 | `scripts/validate-go-fast.sh` | Quick Go validation (build + vet + test) |
+| `scripts/sync-skill-counts.sh` | Sync skill counts across all docs after adding/removing skills |
+| `scripts/generate-cli-reference.sh` | Regenerate CLI docs after changing commands/flags |
 | `scripts/prune-agents.sh` | Clean up bloated .agents/ directory |
+
+## CI Validation
+
+All pushes to `main` run `.github/workflows/validate.yml` (14 jobs). **Run checks locally before pushing.**
+
+### Quick Local Validation
+
+```bash
+# Minimum checks before any push:
+bash skills/heal-skill/scripts/heal.sh --strict   # Skill integrity
+./tests/docs/validate-doc-release.sh               # Skill counts + links
+./scripts/check-contract-compatibility.sh           # Contract refs + JSON validity
+
+# If you changed Go code:
+cd cli && make build && make test
+
+# If you changed hooks or lib/hook-helpers.sh:
+cd cli && make sync-hooks
+
+# Full gate (runs everything):
+scripts/ci-local-release.sh
+```
+
+### Rules That Break CI
+
+**No symlinks.** Ever. The plugin-load-test rejects all symlinks in the repo. If you need the same reference file in multiple skills, **copy** it.
+
+**Skill counts must be synced.** Adding or removing a skill directory requires:
+
+```bash
+scripts/sync-skill-counts.sh
+```
+
+This updates SKILL-TIERS.md, PRODUCT.md, README.md, docs/SKILLS.md, docs/ARCHITECTURE.md, and using-agentops/SKILL.md. Forgetting this fails the doc-release-gate.
+
+**Every `references/*.md` must be linked in SKILL.md.** If a file exists in `skills/<name>/references/`, the skill's SKILL.md must contain a markdown link `[text](references/file.md)` or `Read references/file.md`. Use `heal.sh --strict` to check.
+
+**Embedded hooks must stay in sync.** After editing `hooks/`, `lib/hook-helpers.sh`, or `skills/standards/references/`:
+
+```bash
+cd cli && make sync-hooks
+```
+
+**CLI docs must stay in sync.** After adding/changing CLI commands or flags:
+
+```bash
+scripts/generate-cli-reference.sh
+```
+
+**Contracts must be catalogued.** Files added to `docs/contracts/` need a link in `docs/INDEX.md`.
+
+**Go complexity budget.** New/modified functions must stay under cyclomatic complexity 25 (warn at 15).
+
+**No TODOs in SKILL.md.** Use `bd` issue tracking instead.
+
+**No secrets in code.** CI greps for hardcoded passwords, API keys, tokens in non-test files.
 
 ## Release Pipeline
 

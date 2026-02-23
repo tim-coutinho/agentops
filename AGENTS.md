@@ -50,11 +50,92 @@ cd cli && make build  # Build ao binary
 cd cli && make test   # Run tests
 cd cli && make lint   # Run linter
 
-# Validation
-scripts/ci-local-release.sh     # Full local release gate
-scripts/validate-go-fast.sh     # Quick Go validation
-scripts/security-gate.sh        # Security scanning
+# Validation (run before pushing)
+scripts/ci-local-release.sh     # Full local release gate (runs everything)
+scripts/validate-go-fast.sh     # Quick Go validation (build + vet + test)
 ```
+
+## CI Validation — Passing the Pipeline
+
+All pushes to `main` and PRs run `.github/workflows/validate.yml`. **Run checks locally before pushing.** The summary job gates on all checks except security-toolchain-gate (non-blocking).
+
+### Local Pre-Push Checklist
+
+Run these before every push. If any fail, CI will fail too.
+
+```bash
+# 1. Skill integrity (most common failure)
+bash skills/heal-skill/scripts/heal.sh --strict
+
+# 2. Doc-release gate (skill counts, link validation)
+./tests/docs/validate-doc-release.sh
+
+# 3. ShellCheck
+find . -name "*.sh" -type f -not -path "./.git/*" -print0 | xargs -0 shellcheck --severity=error
+
+# 4. Markdownlint
+git ls-files '*.md' | xargs markdownlint
+
+# 5. Go build + tests (if cli/ changed)
+cd cli && make build && make test
+
+# 6. Contract compatibility
+./scripts/check-contract-compatibility.sh
+
+# 7. Plugin structure (symlinks, manifests)
+./scripts/validate-manifests.sh --repo-root .
+find skills -type l  # must be empty — zero symlinks allowed
+
+# Full gate (runs everything above and more):
+scripts/ci-local-release.sh
+```
+
+### CI Jobs and What They Check
+
+| Job | What it validates | Common failure |
+|-----|-------------------|----------------|
+| **skill-integrity** | Every `references/*.md` file is linked from SKILL.md; no dead refs, dead xrefs, or missing scripts | Adding a reference file without linking it in SKILL.md |
+| **doc-release-gate** | Skill counts match across SKILL-TIERS.md, PRODUCT.md, README.md, INDEX.md; link validation | Adding/removing a skill without running `scripts/sync-skill-counts.sh` |
+| **plugin-load-test** | No symlinks anywhere in the repo; manifests valid; plugin structure correct | Creating symlinks instead of real file copies |
+| **go-build** | `ao` binary builds; tests pass with `-race`; embedded hooks in sync; Go complexity budget | New function exceeds cyclomatic complexity 25 |
+| **shellcheck** | All `.sh` files pass ShellCheck at error severity | Unquoted variables, missing `set -euo pipefail` |
+| **markdownlint** | All tracked `.md` files pass markdownlint | Trailing whitespace, inconsistent list markers |
+| **smoke-test** | Skill frontmatter valid; no placeholders; no TODOs in SKILL.md files | Leaving `TODO` or `[your-email]` in SKILL.md |
+| **embedded-sync** | `cli/embedded/` matches source files in `hooks/`, `lib/`, `skills/` | Editing hooks without running `cd cli && make sync-hooks` |
+| **cli-docs-parity** | `cli/docs/COMMANDS.md` matches `ao --help` output | Adding a CLI command without running `scripts/generate-cli-reference.sh` |
+| **hook-preflight** | All hooks have kill switches, no unsafe eval, timeouts present | Using `eval` or backtick substitution in hooks |
+| **contract-compatibility** | INDEX.md contract links resolve; schemas are valid JSON; no orphaned contracts | Adding a contract file without cataloguing it in `docs/INDEX.md` |
+| **security-scan** | No hardcoded secrets or dangerous patterns (`curl\|sh`, `rm -rf /`) | Hardcoded API keys or passwords in non-test files |
+| **e2e-install-test** | Plugin installs and loads in Claude Code CLI | Broken manifest or skill frontmatter |
+| **security-toolchain-gate** | Semgrep, gosec, gitleaks, etc. | Non-blocking (`continue-on-error: true`) |
+
+### Key Constraints Agents Must Follow
+
+**No symlinks.** The plugin-load-test rejects ALL symlinks. If you need the same file in multiple skill `references/` dirs, **copy the file** — do not symlink.
+
+**Skill counts must be synced.** When adding or removing a skill directory, run:
+```bash
+scripts/sync-skill-counts.sh
+```
+This updates counts in SKILL-TIERS.md, PRODUCT.md, README.md, docs/SKILLS.md, docs/ARCHITECTURE.md, and using-agentops/SKILL.md.
+
+**Every reference file must be linked.** If a file exists in `skills/<name>/references/`, the skill's `SKILL.md` must contain a markdown link to it: `[title](references/file.md)`. Use `heal.sh --strict` to check.
+
+**Embedded hooks must stay in sync.** After editing anything in `hooks/`, `lib/hook-helpers.sh`, or `skills/standards/references/`, run:
+```bash
+cd cli && make sync-hooks
+```
+
+**CLI docs must stay in sync.** After adding/changing CLI commands or flags, run:
+```bash
+scripts/generate-cli-reference.sh
+```
+
+**Contracts must be catalogued.** When adding files to `docs/contracts/`, add a corresponding entry in `docs/INDEX.md`. The contract gate discovers files dynamically but checks for orphans.
+
+**Go complexity budget.** New or modified functions must stay under cyclomatic complexity 25 (warning at 15). The check only flags new/worsened violations, not legacy ones.
+
+**No TODOs in SKILL.md files.** The smoke test greps for `TODO` and `FIXME` in `skills/*/SKILL.md`. Use issue tracking (`bd`) for follow-up work instead.
 
 ## Releasing
 
