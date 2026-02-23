@@ -77,7 +77,8 @@ func defaultGoalTypes(goals []Goal) {
 }
 
 // LoadGoals reads and parses a goals YAML file.
-// Accepts version 2 or 3. Defaults Goal.Type to "health" if empty.
+// Accepts version 1, 2, or 3. Version 1 is accepted with a deprecation warning.
+// Defaults Goal.Type to "health" if empty.
 func LoadGoals(path string) (*GoalFile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -89,12 +90,25 @@ func LoadGoals(path string) (*GoalFile, error) {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
 
-	if gf.Version != 2 && gf.Version != 3 {
-		return nil, fmt.Errorf("unsupported version %d (expected 2 or 3)", gf.Version)
+	if gf.Version < 1 || gf.Version > 3 {
+		return nil, fmt.Errorf("unsupported version %d (expected 1, 2, or 3)", gf.Version)
+	}
+
+	if gf.Version == 1 {
+		fmt.Fprintf(os.Stderr, "WARNING: %s uses version 1 (deprecated). Run 'ao goals migrate' to upgrade to version 2.\n", path)
 	}
 
 	defaultGoalTypes(gf.Goals)
 	return &gf, nil
+}
+
+// MigrateV1ToV2 converts a v1 GoalFile to v2 by adding default fields.
+func MigrateV1ToV2(gf *GoalFile) {
+	gf.Version = 2
+	if gf.Mission == "" {
+		gf.Mission = "Project fitness goals"
+	}
+	defaultGoalTypes(gf.Goals)
 }
 
 // ValidateGoals checks a GoalFile for structural correctness.
