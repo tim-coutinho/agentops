@@ -11,30 +11,58 @@ and resume from Step 1.
 
 Append one line per cycle to `.agents/evolve/cycle-history.jsonl`.
 
-**Sequential cycle entry:**
-```jsonl
-{"cycle": 1, "goal_id": "test-pass-rate", "result": "improved", "commit_sha": "abc1234", "goals_passing": 18, "goals_total": 23, "timestamp": "2026-02-11T21:00:00Z"}
-{"cycle": 2, "goal_id": "doc-coverage", "result": "regressed", "commit_sha": "def5678", "reverted_to": "abc1234", "goals_passing": 17, "goals_total": 23, "timestamp": "2026-02-11T21:30:00Z"}
+### Canonical Schema
+
+All new entries MUST use this schema:
+
+```json
+{
+  "cycle": 123,
+  "target": "goal-id-or-idle",
+  "result": "improved|regressed|unchanged|harvested|quarantined",
+  "sha": "abc1234",
+  "timestamp": "2026-02-23T12:00:00-05:00",
+  "goals_passing": 59,
+  "goals_total": 59
+}
 ```
 
-**Parallel cycle entry** (use `goal_ids` array instead of single `goal_id`):
+**Field standardization:**
+- Use `target` (not `goal_id`) — this is what recent cycles already use
+- Use `sha` (not `commit_sha`) — shorter, matches recent convention
+- Always include `goals_passing` and `goals_total` — enables trajectory plotting
+- Optional fields: `quality_score` (quality mode), `idle_streak` (idle cycles), `parallel` + `goal_ids` (parallel mode)
+
+**Legacy field names:** Older entries may use `goal_id` instead of `target` and `commit_sha` instead of `sha`. Tools reading cycle-history.jsonl should handle both conventions.
+
+**Sequential cycle entry:**
 ```jsonl
-{"cycle": 3, "goal_ids": ["test-pass-rate", "doc-coverage", "lint-clean"], "result": "improved", "commit_sha": "ghi9012", "goals_passing": 22, "goals_total": 23, "goals_added": 0, "parallel": true, "timestamp": "2026-02-11T22:00:00Z"}
+{"cycle": 1, "target": "test-pass-rate", "result": "improved", "sha": "abc1234", "goals_passing": 18, "goals_total": 23, "timestamp": "2026-02-11T21:00:00Z"}
+{"cycle": 2, "target": "doc-coverage", "result": "regressed", "sha": "def5678", "goals_passing": 17, "goals_total": 23, "timestamp": "2026-02-11T21:30:00Z"}
+```
+
+**Idle cycle entry** (not committed to git):
+```jsonl
+{"cycle": 3, "target": "idle", "result": "unchanged", "timestamp": "2026-02-11T22:00:00Z"}
+```
+
+**Parallel cycle entry** (use `goal_ids` array and `parallel: true`):
+```jsonl
+{"cycle": 4, "goal_ids": ["test-pass-rate", "doc-coverage", "lint-clean"], "result": "improved", "sha": "ghi9012", "goals_passing": 22, "goals_total": 23, "parallel": true, "timestamp": "2026-02-11T22:30:00Z"}
 ```
 
 ### Mandatory Fields
 
-Every cycle log entry MUST include:
+Every productive cycle log entry MUST include:
 
 | Field | Description |
 |-------|-------------|
-| `cycle` | Cycle number (0-indexed) |
-| `goal_id` or `goal_ids` | Target goal(s) for this cycle |
-| `result` | One of: `improved`, `regressed`, `unchanged`, `harvested` |
-| `commit_sha` | Git SHA after cycle commit |
-| `goals_passing` | Count of goals with result "pass" |
-| `goals_total` | Total goals measured |
-| `goals_added` | Count of new goals added this cycle (0 if none) |
+| `cycle` | Cycle number (1-indexed) |
+| `target` | Target goal ID, or `"idle"` for idle cycles |
+| `result` | One of: `improved`, `regressed`, `unchanged`, `harvested`, `quarantined` |
+| `sha` | Git SHA after cycle commit (omitted for idle cycles) |
+| `goals_passing` | Count of goals with result "pass" (omitted for idle cycles) |
+| `goals_total` | Total goals measured (omitted for idle cycles) |
 | `timestamp` | ISO 8601 timestamp |
 
 These enable fitness trajectory plotting across cycles.
@@ -46,17 +74,38 @@ Log telemetry at the end of each cycle:
 bash scripts/log-telemetry.sh evolve cycle-complete cycle=${CYCLE} score=${SCORE} goals_passing=${PASSING} goals_total=${TOTAL}
 ```
 
-### Compaction-Proofing: Commit After Every Cycle
+### Compaction-Proofing: Commit After Productive Cycles
 
-Uncommitted state does not survive context compaction. ALWAYS commit cycle
-artifacts before starting the next cycle:
+Only **productive cycles** (improved, regressed, harvested) are committed. Idle
+cycles are appended to cycle-history.jsonl locally but NOT committed — they are
+disposable if compaction occurs, and the idle streak is re-derived from disk at
+session start.
 
 ```bash
-git add .agents/evolve/cycle-history.jsonl .agents/evolve/fitness-*.json
-if evolve_state.parallel and len(selected_goals) > 1:
-  git commit -m "evolve: cycle ${CYCLE} -- parallel wave [${goal_ids}] ${outcome}" --allow-empty
-else:
-  git commit -m "evolve: cycle ${CYCLE} -- ${selected.id} ${outcome}" --allow-empty
+# Productive cycle: commit cycle-history.jsonl only
+git add .agents/evolve/cycle-history.jsonl
+git commit -m "evolve: cycle ${CYCLE} -- ${TARGET} ${OUTCOME}"
+
+# Parallel productive cycle:
+git add .agents/evolve/cycle-history.jsonl
+git commit -m "evolve: cycle ${CYCLE} -- parallel wave [${goal_ids}] ${outcome}"
+
+# Idle cycle: append locally, do NOT commit
+echo '{"cycle":N,"target":"idle","result":"unchanged",...}' >> .agents/evolve/cycle-history.jsonl
+# No git add, no git commit
+```
+
+### 60-Minute Circuit Breaker
+
+At session start (Step 0), after recovering the idle streak, check the timestamp
+of the last productive cycle. If it was more than 60 minutes ago, go directly to
+Teardown. This prevents runaway sessions that accumulate idle cycles without
+producing value.
+
+```bash
+LAST_PRODUCTIVE_TS=$(grep -v '"idle"\|"unchanged"' .agents/evolve/cycle-history.jsonl 2>/dev/null \
+  | tail -1 | jq -r '.timestamp // empty')
+# If >3600s since last productive cycle: CIRCUIT BREAKER → Teardown
 ```
 
 ## Recovery Protocol

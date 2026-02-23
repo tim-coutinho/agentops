@@ -33,10 +33,12 @@ The loop keeps running as long as post-mortem keeps finding follow-up work. Each
 **Priority cascade:**
 ```
 GOALS.yaml goals (explicit, human-authored)  → fix these first
-next-work.jsonl (harvested from post-mortem) → work on these when goals pass
+Open beads (bd ready)                        → work when goals pass
+next-work.jsonl (harvested from post-mortem) → work on these when beads empty
 nothing left                                 → re-measure (external changes may create new work)
 3 consecutive idle cycles                    → stagnation stop (nothing left to improve)
+60-minute circuit breaker                    → stop if no productive cycle in 60 min
 kill switch                                  → immediate stop
 ```
 
-The loop does NOT stop just because goals are met. It re-measures, checks for harvested work, and only stops after 3 consecutive cycles with truly nothing to do. Use the kill switch for intentional stops.
+The loop does NOT stop just because goals are met. It re-measures, checks for harvested work, and only stops after 3 consecutive cycles with truly nothing to do. Idle cycles are NOT committed to git — only appended locally. The idle streak is re-derived from disk at each session start, so compaction cannot corrupt it. Use the kill switch for intentional stops.

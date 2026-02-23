@@ -12,9 +12,9 @@ This captures learnings from the ENTIRE evolution run (all cycles, all /rpi invo
 
 ```bash
 # Check if both baseline and final snapshot exist
-if [ -f .agents/evolve/fitness-0-baseline.json ] && [ -f .agents/evolve/fitness-${CYCLE}.json ]; then
+if [ -f .agents/evolve/fitness-0-baseline.json ] && [ -f .agents/evolve/fitness-latest.json ]; then
   baseline = load(".agents/evolve/fitness-0-baseline.json")
-  final = load(".agents/evolve/fitness-${CYCLE}.json")
+  final = load(".agents/evolve/fitness-latest.json")
 
   # Compute delta — goals that flipped between baseline and final
   improved_count = 0
@@ -69,7 +69,7 @@ cat > .agents/evolve/session-summary.md << EOF
 $(cat .agents/evolve/cycle-history.jsonl)
 
 ## Final Fitness
-$(cat .agents/evolve/fitness-${CYCLE}.json)
+$(cat .agents/evolve/fitness-latest.json)
 
 ## Post-Mortem
 <path to post-mortem report from above>

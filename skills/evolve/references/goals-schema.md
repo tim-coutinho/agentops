@@ -52,8 +52,8 @@ Each cycle writes a fitness snapshot with **continuous values** (not just pass/f
 - **threshold**: The pass/fail threshold (null for binary-only goals)
 - **cycle_start_sha**: Git SHA at cycle start, used for multi-commit revert on regression
 
-Pre-cycle snapshots: `fitness-{N}.json`
-Post-cycle snapshots: `fitness-{N}-post.json` (for full-fitness regression comparison)
+Pre-cycle snapshot: `fitness-latest.json` (rolling, overwritten each cycle)
+Post-cycle snapshot: `fitness-latest-post.json` (rolling, for regression comparison)
 
 ## Cycle-0 Baseline
 
