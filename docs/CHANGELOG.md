@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.15.2] - 2026-02-22
+
+### Changed
+
+- **Hooks stripped to bare-minimum flywheel** — Reduced from 22 hooks across 12 event types to 3 hooks across 3 events (SessionStart, SessionEnd, Stop). Only knowledge flywheel operations remain: extract, inject, forge, maturity, and close-loop. All safety/feedback/UX hooks removed from registration (scripts preserved for re-enablement).
+- **session-start.sh simplified** — 600 lines down to ~100. Removed handoff recovery (3 tiers), ratchet status display, chain.jsonl rotation, environment manifest, prune check, AGENTS.md detection.
+- **session-end-maintenance.sh simplified** — Removed session-outcome, feedback-loop, task-sync, batch-feedback, and vibe-check. Kept forge + maturity only.
+
+### Removed
+
+- PreToolUse hooks (standards-injector, skill-lint-gate, git-worker-guard, dangerous-git-guard, pre-mortem-gate)
+- PostToolUse hooks (ratchet-advance, citation-tracker)
+- UserPromptSubmit hooks (context-guard, prompt-nudge)
+- TaskCompleted hook (task-validation-gate)
+- PreCompact, SubagentStop, WorktreeCreate, WorktreeRemove, ConfigChange hooks
+
 ## [2.15.1] - 2026-02-22
 
 ### Changed
