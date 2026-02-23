@@ -1,4 +1,4 @@
-{"cycle":1,"goal_ids":["wiring-closure","telemetry-coverage","release-security-gate","smoke-tests"],"result":"improved","commit_sha":"6db93cd7e99eeeda394a89439e6f2e81354ecfcb","goals_passing":28,"goals_total":28,"goals_added":2,"timestamp":"2026-02-21T23:12:00-05:00"}
+{"cycle":1,"goal_ids":["wiring-closure","telemetry-coverage","release-security-gate","smoke-tests"],"result":"improved","commit_sha":"6db93cd7e99eeeda394a89439e6f2e81354ecfcb","goals_passing":28,"goals_total":28,"goals_added":2,"timestamp":"2026-02-21T23:12:00-05:00","goal_id":"unknown"}
 {"cycle":2,"goal_id":"go-absolute-complexity-ceiling","result":"improved","commit_sha":"f4f07c2","goals_passing":29,"goals_total":33,"timestamp":"2026-02-22T11:12:32-05:00"}
 {"cycle":3,"goal_id":"go-absolute-complexity-ceiling","result":"improved","commit_sha":"0670074","goals_passing":29,"goals_total":33,"timestamp":"2026-02-22T11:30:41-05:00"}
 {"cycle":4,"goal_id":"go-absolute-complexity-ceiling","result":"improved","commit_sha":"6a09a14","goals_passing":"measuring","goals_total":33,"violations_fixed":102,"violations_remaining":0,"timestamp":"2026-02-22T14:39:27-05:00"}
@@ -12,7 +12,8 @@
 {"cycle":12,"goal_id":"idle-no-work","result":"idle","timestamp":"2026-02-23T04:31:53-05:00"}
 {"cycle":13,"goal_id":"idle-no-work","result":"idle","timestamp":"2026-02-23T04:32:24-05:00"}
 {"cycle":14,"goal_id":"idle-no-work","result":"idle","timestamp":"2026-02-23T04:32:33-05:00"}
-{"cycle":15,"goal_id":"","result":"pending-work","timestamp":"2026-02-23T04:34:52-05:00"}
+{"cycle":15,"goal_id":"unknown","result":"pending-work","timestamp":"2026-02-23T04:34:52-05:00"}
 {"cycle":16,"goal_id":"idle-no-work","result":"idle","timestamp":"2026-02-23T04:35:28-05:00"}
 {"cycle":17,"goal_id":"idle-no-work","result":"idle","timestamp":"2026-02-23T04:35:39-05:00"}
-{"cycle":18,"target":"evolve-cycle-logging","result":"pending-rpi","sha":"b596e4d","timestamp":"2026-02-23T04:39:46-05:00"}
+{"cycle":18,"target":"evolve-cycle-logging","result":"pending-rpi","sha":"b596e4d","timestamp":"2026-02-23T04:39:46-05:00","goal_id":"evolve-cycle-logging"}
+{"cycle":19,"target":"idle-no-work","result":"idle","sha":"c9b7cc2","timestamp":"2026-02-23T04:42:14-05:00"}
