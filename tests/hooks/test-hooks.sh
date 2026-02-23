@@ -78,44 +78,6 @@ for PAYLOAD in '"' '\\' '$(whoami)' '`id`' '<script>' "'; DROP TABLE" '{"nested"
     fi
 done
 
-# ============================================================
-echo ""
-echo "=== push-gate.sh ==="
-# ============================================================
-
-# Test 6: Non-git command => pass through
-echo '{"tool_input":{"command":"ls -la"}}' | AGENTOPS_HOOKS_DISABLED=0 bash "$HOOKS_DIR/push-gate.sh" >/dev/null 2>&1
-if [ $? -eq 0 ]; then pass "non-git command passes through"; else fail "non-git command passes through"; fi
-
-# Test 7: Kill switch allows git push
-echo '{"tool_input":{"command":"git push origin main"}}' | AGENTOPS_HOOKS_DISABLED=1 bash "$HOOKS_DIR/push-gate.sh" >/dev/null 2>&1
-if [ $? -eq 0 ]; then pass "kill switch allows git push"; else fail "kill switch allows git push"; fi
-
-# Test 8: Worker exemption allows git push
-echo '{"tool_input":{"command":"git push origin main"}}' | AGENTOPS_WORKER=1 bash "$HOOKS_DIR/push-gate.sh" >/dev/null 2>&1
-if [ $? -eq 0 ]; then pass "worker exemption allows git push"; else fail "worker exemption allows git push"; fi
-
-# Test 9: Empty command => pass through
-echo '{"tool_input":{"command":""}}' | bash "$HOOKS_DIR/push-gate.sh" >/dev/null 2>&1
-if [ $? -eq 0 ]; then pass "empty command passes through"; else fail "empty command passes through"; fi
-
-# Test 10: Mock chain.jsonl (vibe+post-mortem done) => allow push
-MOCK_PUSH="$TMPDIR/mock-push"
-mkdir -p "$MOCK_PUSH/.agents/ao" "$MOCK_PUSH/.git/refs" "$MOCK_PUSH/.git/objects"
-echo 'ref: refs/heads/main' > "$MOCK_PUSH/.git/HEAD"
-echo '{"gate":"vibe","status":"locked"}' > "$MOCK_PUSH/.agents/ao/chain.jsonl"
-echo '{"gate":"post-mortem","status":"locked"}' >> "$MOCK_PUSH/.agents/ao/chain.jsonl"
-EC=0
-(cd "$MOCK_PUSH" && echo '{"tool_input":{"command":"git push origin main"}}' | bash "$HOOKS_DIR/push-gate.sh" >/dev/null 2>&1) || EC=$?
-if [ "$EC" -eq 0 ]; then pass "git push allowed when vibe+post-mortem done"; else fail "git push allowed when vibe+post-mortem done (exit=$EC)"; fi
-
-# Test 11: Mock chain.jsonl (vibe pending) => block push
-MOCK_BLOCK="$TMPDIR/mock-block"
-mkdir -p "$MOCK_BLOCK/.agents/ao" "$MOCK_BLOCK/.git/refs" "$MOCK_BLOCK/.git/objects"
-echo 'ref: refs/heads/main' > "$MOCK_BLOCK/.git/HEAD"
-echo '{"gate":"vibe","status":"pending"}' > "$MOCK_BLOCK/.agents/ao/chain.jsonl"
-OUTPUT=$(cd "$MOCK_BLOCK" && echo '{"tool_input":{"command":"git push origin main"}}' | bash "$HOOKS_DIR/push-gate.sh" 2>&1 || true)
-if echo "$OUTPUT" | grep -q "BLOCKED"; then pass "git push blocked when vibe pending"; else fail "git push blocked when vibe pending"; fi
 
 # ============================================================
 echo ""
@@ -226,7 +188,7 @@ echo '{"metadata":{"validation":{"files_exist":["/nonexistent"]}}}' | AGENTOPS_T
 if [ $? -eq 0 ]; then pass "task-validation kill switch passes validation"; else fail "task-validation kill switch passes validation"; fi
 
 # Test 23: files_exist - existing repo file (relative path)
-INPUT=$(jq -n '{"metadata":{"validation":{"files_exist":["hooks/push-gate.sh"]}}}')
+INPUT=$(jq -n '{"metadata":{"validation":{"files_exist":["hooks/prompt-nudge.sh"]}}}')
 echo "$INPUT" | bash "$HOOKS_DIR/task-validation-gate.sh" >/dev/null 2>&1
 if [ $? -eq 0 ]; then pass "files_exist with existing repo file passes"; else fail "files_exist with existing repo file passes"; fi
 
