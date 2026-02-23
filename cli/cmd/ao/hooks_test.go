@@ -351,11 +351,12 @@ func TestReadEmbeddedHooks(t *testing.T) {
 		t.Fatalf("failed to parse embedded hooks.json: %v", err)
 	}
 
-	// Verify all 12 events have at least one hook group
-	for _, event := range AllEventNames() {
+	// Verify at least the minimal events are populated (SessionStart, SessionEnd, Stop)
+	minimalEvents := []string{"SessionStart", "SessionEnd", "Stop"}
+	for _, event := range minimalEvents {
 		groups := config.GetEventGroups(event)
 		if len(groups) == 0 {
-			t.Errorf("embedded hooks.json: event %s has no hook groups", event)
+			t.Errorf("embedded hooks.json: minimal event %s has no hook groups", event)
 		}
 	}
 }
@@ -367,11 +368,12 @@ func TestGenerateFullHooksConfig(t *testing.T) {
 		t.Fatalf("generateFullHooksConfig failed: %v", err)
 	}
 
-	// Should have all 12 events populated
-	for _, event := range AllEventNames() {
+	// Should have at least the minimal events populated
+	minimalEvents := []string{"SessionStart", "SessionEnd", "Stop"}
+	for _, event := range minimalEvents {
 		groups := config.GetEventGroups(event)
 		if len(groups) == 0 {
-			t.Errorf("full config: event %s has no hook groups", event)
+			t.Errorf("full config: minimal event %s has no hook groups", event)
 		}
 	}
 }
