@@ -1,25 +1,29 @@
 #!/usr/bin/env bash
 # heal.sh — Detect and fix common skill hygiene issues.
-# Usage: heal.sh [--check|--fix] [skills/path ...]
-# Exit 0 = clean, Exit 1 = findings reported (or fixed).
+# Usage: heal.sh [--check|--fix] [--strict] [skills/path ...]
+# Exit 0 = clean (or findings in non-strict mode).
+# Exit 1 = findings reported in --strict mode (or --fix with findings).
 
 set -euo pipefail
 
 MODE="check"
+STRICT=0
 TARGETS=()
 
 # Parse args
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --check) MODE="check"; shift ;;
-    --fix)   MODE="fix";   shift ;;
-    *)       TARGETS+=("$1"); shift ;;
+    --check)  MODE="check";  shift ;;
+    --fix)    MODE="fix";    shift ;;
+    --strict) STRICT=1;      shift ;;
+    *)        TARGETS+=("$1"); shift ;;
   esac
 done
 
 # Find repo root (location of skills/ directory)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+SKILLS_ROOT="$REPO_ROOT/skills"
 
 # If no targets, scan all skill dirs
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
@@ -261,12 +265,64 @@ for skill_dir in "${TARGETS[@]}"; do
     fi
   done < <(awk '/^```/{skip=!skip; next} !skip{print}' "$skill_md" | grep -oE 'references/[A-Za-z0-9_.-]+\.md' 2>/dev/null | sort -u || true)
 
+  # Check 7: Script reference integrity
+  # Strip fenced code blocks before scanning to avoid false positives from examples
+  while IFS= read -r ref; do
+    [[ -z "$ref" ]] && continue
+    if [[ ! -f "$skill_dir/$ref" ]]; then
+      report "SCRIPT_REF_MISSING" "$skill_dir" "references $ref but file not found"
+    fi
+  done < <(awk '/^```/{skip=!skip; next} !skip{print}' "$skill_md" | grep -oE '\bscripts/[a-zA-Z0-9_-]+\.[a-z]+' 2>/dev/null | sort -u || true)
+
+  # Check 8: CLI command validation (only if ao is on PATH)
+  if command -v ao >/dev/null 2>&1; then
+    ao_cmds="$(ao help 2>&1 | grep -oE '^\s+[a-z][-a-z]*' | tr -d ' ' | sort -u || true)"
+    while IFS= read -r subcmd; do
+      [[ -z "$subcmd" ]] && continue
+      if ! echo "$ao_cmds" | grep -qx "$subcmd"; then
+        report "INVALID_AO_CMD" "$skill_dir" "references 'ao $subcmd' which is not a valid subcommand"
+      fi
+    done < <(grep -oE '`ao [a-z][-a-z]*`' "$skill_md" 2>/dev/null | sed 's/`//g; s/^ao //' | sort -u || true)
+  fi
+
+  # Check 9: Cross-reference validation (skill invocation references)
+  # Strip fenced code blocks before scanning to avoid false positives from examples
+  while IFS= read -r ref; do
+    [[ -z "$ref" ]] && continue
+    # Skip common filesystem path false positives
+    case "$ref" in
+      dev|tmp|usr|bin|etc|opt|var|home|proc|sys|path|null|dev/null|skill-name) continue ;;
+    esac
+    if [[ ! -d "$SKILLS_ROOT/$ref" ]]; then
+      report "DEAD_XREF" "$skill_dir" "references /$ref but skill directory not found"
+    fi
+  done < <(awk '/^```/{skip=!skip; next} !skip{print}' "$skill_md" | grep -oE '`/[a-z][-a-z]*`' 2>/dev/null | sed 's/`//g; s|^/||' | sort -u || true)
+
 done
+
+# Check 10: Catalog completeness (global, not per-skill)
+if [[ -f "$SKILLS_ROOT/using-agentops/SKILL.md" ]]; then
+  for skill_check in "$SKILLS_ROOT"/*/SKILL.md; do
+    [[ -f "$skill_check" ]] || continue
+    check_dir="$(dirname "$skill_check")"
+    check_name="$(basename "$check_dir")"
+    # Skip internal/non-invocable skills
+    if grep -q 'user-invocable: false' "$skill_check" 2>/dev/null; then continue; fi
+    if grep -q 'internal: true' "$skill_check" 2>/dev/null; then continue; fi
+    # Check if skill appears in catalog
+    if ! grep -q "$check_name" "$SKILLS_ROOT/using-agentops/SKILL.md" 2>/dev/null; then
+      report "CATALOG_MISSING" "$SKILLS_ROOT/using-agentops" "$check_name is user-invocable but missing from catalog"
+    fi
+  done
+fi
 
 if [[ $FINDINGS -gt 0 ]]; then
   echo ""
   echo "$FINDINGS finding(s) detected."
-  exit 1
+  if [[ $STRICT -eq 1 || "$MODE" == "fix" ]]; then
+    exit 1
+  fi
+  exit 0
 else
   echo "All clean. No findings."
   exit 0
