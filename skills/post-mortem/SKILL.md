@@ -533,4 +533,4 @@ Ship it
 - `skills/retro/SKILL.md` — Extract learnings
 - `skills/vibe/SKILL.md` — Council validates code (`/vibe` after coding)
 - `skills/pre-mortem/SKILL.md` — Council validates plans (before implementation)
-- `.agents/specs/conflict-resolution-algorithm.md` — Conflict resolution for agent findings
+
