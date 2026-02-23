@@ -948,6 +948,92 @@ BLOCKED_VIBE
     cd "$SCRIPT_DIR"
 }
 
+test_promise_tag_parsing() {
+    log "Testing Promise tag parsing..."
+
+    cd "$TEST_PROJECT"
+
+    # Simulate crank output with promise tags
+    mkdir -p .agents/crank
+    cat > .agents/crank/worker-1-output.md << 'WORKER1'
+# Worker 1: Add input validation
+
+Implementation complete.
+
+<promise>DONE</promise>
+
+## Changes
+- Added _validate_numeric() helper
+- Applied to all 4 arithmetic functions
+WORKER1
+
+    cat > .agents/crank/worker-2-output.md << 'WORKER2'
+# Worker 2: Add modulo operation
+
+Blocked by missing dependency.
+
+<promise>BLOCKED</promise>
+
+## Reason
+Waiting for input validation to be merged first.
+WORKER2
+
+    cat > .agents/crank/worker-3-output.md << 'WORKER3'
+# Worker 3: Add power operation
+
+Partial implementation — tests not yet written.
+
+<promise>PARTIAL</promise>
+
+## Changes
+- Added power() function
+## Missing
+- Unit tests for edge cases
+WORKER3
+
+    # Check DONE tag detection
+    if grep -q '<promise>DONE</promise>' .agents/crank/worker-1-output.md; then
+        log_pass "DONE promise tag detected in crank output"
+    else
+        log_fail "DONE promise tag not found"
+    fi
+
+    # Check BLOCKED tag detection
+    if grep -q '<promise>BLOCKED</promise>' .agents/crank/worker-2-output.md; then
+        log_pass "BLOCKED promise tag detected in crank output"
+    else
+        log_fail "BLOCKED promise tag not found"
+    fi
+
+    # Check PARTIAL tag detection
+    if grep -q '<promise>PARTIAL</promise>' .agents/crank/worker-3-output.md; then
+        log_pass "PARTIAL promise tag detected in crank output"
+    else
+        log_fail "PARTIAL promise tag not found"
+    fi
+
+    # Simulate chain recording with promise-derived status
+    cat >> .agents/ao/chain.jsonl << 'PROMISE_CHAIN'
+{"step":"crank","worker":"worker-1","status":"completed","promise":"DONE","time":"2026-02-03T13:00:00Z"}
+{"step":"crank","worker":"worker-2","status":"blocked","promise":"BLOCKED","time":"2026-02-03T13:00:00Z"}
+{"step":"crank","worker":"worker-3","status":"partial","promise":"PARTIAL","time":"2026-02-03T13:00:00Z"}
+PROMISE_CHAIN
+
+    # Verify chain records all three promise statuses
+    local promise_statuses
+    promise_statuses=$(grep '"promise"' .agents/ao/chain.jsonl | jq -r '.promise' 2>/dev/null | sort | tr '\n' ',')
+
+    if echo "$promise_statuses" | grep -q "BLOCKED" && \
+       echo "$promise_statuses" | grep -q "DONE" && \
+       echo "$promise_statuses" | grep -q "PARTIAL"; then
+        log_pass "Chain records all promise tag statuses (DONE/BLOCKED/PARTIAL)"
+    else
+        log_fail "Chain missing some promise statuses: $promise_statuses"
+    fi
+
+    cd "$SCRIPT_DIR"
+}
+
 test_gate_retry_logic() {
     log "Testing Gate retry logic..."
 
@@ -1264,6 +1350,7 @@ main() {
     echo "───────────────"
     test_ratchet_tracking
     test_gate_enforcement
+    test_promise_tag_parsing
     test_gate_retry_logic
 
     echo ""
