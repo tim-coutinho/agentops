@@ -145,8 +145,13 @@ Then mark the item consumed in next-work.jsonl.
 After execution, verify nothing broke:
 
 ```bash
-# Fast gate: build + vet + test
-cd cli && go build ./cmd/ao/ && go vet ./... && go test ./... -count=1 -timeout 120s
+# Detect and run project build+test
+if [ -f Makefile ]; then make test
+elif [ -f package.json ]; then npm test
+elif [ -f go.mod ]; then go build ./... && go vet ./... && go test ./... -count=1 -timeout 120s
+elif [ -f Cargo.toml ]; then cargo build && cargo test
+elif [ -f pyproject.toml ] || [ -f setup.py ]; then python -m pytest
+else echo "No recognized build system found"; fi
 
 # Cross-cutting constraint check (catches wiring regressions)
 bash scripts/check-wiring-closure.sh
@@ -176,9 +181,6 @@ echo "{\"cycle\":${CYCLE},\"target\":\"${TARGET}\",\"result\":\"${OUTCOME}\",\"s
 # Verify write
 LAST=$(tail -1 .agents/evolve/cycle-history.jsonl | jq -r '.cycle')
 [ "$LAST" != "$CYCLE" ] && echo "FATAL: cycle log write failed" && exit 1
-
-# Telemetry
-bash scripts/log-telemetry.sh evolve cycle-complete cycle=${CYCLE} goal=${TARGET} outcome=${OUTCOME} 2>/dev/null || true
 
 # Commit checkpoint (survives compaction)
 git add .agents/evolve/ && git commit -m "evolve: cycle ${CYCLE} -- ${TARGET} ${OUTCOME}" || true
