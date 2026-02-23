@@ -1,20 +1,16 @@
 ---
 name: swarm
-description: 'Spawn isolated agents for parallel task execution. Local mode auto-selects runtime-native teams (Claude Native Teams in Claude sessions, Codex sub-agents in Codex sessions). Distributed mode uses tmux + Agent Mail (process isolation, persistence). Triggers: "swarm", "spawn agents", "parallel work", "run in parallel", "parallel execution".'
+description: 'Spawn isolated agents for parallel task execution. Auto-selects runtime-native teams (Claude Native Teams in Claude sessions, Codex sub-agents in Codex sessions). Triggers: "swarm", "spawn agents", "parallel work", "run in parallel", "parallel execution".'
 metadata:
   tier: execution
   dependencies:
-    - implement # required - executes `/implement <bead-id>` in distributed mode
+    - implement # required - executes `/implement <bead-id>` per task
     - vibe      # optional - integration with validation
 ---
 
 # Swarm Skill
 
 Spawn isolated agents to execute tasks in parallel. Fresh context per agent (Ralph Wiggum pattern).
-
-**Execution Modes:**
-- **Local** (default) - Runtime-native spawning (Claude Native Teams in Claude sessions; Codex sub-agents in Codex sessions; fallback tasks only if needed)
-- **Distributed** (`--mode=distributed`) - tmux sessions + Agent Mail for robust coordination
 
 **Integration modes:**
 - **Direct** - Create TaskList tasks, invoke `/swarm`
@@ -164,12 +160,8 @@ TaskUpdate(taskId="2", addBlockedBy=["1"])
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `--mode=local\|distributed` | Execution mode | `local` |
 | `--max-workers=N` | Max concurrent workers | 5 |
 | `--from-wave <json-file>` | Load wave from OL hero hunt output (see OL Wave Integration) | - |
-| `--bead-ids` | Specific beads to work (comma-separated, distributed mode) | Auto from `bd ready` |
-| `--wait` | Wait for all workers to complete (distributed mode) | false |
-| `--timeout` | Max time to wait if `--wait` (distributed mode) | 30m |
 
 ## When to Use Swarm
 
@@ -202,22 +194,6 @@ When `/crank` invokes `/swarm`: Crank bridges beads to TaskList, swarm executes 
 | Autonomous epic loop | `/crank` | Loops waves via swarm until epic closes |
 | Just swarm, no beads | `/swarm` directly | TaskList only, skip beads |
 | RPI progress gates | `/ratchet` | Tracks progress; does not execute work |
-
----
-
-## Distributed Mode
-
-Use `--mode=distributed` when you need full agent orchestration beyond what local mode provides:
-
-- **Process isolation** — each worker runs in its own tmux session, not sharing the lead's process
-- **Crash recovery** — workers survive if the Mayor disconnects (tmux sessions persist)
-- **Agent Mail messaging** — bidirectional coordination (ACCEPTED, PROGRESS, DONE, HELP_REQUEST)
-- **File reservations** — conflict detection before workers edit shared files
-- **Debuggable** — `tmux attach -t <session>` to inspect stuck workers live
-
-**When to use:** Long-running work (>10 min), need to debug stuck workers, Mayor might disconnect, complex multi-file coordination. Local mode is faster to launch but provides less control.
-
-**For the full distributed mode specification, read `skills/swarm/references/distributed-mode.md`.**
 
 ---
 
@@ -314,10 +290,7 @@ ol hero ratchet "$BEAD_ID" --quest "$QUEST_ID"
 ## References
 
 - **Local Mode Details:** `skills/swarm/references/local-mode.md`
-- **Distributed Mode:** `skills/swarm/references/distributed-mode.md`
 - **Validation Contract:** `skills/swarm/references/validation-contract.md`
-- **Agent Mail Protocol:** See `skills/shared/agent-mail-protocol.md` for message format specifications
-- **Parser (Go):** `cli/internal/agentmail/` - shared parser for all message types
 
 ---
 

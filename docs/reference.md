@@ -18,38 +18,17 @@ Deep documentation for AgentOps. For quick start, see [README](../README.md).
 
 ---
 
-## Execution Modes
+## Execution Model
 
-`/swarm`, `/crank`, and `/implement` support two execution modes:
+`/swarm`, `/crank`, and `/implement` use runtime-native backends for parallel execution:
 
-| | Local (default) | Distributed (`--mode=distributed`) |
-|---|---|---|
-| **How** | Runtime-native backends (`spawn_agent` -> `TeamCreate` -> `Task(run_in_background=true)`) | tmux sessions + runtime-specific coordination backend |
-| **Dependencies** | None (runtime-native) | `tmux` plus runtime/backend-specific coordinator |
-| **Context** | Fresh per agent (team-per-wave) | Fresh per agent |
-| **Persistence** | Dies if mayor disconnects | Survives disconnection |
-| **Debugging** | Click tmux pane or Shift+Up/Down | Attach to tmux session |
-| **Coordination** | `wait`/`SendMessage`/`TaskOutput` + `TaskList` | Runtime-selected transport + file reservations |
-| **Commits** | Lead-only (workers blocked by hook) | Lead-only (workers blocked by hook) |
-
-**When to use which:**
-
-| Scenario | Mode |
-|----------|------|
-| Quick parallel tasks (<5 min each) | Local |
-| Long-running work (>10 min each) | Distributed |
-| Need to debug stuck workers | Distributed |
-| Multi-file changes across workers | Distributed |
-| Mayor might disconnect | Distributed |
-| No extra tooling installed | Local |
-
-**Distributed mode dependencies:**
-```bash
-brew install tmux                    # Session management
-# plus any runtime-specific coordinator required by your selected backend
-```
-
-> **Note:** Local mode works out of the box with zero extra dependencies. Distributed mode requires a runtime-compatible coordinator.
+| Property | How it works |
+|----------|-------------|
+| **Backends** | Auto-detected: `spawn_agent` (Codex) → `TeamCreate` (Claude) → `Task(run_in_background=true)` (fallback) |
+| **Dependencies** | None (runtime-native) |
+| **Context** | Fresh per agent (team-per-wave) |
+| **Coordination** | `wait`/`SendMessage`/`TaskOutput` + `TaskList` |
+| **Commits** | Lead-only (workers blocked by hook) |
 
 ---
 

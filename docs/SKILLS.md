@@ -259,14 +259,6 @@ Session handoff — preserve context for continuation.
 /handoff
 ```
 
-### /inbox
-
-Agent mail monitoring for distributed mode.
-
-```bash
-/inbox
-```
-
 ### /release
 
 Pre-flight checks, changelog generation, version bumps, and tagging.
@@ -437,7 +429,7 @@ These fire automatically and are not directly invoked:
 | `flywheel` | Knowledge health monitoring |
 | `provenance` | Trace knowledge artifact lineage |
 | `standards` | Language-specific coding standards (auto-loaded by /vibe, /implement) |
-| `shared` | Shared reference documents for distributed mode |
+| `shared` | Shared reference documents for multi-agent backends |
 | `beads` | Issue tracking reference |
 | `using-agentops` | Workflow guide (auto-injected on session start) |
 

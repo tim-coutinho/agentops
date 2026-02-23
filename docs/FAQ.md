@@ -36,7 +36,6 @@ Run `/product` to generate a `PRODUCT.md` describing your mission, personas, and
 
 Claude Code doesn't allow subagents to spawn their own subagents — nesting depth is capped at one level. AgentOps works around this three ways:
 
-- **Distributed mode** — `/swarm --mode=distributed` runs each agent as its own top-level Claude Code process in a separate tmux pane, coordinating through filesystem-based mailbox (Agent Mail). No nesting at all — every agent is a root process that can spawn whatever it wants.
 - **Teams as flat peers** — `TeamCreate` spawns agents as peers, not nested children. A researcher teammate can spawn its own Task sub-agents because the nesting depth resets at each peer.
 - **Wave-based execution** — `/crank` sidesteps the problem entirely. The orchestrator pre-plans waves of parallel work. Wave 1 workers run, complete, and write file artifacts. Wave 2 workers spawn fresh, read those artifacts. No nesting needed — workers are atomic (one task, one spawn, one result) and share work through the filesystem, not through parent context.
 

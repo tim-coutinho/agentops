@@ -272,7 +272,6 @@ The runtime picks the spawning backend by capability detection — not prompt te
 1. **Codex sub-agents** (`spawn_agent` available) — fastest, native to Codex CLI
 2. **Claude native teams** (`TeamCreate` + `SendMessage` available) — tight coordination, debate support
 3. **Background tasks** (`Task(run_in_background=true)`) — last-resort fallback
-4. **Distributed** (tmux + Agent Mail) — full process isolation, crash recovery for long-running work
 
 The same skill works across all backends. Backend selection is a runtime decision, not an architectural one.
 

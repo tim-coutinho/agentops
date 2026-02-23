@@ -232,7 +232,6 @@ These are how skills chain in practice:
 | **handoff** | session | Session handoff — save context for next session |
 | **recover** | session | Post-compaction context recovery |
 | **status** | session | Single-screen dashboard |
-| **inbox** | session | Agent mail monitoring |
 | **quickstart** | session | Interactive onboarding |
 
 **Upstream Contributions:**
@@ -266,7 +265,7 @@ Hidden from interactive `npx skills add` discovery. Loaded JIT by other skills v
 |-------|------|----------|---------|
 | beads | library | Execution | Issue tracking reference (loaded by /implement, /plan) |
 | standards | library | Judgment | Coding standards (loaded by /vibe, /implement, /doc) |
-| shared | library | Execution | Shared reference documents (distributed mode) |
+| shared | library | Execution | Shared reference documents (multi-agent backends) |
 | inject | background | Knowledge | Load knowledge at session start (hook-triggered) |
 | extract | background | Knowledge | Extract from transcripts (hook-triggered) |
 | forge | background | Knowledge | Mine transcripts for knowledge |

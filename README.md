@@ -314,11 +314,8 @@ AgentOps orchestrates across runtimes. Claude can lead a team of Codex workers. 
 | **Native teams** | `TeamCreate` + `SendMessage` — built into Claude Code | Tight coordination, debate |
 | **Background tasks** | `Task(run_in_background=true)` — last-resort fallback | When no team APIs available |
 | **Codex sub-agents** | `/codex-team` — Claude orchestrates Codex workers | Cross-vendor validation |
-| **tmux + Agent Mail** | `/swarm --mode=distributed` — full process isolation | Long-running work, crash recovery |
 
 </details>
-
-Distributed mode workers survive disconnects — each runs in its own tmux session with crash recovery. `tmux attach` to debug live.
 
 <details>
 <summary><b>Custom agents</b> — why AgentOps ships its own</summary>

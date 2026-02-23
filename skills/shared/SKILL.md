@@ -1,6 +1,6 @@
 ---
 name: shared
-description: Shared reference documents for distributed mode skills (not directly invocable)
+description: Shared reference documents for multi-agent skills (not directly invocable)
 user-invocable: false
 metadata:
   tier: library
@@ -11,7 +11,6 @@ metadata:
 
 This directory contains shared reference documents used by multiple skills:
 
-- `agent-mail-protocol.md` - Message protocol for distributed mode coordination
 - `validation-contract.md` - Verification requirements for accepting spawned work
 - `references/claude-code-latest-features.md` - Claude Code feature contract (slash commands, agent isolation, hooks, settings)
 - `references/backend-claude-teams.md` - Concrete examples for Claude native teams (`TeamCreate` + `SendMessage`)
@@ -102,17 +101,16 @@ Use capability detection at runtime, not hardcoded tool names. The same skill mu
 
 > **Prefer native teams over background tasks.** Native teams provide messaging, redirect, and graceful shutdown. Background tasks are fire-and-forget with no steering — only a speedometer and emergency brake.
 
-| Capability | Codex Sub-Agents | Claude Native Teams | Background Tasks | Distributed (tmux) |
-|------------|------------------|---------------------|------------------|---------------------|
-| Observe output | `wait()` result | `SendMessage` delivery | `TaskOutput` (tail) | Agent Mail inbox |
-| Send message mid-flight | `send_input` | `SendMessage` | **NO** | Agent Mail |
-| Pause / resume | NO | Idle → wake via `SendMessage` | **NO** | `tmux` detach/attach |
-| Graceful stop | `close_agent` | `shutdown_request` | **TaskStop (lossy)** | `tmux kill-session` |
-| Redirect to different task | `send_input` | `SendMessage` | **NO** | Agent Mail |
-| Adjust scope mid-flight | `send_input` | `SendMessage` | **NO** | Agent Mail |
-| File conflict prevention | Manual `git worktree` routing | Native `isolation: worktree` + lead-only commits | None | File reservations |
-| Crash recovery | NO | NO | NO | **YES** (tmux persists) |
-| Process isolation | YES (sub-process) | Shared worktree | Shared worktree | **YES** (separate process) |
+| Capability | Codex Sub-Agents | Claude Native Teams | Background Tasks |
+|------------|------------------|---------------------|------------------|
+| Observe output | `wait()` result | `SendMessage` delivery | `TaskOutput` (tail) |
+| Send message mid-flight | `send_input` | `SendMessage` | **NO** |
+| Pause / resume | NO | Idle → wake via `SendMessage` | **NO** |
+| Graceful stop | `close_agent` | `shutdown_request` | **TaskStop (lossy)** |
+| Redirect to different task | `send_input` | `SendMessage` | **NO** |
+| Adjust scope mid-flight | `send_input` | `SendMessage` | **NO** |
+| File conflict prevention | Manual `git worktree` routing | Native `isolation: worktree` + lead-only commits | None |
+| Process isolation | YES (sub-process) | Shared worktree | Shared worktree |
 
 **When to use each:**
 
@@ -120,7 +118,6 @@ Use capability detection at runtime, not hardcoded tool names. The same skill mu
 |----------|---------|
 | Quick parallel tasks, coordination needed | Claude Native Teams |
 | Codex-specific execution | Codex Sub-Agents |
-| Long-running work, need debug/recovery | Distributed (tmux + Agent Mail) |
 | No team APIs available (last resort) | Background Tasks |
 
 ### Skill Invocation Across Runtimes

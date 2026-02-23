@@ -292,19 +292,6 @@ If bd CLI not available:
 
 ---
 
-## Distributed Mode: Agent Mail Coordination
-
-**For full distributed mode details, read `skills/implement/references/distributed-mode.md`.**
-
-Distributed mode enhances /implement with real-time coordination via MCP Agent Mail when `--mode=distributed`, `--agent-mail`, or `$OLYMPUS_DEMIGOD_ID` is set.
-
----
-
-## References
-
-- **Agent Mail Protocol:** See `skills/shared/agent-mail-protocol.md` for message format specifications
-- **Parser (Go):** `cli/internal/agentmail/` - shared parser for all message types
-
 ## Examples
 
 ### Implement Specific Issue

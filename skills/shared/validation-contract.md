@@ -456,19 +456,6 @@ TaskCreate(
 
 ---
 
-## Validation in Distributed Mode
-
-In distributed mode (tmux + Agent Mail), validation works the same but with message-based coordination:
-
-1. **Demigod completes work** -> sends `OFFERING_READY` message
-2. **Mayor receives message** -> runs validation checks
-3. **On PASS** -> sends `OFFERING_ACCEPTED`, closes beads issue
-4. **On FAIL** -> sends `RETRY_REQUIRED` with failure context
-
-See `skills/swarm/SKILL.md` for distributed mode details.
-
----
-
 ## See Also
 
 - `skills/swarm/SKILL.md` - Main swarm skill with validation integration

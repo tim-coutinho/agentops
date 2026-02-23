@@ -52,7 +52,7 @@ EXPLORE                          /retro       - extract from work
 /doc        - generate docs      /handoff     - save + resume
                                  /recover     - restore after compaction
 PRODUCT                          /status      - dashboard
-/product    - define mission     /inbox       - agent mail
+/product    - define mission
 /goals      - fitness specs
 /evolve     - goal-driven loop   CONTRIBUTE (upstream PRs)
 /readme     - generate README    /pr-research, /pr-plan, /pr-implement

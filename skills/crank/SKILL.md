@@ -1,6 +1,6 @@
 ---
 name: crank
-description: 'Hands-free epic execution. Runs until ALL children are CLOSED. Local mode uses /swarm with runtime-native spawning (Codex sub-agents or Claude teams). Distributed mode uses /swarm --mode=distributed (tmux + Agent Mail) for persistence and coordination. NO human prompts, NO stopping. Triggers: "crank", "run epic", "execute epic", "run all tasks", "hands-free execution", "crank it".'
+description: 'Hands-free epic execution. Runs until ALL children are CLOSED. Uses /swarm with runtime-native spawning (Codex sub-agents or Claude teams). NO human prompts, NO stopping. Triggers: "crank", "run epic", "execute epic", "run all tasks", "hands-free execution", "crank it".'
 user-invocable: true
 metadata:
   tier: execution
@@ -14,7 +14,7 @@ metadata:
 
 # Crank Skill
 
-> **Quick Ref:** Autonomous epic execution. Local mode: `/swarm` for each wave with runtime-native spawning. Distributed mode: `/swarm --mode=distributed` (tmux + Agent Mail). Output: closed issues + final vibe.
+> **Quick Ref:** Autonomous epic execution. `/swarm` for each wave with runtime-native spawning. Output: closed issues + final vibe.
 
 **YOU MUST EXECUTE THIS WORKFLOW. Do not just describe it.**
 
@@ -541,6 +541,3 @@ See `skills/crank/references/troubleshooting.md` for extended troubleshooting.
 - **Wave patterns:** `skills/crank/references/wave-patterns.md`
 - **Team coordination:** `skills/crank/references/team-coordination.md`
 - **Failure recovery:** `skills/crank/references/failure-recovery.md`
-- **Distributed mode:** `skills/crank/references/distributed-mode.md`
-- **Agent Mail Protocol:** `skills/shared/agent-mail-protocol.md`
-- **Parser (Go):** `cli/internal/agentmail/`

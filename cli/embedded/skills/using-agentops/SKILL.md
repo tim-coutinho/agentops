@@ -134,7 +134,6 @@ These are the skills every user needs first. Everything else is available when y
 | `/complexity` | Code complexity analysis |
 | `/product` | Interactive PRODUCT.md generation |
 | `/handoff` | Session handoff for continuation |
-| `/inbox` | Agent mail monitoring |
 | `/recover` | Post-compaction context recovery |
 | `/trace` | Trace design decisions through history |
 | `/provenance` | Trace artifact lineage to sources |
