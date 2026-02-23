@@ -88,7 +88,7 @@ Actions:
   - `.github/workflows/release.yml`
 - For binary/internal black-box assurance (static + dynamic + baseline + policy), use:
   - `skills/security-suite/SKILL.md`
-  - `scripts/security-suite.sh`
+  - `skills/security-suite/scripts/security_suite.py`
 
 ## Examples
 
