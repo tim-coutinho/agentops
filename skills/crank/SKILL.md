@@ -420,14 +420,6 @@ EOF
 - `acceptance_verdict`: verdict from the Wave Acceptance Check (Step 5.5). Used by final validation to skip redundant /vibe on clean epics.
 - On retry of the same wave, the file is overwritten (same path).
 
-**After writing the checkpoint, record commit and telemetry:**
-
-```bash
-TASKS_DONE=$(echo "$COMPLETED_IDS" | wc -w | tr -d ' ')
-bash scripts/checkpoint-commit.sh crank "wave-${wave}" "wave ${wave} complete" 2>/dev/null || true
-bash scripts/log-telemetry.sh crank wave-complete wave=${wave} tasks_done=${TASKS_DONE} 2>/dev/null || true
-```
-
 ### Step 6: Check for More Work
 
 After completing a wave, check for newly unblocked issues (beads: `bd ready`, TaskList: `TaskList()`). Loop back to Step 4 if work remains, or proceed to Step 7 when done.
@@ -541,3 +533,5 @@ See `skills/crank/references/troubleshooting.md` for extended troubleshooting.
 - **Wave patterns:** `skills/crank/references/wave-patterns.md`
 - **Team coordination:** `skills/crank/references/team-coordination.md`
 - **Failure recovery:** `skills/crank/references/failure-recovery.md`
+- **Failure Taxonomy:** `references/failure-taxonomy.md`
+- **FIRE Protocol:** `references/fire.md`
