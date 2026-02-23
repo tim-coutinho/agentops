@@ -31,11 +31,26 @@ Provide authoritative, current guidance from OpenAI developer docs using the dev
 
 If MCP tools fail or no OpenAI docs resources are available:
 
-1. Run the install command yourself: `codex mcp add openaiDeveloperDocs --url https://developers.openai.com/mcp`
-2. If it fails due to permissions/sandboxing, immediately retry the same command with escalated permissions and include a 1-sentence justification for approval. Do not ask the user to run it yet.
-3. Only if the escalated attempt fails, ask the user to run the install command.
-4. Ask the user to restart Codex.
-5. Re-run the doc search/fetch after restart.
+**In Codex:**
+1. Run: `codex mcp add openaiDeveloperDocs --url https://developers.openai.com/mcp`
+2. If it fails due to permissions/sandboxing, retry with escalated permissions.
+3. Ask the user to restart Codex, then re-run doc search/fetch.
+
+**In Claude Code:**
+1. Add the MCP server to `~/.claude/settings.json` under `"mcpServers"`:
+   ```json
+   {
+     "mcpServers": {
+       "openaiDeveloperDocs": {
+         "type": "url",
+         "url": "https://developers.openai.com/mcp"
+       }
+     }
+   }
+   ```
+2. Restart Claude Code, then re-run doc search/fetch.
+
+**In other agents:** Ask the user to configure the MCP server per their agent's documentation.
 
 ## Workflow
 
