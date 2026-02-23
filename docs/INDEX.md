@@ -160,3 +160,5 @@
 - [MemRL Policy Integration](contracts/memrl-policy-integration.md) — AO-exported deterministic MemRL policy contract for Olympus hooks
 - [MemRL Policy Schema](contracts/memrl-policy.schema.json) — Machine-readable schema for MemRL policy package
 - [MemRL Policy Example Profile](contracts/memrl-policy.profile.example.json) — Example deterministic policy profile
+- [RPI Run Registry](contracts/rpi-run-registry.md) — RPI run registry specification
+- [RPI Phase Result Schema](contracts/rpi-phase-result.schema.json) — Machine-readable schema for RPI phase results
