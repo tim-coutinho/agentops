@@ -23,6 +23,7 @@ var (
 	poolThreshold string
 	poolDoPromote bool
 	poolGold      bool
+	poolWide      bool
 )
 
 var poolCmd = &cobra.Command{
@@ -112,7 +113,9 @@ func outputPoolList(entries []pool.PoolEntry, offset, limit, total int) error {
 		}
 
 		tbl := formatter.NewTable(os.Stdout, "ID", "TIER", "STATUS", "AGE", "UTILITY", "CONFIDENCE")
-		tbl.SetMaxWidth(0, 12)
+		if !poolWide {
+			tbl.SetMaxWidth(0, 12)
+		}
 
 		for _, e := range entries {
 			tbl.AddRow(
@@ -142,7 +145,15 @@ func outputPoolList(entries []pool.PoolEntry, offset, limit, total int) error {
 var poolShowCmd = &cobra.Command{
 	Use:   "show <candidate-id>",
 	Short: "Show candidate details",
-	Args:  cobra.ExactArgs(1),
+	Long: `Show detailed information about a pool candidate.
+
+Supports prefix matching: if the given ID prefix uniquely identifies
+one candidate, it will be used. If ambiguous, matching IDs are listed.
+
+Examples:
+  ao pool show pend-2026-01-15-abc123
+  ao pool show pend-2026`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		candidateID := args[0]
 
@@ -158,12 +169,28 @@ var poolShowCmd = &cobra.Command{
 
 		p := pool.NewPool(cwd)
 
+		// Try exact match first
 		entry, err := p.Get(candidateID)
-		if err != nil {
+		if err == nil {
+			return outputPoolShow(entry)
+		}
+
+		// Fall back to prefix matching
+		matches, prefixErr := p.FindByPrefix(candidateID)
+		if prefixErr != nil || len(matches) == 0 {
 			return fmt.Errorf("get candidate: %w", err)
 		}
 
-		return outputPoolShow(entry)
+		if len(matches) == 1 {
+			return outputPoolShow(matches[0])
+		}
+
+		// Ambiguous prefix — list matches
+		fmt.Fprintf(os.Stderr, "Ambiguous prefix %q matches %d candidates:\n", candidateID, len(matches))
+		for _, m := range matches {
+			fmt.Fprintf(os.Stderr, "  %s  (%s, %s)\n", m.Candidate.ID, m.Candidate.Tier, m.Status)
+		}
+		return fmt.Errorf("ambiguous prefix %q — specify more characters", candidateID)
 	},
 }
 
@@ -472,6 +499,7 @@ func init() {
 	poolListCmd.Flags().StringVar(&poolStatus, "status", "", "Filter by status (pending, staged, promoted, rejected)")
 	poolListCmd.Flags().IntVar(&poolLimit, "limit", 50, "Maximum results to return (default 50, 0 for unlimited)")
 	poolListCmd.Flags().IntVar(&poolOffset, "offset", 0, "Skip first N results (for pagination)")
+	poolListCmd.Flags().BoolVarP(&poolWide, "wide", "w", false, "Show full IDs without truncation")
 
 	// Add flags to stage command
 	poolStageCmd.Flags().StringVar(&poolTier, "min-tier", "", "Minimum tier threshold (default: bronze)")

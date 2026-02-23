@@ -335,6 +335,48 @@ func (p *Pool) Get(candidateID string) (*PoolEntry, error) {
 	return nil, fmt.Errorf("%w: %s", ErrCandidateNotFound, candidateID)
 }
 
+// FindByPrefix finds candidates whose ID starts with the given prefix.
+// Returns matching entries. Useful for shortened ID lookups.
+func (p *Pool) FindByPrefix(prefix string) ([]*PoolEntry, error) {
+	if prefix == "" {
+		return nil, fmt.Errorf("empty prefix")
+	}
+
+	dirs := []string{
+		filepath.Join(p.PoolPath, PendingDir),
+		filepath.Join(p.PoolPath, StagedDir),
+		filepath.Join(p.PoolPath, ValidatedDir),
+		filepath.Join(p.PoolPath, RejectedDir),
+	}
+
+	var matches []*PoolEntry
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+			id := strings.TrimSuffix(e.Name(), ".json")
+			if strings.HasPrefix(id, prefix) {
+				path := filepath.Join(dir, e.Name())
+				entry, err := p.readEntry(path)
+				if err != nil {
+					continue
+				}
+				entry.FilePath = path
+				entry.Age = time.Since(entry.AddedAt)
+				entry.AgeString = formatDuration(entry.Age)
+				matches = append(matches, entry)
+			}
+		}
+	}
+
+	return matches, nil
+}
+
 // Stage moves a candidate from pending to staged.
 func (p *Pool) Stage(candidateID string, minTier types.Tier) error {
 	entry, err := p.Get(candidateID)
