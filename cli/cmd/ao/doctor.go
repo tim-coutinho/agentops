@@ -459,6 +459,7 @@ func formatNumber(n int) string {
 }
 
 // checkFlywheelHealth checks if .agents/ao/learnings/ has files.
+// Counts .md and .jsonl files only, matching the metrics/badge counting method.
 func checkFlywheelHealth() doctorCheck {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -466,12 +467,12 @@ func checkFlywheelHealth() doctorCheck {
 	}
 
 	learningsDir := filepath.Join(cwd, storage.DefaultBaseDir, "learnings")
-	total := countFiles(learningsDir)
+	total := countLearningFiles(learningsDir)
 
 	if total == 0 {
 		// Also check the older path
 		altDir := filepath.Join(cwd, ".agents", "learnings")
-		total = countFiles(altDir)
+		total = countLearningFiles(altDir)
 	}
 
 	if total == 0 {
@@ -600,6 +601,14 @@ func countFiles(dir string) int {
 		}
 	}
 	return count
+}
+
+// countLearningFiles counts .md and .jsonl files in a directory,
+// matching the counting method used by countArtifacts in metrics.go.
+func countLearningFiles(dir string) int {
+	mdFiles, _ := filepath.Glob(filepath.Join(dir, "*.md"))
+	jsonlFiles, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	return len(mdFiles) + len(jsonlFiles)
 }
 
 // countCheckStatuses tallies pass, fail, and warn counts from checks.

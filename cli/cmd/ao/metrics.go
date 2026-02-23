@@ -280,6 +280,7 @@ func countArtifacts(baseDir string) (int, map[string]int, error) {
 		"observation": 0,
 		"learning":    0,
 		"pattern":     0,
+		"retro":       0,
 		"skill":       0,
 		"core":        0,
 	}
@@ -316,11 +317,11 @@ func countArtifacts(baseDir string) (int, map[string]int, error) {
 		total += len(files)
 	}
 
-	// Count retros
+	// Count retros (separate tier from learnings for consistent counts)
 	retrosDir := filepath.Join(baseDir, ".agents", "retros")
 	if _, err := os.Stat(retrosDir); err == nil {
 		files, _ := filepath.Glob(filepath.Join(retrosDir, "*.md"))
-		tierCounts["learning"] += len(files)
+		tierCounts["retro"] = len(files)
 		total += len(files)
 	}
 
@@ -470,7 +471,7 @@ func printMetricsCounts(m *types.FlywheelMetrics) {
 
 	if len(m.TierCounts) > 0 {
 		fmt.Println("TIER DISTRIBUTION:")
-		for _, tier := range []string{"observation", "learning", "pattern", "skill", "core"} {
+		for _, tier := range []string{"observation", "learning", "retro", "pattern", "skill", "core"} {
 			if count, ok := m.TierCounts[tier]; ok && count > 0 {
 				fmt.Printf("  %-12s: %d\n", tier, count)
 			}
