@@ -21,7 +21,7 @@ Given `/knowledge <query>`:
 ### Step 1: Search with ao CLI (if available)
 
 ```bash
-ao forge search "<query>" --limit 10 2>/dev/null
+ao search "<query>" --limit 10 2>/dev/null
 ```
 
 If results found, read the relevant files.
@@ -127,7 +127,7 @@ Present the knowledge found:
 **User says:** `/knowledge "error handling patterns"`
 
 **What happens:**
-1. Agent tries `ao forge search "error handling patterns"`, finds 3 matches
+1. Agent tries `ao search "error handling patterns"`, finds 3 matches
 2. Agent searches `.agents/learnings/` with grep, finds 5 additional matches
 3. Agent searches `.agents/patterns/` for related patterns, finds 2 matches
 4. Agent reads all matched files using Read tool
@@ -142,7 +142,7 @@ Present the knowledge found:
 **User says:** `/knowledge "database migrations"`
 
 **What happens:**
-1. Agent tries `ao forge search`, command not found
+1. Agent tries `ao search`, command not found
 2. Agent falls back to grep search across `.agents/` directories
 3. Agent finds 2 matches in learnings, 1 in research, 0 in patterns
 4. Agent reads matched files
