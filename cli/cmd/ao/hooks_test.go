@@ -351,12 +351,12 @@ func TestReadEmbeddedHooks(t *testing.T) {
 		t.Fatalf("failed to parse embedded hooks.json: %v", err)
 	}
 
-	// Verify at least the minimal events are populated (SessionStart, SessionEnd, Stop)
-	minimalEvents := []string{"SessionStart", "SessionEnd", "Stop"}
-	for _, event := range minimalEvents {
+	// Verify core flywheel events have hooks registered
+	coreEvents := []string{"SessionStart", "SessionEnd", "Stop"}
+	for _, event := range coreEvents {
 		groups := config.GetEventGroups(event)
 		if len(groups) == 0 {
-			t.Errorf("embedded hooks.json: minimal event %s has no hook groups", event)
+			t.Errorf("embedded hooks.json: core event %s has no hook groups", event)
 		}
 	}
 }
@@ -368,12 +368,12 @@ func TestGenerateFullHooksConfig(t *testing.T) {
 		t.Fatalf("generateFullHooksConfig failed: %v", err)
 	}
 
-	// Should have at least the minimal events populated
-	minimalEvents := []string{"SessionStart", "SessionEnd", "Stop"}
-	for _, event := range minimalEvents {
+	// Should have core flywheel events populated
+	coreEvents := []string{"SessionStart", "SessionEnd", "Stop"}
+	for _, event := range coreEvents {
 		groups := config.GetEventGroups(event)
 		if len(groups) == 0 {
-			t.Errorf("full config: minimal event %s has no hook groups", event)
+			t.Errorf("full config: core event %s has no hook groups", event)
 		}
 	}
 }
@@ -384,7 +384,6 @@ func TestEmbeddedAoCommandsHaveGuardrails(t *testing.T) {
 		t.Fatalf("failed to parse embedded hooks: %v", err)
 	}
 
-	foundBatchFeedback := false
 	foundSessionEndMaintenance := false
 	for _, event := range AllEventNames() {
 		for _, group := range config.GetEventGroups(event) {
@@ -411,18 +410,12 @@ func TestEmbeddedAoCommandsHaveGuardrails(t *testing.T) {
 				if strings.Contains(cmd, "command -v ao") && !strings.Contains(cmd, "AGENTOPS_HOOKS_DISABLED") {
 					t.Errorf("%s inline ao command missing AGENTOPS_HOOKS_DISABLED guard: %q", event, hook.Command)
 				}
-				if strings.Contains(cmd, "ao batch-feedback") {
-					foundBatchFeedback = true
-					if !strings.Contains(cmd, "--max-sessions") || !strings.Contains(cmd, "--max-runtime") {
-						t.Errorf("batch-feedback hook missing bounded flags: %q", hook.Command)
-					}
-				}
 			}
 		}
 	}
 
-	if !foundBatchFeedback && !foundSessionEndMaintenance {
-		t.Error("expected embedded hooks to include bounded session-end heavy maintenance")
+	if !foundSessionEndMaintenance {
+		t.Error("expected embedded hooks to include session-end-maintenance")
 	}
 }
 
