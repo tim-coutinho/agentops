@@ -1,227 +1,227 @@
 {
-  "timestamp": "2026-02-23T09:43:04Z",
-  "git_sha": "e0fe8c4",
+  "timestamp": "2026-02-23T09:43:27Z",
+  "git_sha": "daf7d52",
   "goals": [
     {
       "goal_id": "pillar-coverage",
       "result": "pass",
-      "duration_s": 0.017695864,
+      "duration_s": 0.016737135,
       "weight": 7
     },
     {
       "goal_id": "go-complexity-gate",
       "result": "pass",
-      "duration_s": 0.013098501,
+      "duration_s": 0.013268538,
       "output": "No changed non-test Go files under cli/.",
       "weight": 5
     },
     {
       "goal_id": "wiring-closure",
       "result": "pass",
-      "duration_s": 0.178122512,
+      "duration_s": 0.178804749,
       "output": "All wiring checks passed",
       "weight": 6
     },
     {
       "goal_id": "telemetry-coverage",
       "result": "pass",
-      "duration_s": 0.005286862,
+      "duration_s": 0.004993474,
       "weight": 5
     },
     {
       "goal_id": "compaction-proofing",
       "result": "pass",
-      "duration_s": 0.003702081,
+      "duration_s": 0.003439672,
       "weight": 5
     },
     {
       "goal_id": "no-stale-goals",
       "result": "pass",
-      "duration_s": 0.851719379,
+      "duration_s": 1.159708845,
       "output": "No trivially-true stale goals found.",
       "weight": 7
     },
     {
       "goal_id": "goal-quality",
       "result": "pass",
-      "duration_s": 0.635400733,
+      "duration_s": 0.936629613,
       "weight": 7
     },
     {
       "goal_id": "product-freshness",
       "result": "pass",
-      "duration_s": 0.019195924,
+      "duration_s": 0.019567165,
       "weight": 7
     },
     {
       "goal_id": "go-cli-builds",
       "result": "pass",
-      "duration_s": 0.157510313,
+      "duration_s": 0.133287974,
       "weight": 5
     },
     {
       "goal_id": "go-cli-tests",
       "result": "skip",
-      "duration_s": 20.003813005,
+      "duration_s": 20.005538214,
       "weight": 5
     },
     {
       "goal_id": "full-test-suite",
       "result": "pass",
-      "duration_s": 2.304528642,
+      "duration_s": 3.038589,
       "output": "═══════════════════════════════════════════\nAgentOps Plugin Test Suite\n═══════════════════════════════════════════\n\n\u001b[0;34m[TEST]\u001b[0m Tier 1: Static Validation\n\u001b[0;32m  ✓\u001b[0m Manifest schema validation\n\u001b[0;32m  ✓\u001b[0m plugin.json valid\n\u001b[0;32m  ✓\u001b[0m hooks.json valid\n\u001b[0;32m  ✓\u001b[0m All 52 skills have valid SKILL.md\n\u001b[0",
       "weight": 4
     },
     {
       "goal_id": "go-vet-clean",
       "result": "pass",
-      "duration_s": 0.698547567,
+      "duration_s": 0.988845755,
       "weight": 3
     },
     {
       "goal_id": "hook-preflight",
       "result": "pass",
-      "duration_s": 0.144228142,
+      "duration_s": 0.179746666,
       "weight": 4
     },
     {
       "goal_id": "toolchain-security-gate",
       "result": "pass",
-      "duration_s": 0.094139185,
+      "duration_s": 0.094949875,
       "weight": 4
     },
     {
       "goal_id": "ci-security-toolchain-gate",
       "result": "pass",
-      "duration_s": 0.003724782,
+      "duration_s": 0.003878421,
       "weight": 4
     },
     {
       "goal_id": "release-security-gate",
       "result": "pass",
-      "duration_s": 0.00586183,
+      "duration_s": 0.004872358,
       "weight": 4
     },
     {
       "goal_id": "go-coverage-floor",
       "result": "skip",
-      "duration_s": 20.003245691,
+      "duration_s": 20.023688467,
       "weight": 2
     },
     {
       "goal_id": "smoke-tests",
       "result": "pass",
-      "duration_s": 2.123182327,
+      "duration_s": 1.8792953890000001,
       "output": "\u001b[0;34m[TEST]\u001b[0m Validating manifests against schemas...\n\u001b[0;32m  ✓\u001b[0m Manifest schemas valid\n\u001b[0;34m[TEST]\u001b[0m Validating skill structure...\n\u001b[0;32m  ✓\u001b[0m All 52 skills have valid SKILL.md\n\u001b[0;34m[TEST]\u001b[0m Validating council/crank flag allowlists...\n\u001b[0;32m  ✓\u001b[0m council validate-skill checks passed\n\u001b[0;32m  ✓\u001b[0m crank validate-skill checks passed\n\u001b[0;34m[TEST]\u001b[0m Validating agents structure...\n\u001b[0;32m  ✓\u001b[0m Found 2 agents\n\u001b[0;34m[TEST]\u001b[0m Validating ao CLI...\n\u001b[0;32m  ✓\u001b[0",
       "weight": 3
     },
     {
       "goal_id": "opencode-live",
       "result": "pass",
-      "duration_s": 0.005162999,
+      "duration_s": 0.005094218,
       "output": "SKIP: opencode not in PATH",
       "weight": 2
     },
     {
       "goal_id": "go-absolute-complexity-ceiling",
       "result": "pass",
-      "duration_s": 0.049315161,
+      "duration_s": 0.058762608,
       "output": "All functions in cli/ are below complexity 10.",
       "weight": 5
     },
     {
       "goal_id": "go-internal-complexity-ceiling",
       "result": "pass",
-      "duration_s": 0.019353744,
+      "duration_s": 0.021646975,
       "output": "All functions in cli/internal/ are below complexity 8.",
       "weight": 4
     },
     {
       "goal_id": "go-cmdao-complexity-tracking",
       "result": "pass",
-      "duration_s": 0.039865213,
+      "duration_s": 0.049351255,
       "output": "All functions in cli/cmd/ao/ are below complexity 10.",
       "weight": 3
     },
     {
       "goal_id": "go-per-package-coverage-floor",
       "result": "skip",
-      "duration_s": 20.006213991,
+      "duration_s": 20.008718127,
       "weight": 3
     },
     {
       "goal_id": "ao-goals-builds",
       "result": "pass",
-      "duration_s": 1.647644579,
+      "duration_s": 1.977546187,
       "weight": 5
     },
     {
       "goal_id": "manifest-versions-match",
       "result": "pass",
-      "duration_s": 0.008586492,
+      "duration_s": 0.006573043,
       "weight": 3
     },
     {
       "goal_id": "skill-validation",
       "result": "pass",
-      "duration_s": 4.816849805,
+      "duration_s": 5.49237646,
       "output": "╔════════════════════════════════════════════════════════════╗\n║   AgentOps Skill Validation Test Suite                     ║\n╠════════════════════════════════════════════════════════════╣\n║  Tests: SKILL.md + frontmatter + skill-specific validat",
       "weight": 2
     },
     {
       "goal_id": "evolve-cycle-logging",
       "result": "fail",
-      "duration_s": 0.447082774,
-      "output": "ERROR: Line 19 missing both goal_id and goal_ids\n\nERROR: 1 integrity issues found in cycle-history.jsonl (19 entries checked).",
+      "duration_s": 0.566817409,
+      "output": "ERROR: Line 19 missing both goal_id and goal_ids\nERROR: Line 21 missing both goal_id and goal_ids\nERROR: Cycle gap at line 21: expected cycle 21, got 20\n\nERROR: 3 integrity issues found in cycle-history.jsonl (21 entries checked).",
       "weight": 6
     },
     {
       "goal_id": "skill-semantic-stability",
       "result": "pass",
-      "duration_s": 0.045174732,
+      "duration_s": 0.057793176,
       "weight": 3
     },
     {
       "goal_id": "all-skills-have-frontmatter",
       "result": "pass",
-      "duration_s": 0.259275581,
+      "duration_s": 0.30218669,
       "weight": 3
     },
     {
       "goal_id": "session-start-injects-knowledge",
       "result": "pass",
-      "duration_s": 0.002336677,
+      "duration_s": 0.003244562,
       "weight": 4
     },
     {
       "goal_id": "evolve-kill-switch",
       "result": "pass",
-      "duration_s": 0.004084719,
+      "duration_s": 0.00413439,
       "weight": 4
     },
     {
       "goal_id": "rpi-phased-context-discipline",
       "result": "pass",
-      "duration_s": 0.471871764,
+      "duration_s": 0.186295577,
       "weight": 3
     },
     {
       "goal_id": "flywheel-proof-passes",
       "result": "pass",
-      "duration_s": 0.242575353,
-      "output": "[proof-run] === SETUP ===\n[proof-run] Fixture:  /home/boful/agentops/tests/fixtures/proof-repo\n[proof-run] Work dir: /tmp/flywheel-proof-eqaqSF\n[proof-run] Work dir initialized\n[proof-run] \n[proof-run] ===================================================================\n[proof-run] SESSION 1: Discovery\n[proof-run]   Simulate /research + /learn on the proof-repo codebase.\n[proof-run]   Assert: learnings exist with valid frontmatter.\n[proof-run] =====================================================",
+      "duration_s": 0.273834211,
+      "output": "[proof-run] === SETUP ===\n[proof-run] Fixture:  /home/boful/agentops/tests/fixtures/proof-repo\n[proof-run] Work dir: /tmp/flywheel-proof-F8v68Z\n[proof-run] Work dir initialized\n[proof-run] \n[proof-run] ===================================================================\n[proof-run] SESSION 1: Discovery\n[proof-run]   Simulate /research + /learn on the proof-repo codebase.\n[proof-run]   Assert: learnings exist with valid frontmatter.\n[proof-run] =====================================================",
       "weight": 6
     },
     {
       "goal_id": "starter-skill-discoverability",
       "result": "pass",
-      "duration_s": 0.007659321,
+      "duration_s": 0.008213644,
       "weight": 3
     },
     {
       "goal_id": "onboarding-path-completeness",
       "result": "pass",
-      "duration_s": 0.00134135,
+      "duration_s": 0.001627337,
       "weight": 3
     }
   ],
@@ -231,5 +231,19 @@
     "failing": 1,
     "skipped": 3,
     "score": 95.68345323741008
+  }
+}
+    "goal_id": "onboarding-path-completeness",
+      "result": "pass",
+      "duration_s": 0.001671019,
+      "weight": 3
+    }
+  ],
+  "summary": {
+    "total": 35,
+    "passing": 34,
+    "failing": 1,
+    "skipped": 0,
+    "score": 95.9731543624161
   }
 }
