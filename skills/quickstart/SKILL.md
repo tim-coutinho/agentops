@@ -352,7 +352,7 @@ What are you trying to do?
 
 For the complete catalog, use the Read tool on `skills/quickstart/references/full-catalog.md`.
 
-### Step 8: Prove the Flywheel Works
+### Step 7: Prove the Flywheel Works
 
 Show the user that their sessions have already started compounding — and how to verify it:
 
@@ -401,7 +401,7 @@ Run /rpi "a small goal" to complete one full cycle,
 then 'ao inject' in your NEXT session to see what compounded.
 ```
 
-### Step 7: What's Next
+### Step 8: What's Next
 
 Suggest the next skill to try based on what the user just saw:
 
