@@ -948,6 +948,61 @@ BLOCKED_VIBE
     cd "$SCRIPT_DIR"
 }
 
+test_phase_summaries() {
+    log "Testing Phase summary validation..."
+
+    cd "$TEST_PROJECT"
+
+    # Simulate phase summary files for all 6 phases
+    mkdir -p .agents/rpi
+    local phases=("research" "plan" "pre-mortem" "crank" "vibe" "post-mortem")
+    local phase_num=1
+
+    for phase in "${phases[@]}"; do
+        cat > ".agents/rpi/phase-${phase_num}-summary-${phase}.md" << SUMMARY
+# Phase ${phase_num}: ${phase}
+
+## Summary
+
+This phase completed successfully with expected artifacts produced.
+Key outputs were generated and validated against schema requirements.
+
+## Duration
+
+Approximately 15 minutes.
+
+## Artifacts
+
+- Primary output verified
+- Schema compliance confirmed
+SUMMARY
+        phase_num=$((phase_num + 1))
+    done
+
+    # Check each phase summary exists and meets criteria
+    phase_num=1
+    for phase in "${phases[@]}"; do
+        local summary_file=".agents/rpi/phase-${phase_num}-summary-${phase}.md"
+
+        if [[ -f "$summary_file" ]] && [[ -s "$summary_file" ]]; then
+            local word_count
+            word_count=$(wc -w < "$summary_file" | tr -d ' ')
+
+            if [[ "$word_count" -lt 400 ]]; then
+                log_pass "Phase $phase_num ($phase) summary: exists, non-empty, ${word_count} words < 400"
+            else
+                log_fail "Phase $phase_num ($phase) summary: ${word_count} words exceeds 400 limit"
+            fi
+        else
+            log_fail "Phase $phase_num ($phase) summary missing or empty"
+        fi
+
+        phase_num=$((phase_num + 1))
+    done
+
+    cd "$SCRIPT_DIR"
+}
+
 test_complexity_scaling() {
     log "Testing Complexity scaling flag selection..."
 
@@ -1412,6 +1467,7 @@ main() {
     echo "───────────────"
     test_ratchet_tracking
     test_gate_enforcement
+    test_phase_summaries
     test_complexity_scaling
     test_promise_tag_parsing
     test_gate_retry_logic
