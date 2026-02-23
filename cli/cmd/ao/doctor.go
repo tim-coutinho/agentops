@@ -170,7 +170,7 @@ func checkCLIDependencies() doctorCheck {
 	}
 }
 
-// checkHookCoverage checks if Claude hooks are installed with full 12-event coverage.
+// checkHookCoverage checks if Claude hooks are installed with event coverage.
 func checkHookCoverage() doctorCheck {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {

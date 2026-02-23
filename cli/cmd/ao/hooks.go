@@ -208,7 +208,7 @@ func init() {
 	// Install flags
 	hooksInstallCmd.Flags().BoolVar(&hooksDryRun, "dry-run", false, "Show what would be installed without making changes")
 	hooksInstallCmd.Flags().BoolVar(&hooksForce, "force", false, "Overwrite existing ao hooks")
-	hooksInstallCmd.Flags().BoolVar(&hooksFull, "full", false, "Install all 12 events with hook scripts copied to ~/.agentops/")
+	hooksInstallCmd.Flags().BoolVar(&hooksFull, "full", false, "Install all hook events from hooks.json with scripts copied to ~/.agentops/")
 	hooksInstallCmd.Flags().StringVar(&hooksSourceDir, "source-dir", "", "Path to agentops repo checkout (for --full script installation)")
 
 	// Test flags
@@ -331,7 +331,7 @@ func generateFullHooksConfig() (*HooksConfig, error) {
 }
 
 // generateHooksConfig creates the ao hooks configuration.
-// Tries to read from hooks.json for full 12-event coverage; falls back to minimal (SessionStart + Stop).
+// Tries to read from hooks.json for full event coverage; falls back to minimal (SessionStart + SessionEnd + Stop).
 func generateHooksConfig() *HooksConfig {
 	config, err := generateFullHooksConfig()
 	if err != nil {
@@ -872,11 +872,10 @@ func runHooksShow(cmd *cobra.Command, args []string) error {
 
 	installedCount := printEventCoverage(hooksMap)
 
-	allEvents := AllEventNames()
 	fmt.Println()
-	fmt.Printf("%d/%d events installed\n", installedCount, len(allEvents))
+	fmt.Printf("%d events installed\n", installedCount)
 
-	if installedCount < len(allEvents) {
+	if installedCount < len(AllEventNames()) {
 		fmt.Println()
 		fmt.Println("Run 'ao hooks install --full' for complete coverage.")
 	}
@@ -1027,7 +1026,7 @@ func runRequiredSubcommandsTest(testNum int, allPassed *bool) {
 	fmt.Println("✓ all present")
 }
 
-// countInstalledHookEvents counts how many of the 12 hook events have at least one group.
+// countInstalledHookEvents counts how many hook events have at least one group.
 func countInstalledHookEvents(hooksMap map[string]any) int {
 	installed := 0
 	for _, event := range AllEventNames() {
@@ -1082,7 +1081,7 @@ func runSettingsCoverageTest(testNum int, homeDir string, allPassed *bool) {
 	}
 
 	installed := countInstalledHookEvents(hooksMap)
-	fmt.Printf("✓ %d/%d events installed\n", installed, len(AllEventNames()))
+	fmt.Printf("✓ %d events installed\n", installed)
 	if installed < len(AllEventNames()) {
 		fmt.Println("   Run 'ao hooks install --full' for complete coverage.")
 	}
