@@ -681,7 +681,7 @@ type beadsEpic struct {
 // queryBeadsEpics queries beads for epic statuses.
 func queryBeadsEpics() ([]beadsEpic, error) {
 	// Run bd list --type epic to get epics
-	cmd := exec.Command("bd", "list", "--type", "epic", "-o", "json")
+	cmd := exec.Command("bd", "list", "--type", "epic", "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("bd list: %w", err)

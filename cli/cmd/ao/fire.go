@@ -320,7 +320,7 @@ func escalatePhase(failures []string, retryQueue map[string]*RetryInfo, cfg Fire
 // =============================================================================
 
 func bdReady(epicID string) ([]string, error) {
-	args := []string{"ready", "-o", "json"}
+	args := []string{"ready", "--json"}
 	if epicID != "" {
 		args = append(args, "--parent", epicID)
 	}
@@ -335,7 +335,7 @@ func bdReady(epicID string) ([]string, error) {
 }
 
 func bdListByStatus(epicID, status string) ([]string, error) {
-	args := []string{"list", "--status", status, "-o", "json"}
+	args := []string{"list", "--status", status, "--json"}
 	if epicID != "" {
 		args = append(args, "--parent", epicID)
 	}
@@ -350,7 +350,7 @@ func bdListByStatus(epicID, status string) ([]string, error) {
 }
 
 func bdBlocked(epicID string) ([]string, error) {
-	args := []string{"blocked", "-o", "json"}
+	args := []string{"blocked", "--json"}
 	if epicID != "" {
 		args = append(args, "--parent", epicID)
 	}
@@ -365,7 +365,7 @@ func bdBlocked(epicID string) ([]string, error) {
 }
 
 func bdShowStatus(issueID string) (string, error) {
-	cmd := exec.Command("bd", "show", issueID, "-o", "json")
+	cmd := exec.Command("bd", "show", issueID, "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
